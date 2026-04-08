@@ -6,8 +6,6 @@
   <title>Generar Video UGC con IA — PhinodIA</title>
   <meta name="description" content="Genera videos UGC de producto con acento colombiano usando inteligencia artificial. Sube tu producto, describe tu vision y recibe un video profesional.">
   <meta name="robots" content="index, follow">
-  <meta property="og:title" content="Generar Video UGC con IA — PhinodIA">
-  <meta property="og:description" content="Videos UGC de producto con acento colombiano, generados con IA en minutos.">
   <link rel="icon" href="https://ik.imagekit.io/nllhy6wch/Logo%20Google%20Workspace.png?updatedAt=1767905998676">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -16,7 +14,7 @@
   <nav class="nav">
     <div class="nav-inner">
       <a href="/" class="nav-logo">
-        <img src="https://ik.imagekit.io/nllhy6wch/White%20Logo%20Transparent%20Background.png?updatedAt=1771340685783" alt="PhinodIA" height="26">
+        <img src="https://ik.imagekit.io/nllhy6wch/Logo%20Google%20Workspace.png?updatedAt=1767905998676" alt="PhinodIA" height="22">
       </a>
       <div class="nav-links">
         <a href="/videos" class="active">Videos</a>
@@ -30,21 +28,20 @@
   </nav>
 
   <main class="container">
-    <section class="hero" style="padding-bottom: 32px;">
-      <span class="hero-badge">&#127909; Video UGC</span>
-      <h1>Crea tu <span class="gradient">video</span> de producto</h1>
+    <section class="hero" style="padding-bottom: 24px;">
+      <p class="hero-badge">Video UGC</p>
+      <h1>Crea tu video de producto.</h1>
       <p>La IA analiza tu producto, genera un guion AIDA con acento colombiano y crea un video UGC realista usando VEO 3.1.</p>
     </section>
 
     <div class="form-card card">
       <form id="video-form" onsubmit="return false;">
 
-        <!-- Image Upload -->
         <div class="form-group">
           <label>Foto del producto</label>
           <div class="file-upload" id="video-dropzone">
             <input type="file" accept="image/jpeg,image/png,image/webp" name="product_image">
-            <div class="file-upload-icon">&#128247;</div>
+            <div class="file-upload-icon" style="font-size: 28px; color: var(--text-secondary);">&#x1F4F7;</div>
             <div class="file-upload-text">Arrastra tu imagen aqui o <strong>haz clic para seleccionar</strong></div>
             <img id="video-preview" class="file-preview hidden" alt="Vista previa">
           </div>
@@ -52,75 +49,66 @@
           <p class="form-hint">JPEG, PNG o WebP. Maximo 10MB.</p>
         </div>
 
-        <!-- Product Name -->
         <div class="form-group">
           <label for="video-product-name">Nombre del producto</label>
           <input type="text" id="video-product-name" name="product_name" class="form-input" placeholder="Ej: Serum Vitamina C GlowSkin" required>
         </div>
 
-        <!-- Description / Directives -->
         <div class="form-group">
           <label for="video-description">Describe tu vision para el video</label>
           <textarea id="video-description" name="description" class="form-textarea" placeholder="Ej: Quiero un video que hable sobre este producto impactando el dolor de la piel opaca. Que salga una chica mostrando como lo usa y lo recomiende a sus amigas..." required></textarea>
           <p class="form-hint">Se especifico: que dolor atacar, que emocion, que historia contar.</p>
         </div>
 
-        <!-- Duration -->
         <div class="form-group">
           <label>Duracion del video</label>
           <div class="option-grid" id="duration-picker">
-            <button type="button" class="option-btn" data-value="8">8s<br><small style="color: var(--text-tertiary);">Reel Express</small></button>
-            <button type="button" class="option-btn selected" data-value="15">15s<br><small style="color: var(--text-tertiary);">Reel Standard</small></button>
-            <button type="button" class="option-btn" data-value="22">22s<br><small style="color: var(--text-tertiary);">Reel Plus</small></button>
-            <button type="button" class="option-btn" data-value="30">30s<br><small style="color: var(--text-tertiary);">Comercial</small></button>
+            <button type="button" class="option-btn" data-value="8">8s<br><small>Reel Express</small></button>
+            <button type="button" class="option-btn selected" data-value="15">15s<br><small>Reel Standard</small></button>
+            <button type="button" class="option-btn" data-value="22">22s<br><small>Reel Plus</small></button>
+            <button type="button" class="option-btn" data-value="30">30s<br><small>Comercial</small></button>
           </div>
           <input type="hidden" id="video-duration" name="duration" value="15">
         </div>
 
-        <!-- Format -->
         <div class="form-group">
           <label>Formato</label>
           <div class="option-grid" id="format-picker" style="grid-template-columns: 1fr 1fr;">
-            <button type="button" class="option-btn selected" data-value="portrait">&#128241; Vertical (9:16)<br><small style="color: var(--text-tertiary);">Instagram, TikTok</small></button>
-            <button type="button" class="option-btn" data-value="landscape">&#128187; Horizontal (16:9)<br><small style="color: var(--text-tertiary);">YouTube, Web</small></button>
+            <button type="button" class="option-btn selected" data-value="portrait">Vertical (9:16)<br><small>Instagram, TikTok</small></button>
+            <button type="button" class="option-btn" data-value="landscape">Horizontal (16:9)<br><small>YouTube, Web</small></button>
           </div>
           <input type="hidden" id="video-format" name="format" value="portrait">
         </div>
 
-        <!-- Creative Direction (optional) -->
         <div class="form-group">
           <label for="video-creative">Direccion creativa (opcional)</label>
           <input type="text" id="video-creative" name="creative_direction" class="form-input" placeholder="Ej: Energia positiva, colores calidos, setting de cocina">
         </div>
 
-        <!-- Email -->
         <div class="form-group">
           <label for="video-email">Tu correo electronico</label>
           <input type="email" id="video-email" name="email" class="form-input" placeholder="tucorreo@ejemplo.com" required>
           <p class="form-hint">Aqui enviaremos tu video cuando este listo.</p>
         </div>
 
-        <!-- Consent -->
         <div class="form-group">
           <div class="checkbox-group">
             <input type="checkbox" id="video-consent" name="data_consent" required>
-            <label for="video-consent">Acepto el tratamiento de mis datos personales conforme a la <a href="https://phinodia.com/privacidad" target="_blank">Politica de Privacidad</a> y los <a href="https://phinodia.com/terminos" target="_blank">Terminos de Servicio</a> de PhinodIA. Ley 1581 de 2012.</label>
+            <label for="video-consent">Acepto el tratamiento de mis datos personales conforme a la <a href="https://phinodia.com/politica-de-privacidad/" target="_blank">Politica de Privacidad</a> y los <a href="https://phinodia.com/condiciones-del-servicio/" target="_blank">Terminos de Servicio</a> de PhinodIA. Ley 1581 de 2012.</label>
           </div>
         </div>
 
-        <button type="submit" id="video-submit" class="btn btn-primary btn-block btn-lg" onclick="submitVideo()">Generar Video</button>
+        <button type="submit" id="video-submit" class="btn btn-primary btn-block btn-lg" onclick="submitVideo()">Generar video</button>
       </form>
 
-      <!-- Result -->
       <div id="video-result" class="hidden mt-32">
         <div class="status-card">
-          <div class="status-icon" id="video-status-icon">&#9203;</div>
           <h3 id="video-status-title">Generando tu video...</h3>
           <p id="video-status-text" style="color: var(--text-secondary); margin: 8px 0 16px;">Esto puede tomar unos minutos. No cierres esta pagina.</p>
           <div class="progress-bar"><div class="progress-fill" id="video-progress" style="width: 0%"></div></div>
           <span class="status-badge processing" id="video-status-badge">Procesando</span>
           <div id="video-download" class="hidden mt-24">
-            <a id="video-download-link" href="#" target="_blank" class="btn btn-primary btn-lg">Descargar Video</a>
+            <a id="video-download-link" href="#" target="_blank" class="btn btn-primary btn-lg">Descargar video</a>
           </div>
         </div>
       </div>
@@ -129,11 +117,11 @@
 
   <footer class="footer">
     <div class="footer-inner">
-      <p>&copy; 2026 PhinodIA — Automatiza Sin Limites</p>
+      <p>2026 PhinodIA. Todos los derechos reservados.</p>
       <div class="footer-links">
-        <a href="https://phinodia.com/privacidad">Privacidad</a>
-        <a href="https://phinodia.com/terminos">Terminos</a>
-        <a href="https://phinodia.com/habeas-data">Habeas Data</a>
+        <a href="https://phinodia.com/politica-de-privacidad/">Privacidad</a>
+        <a href="https://phinodia.com/condiciones-del-servicio/">Terminos</a>
+        <a href="https://phinodia.com/habeas-data/">Habeas Data</a>
       </div>
     </div>
   </footer>
@@ -163,16 +151,14 @@
           const badge = document.getElementById('video-status-badge');
           const title = document.getElementById('video-status-title');
           const text = document.getElementById('video-status-text');
-          const icon = document.getElementById('video-status-icon');
 
           progress.style.width = status.progress + '%';
 
           if (status.status === 'completed') {
             badge.className = 'status-badge completed';
             badge.textContent = 'Completado';
-            title.textContent = 'Tu video esta listo!';
+            title.textContent = 'Tu video esta listo.';
             text.textContent = 'Descargalo ahora o revisa tu correo.';
-            icon.textContent = '\u2705';
             progress.style.width = '100%';
             if (status.result_url) {
               document.getElementById('video-download').classList.remove('hidden');
@@ -183,7 +169,6 @@
             badge.textContent = 'Error';
             title.textContent = 'Hubo un error';
             text.textContent = status.error_message || 'Intenta de nuevo o contactanos.';
-            icon.textContent = '\u274C';
           } else {
             badge.className = 'status-badge processing';
             badge.textContent = 'Generando...';

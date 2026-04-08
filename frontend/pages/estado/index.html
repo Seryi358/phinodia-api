@@ -14,7 +14,7 @@
   <nav class="nav">
     <div class="nav-inner">
       <a href="/" class="nav-logo">
-        <img src="https://ik.imagekit.io/nllhy6wch/White%20Logo%20Transparent%20Background.png?updatedAt=1771340685783" alt="PhinodIA" height="26">
+        <img src="https://ik.imagekit.io/nllhy6wch/Logo%20Google%20Workspace.png?updatedAt=1767905998676" alt="PhinodIA" height="22">
       </a>
       <div class="nav-links">
         <a href="/videos">Videos</a>
@@ -28,25 +28,22 @@
   </nav>
 
   <main class="container">
-    <section class="hero" style="padding-bottom: 32px;">
-      <h1>Estado de tu <span class="gradient">generacion</span></h1>
+    <section class="hero" style="padding-bottom: 24px;">
+      <h1>Estado de tu generacion.</h1>
       <p>Consulta el progreso de tu video, imagen o landing page.</p>
     </section>
 
     <div class="form-card" style="max-width: 500px; margin: 0 auto;">
-      <!-- Search -->
       <div id="status-search" class="card">
         <div class="form-group" style="margin-bottom: 16px;">
           <label for="job-id-input">ID del trabajo</label>
           <input type="text" id="job-id-input" class="form-input" placeholder="Ej: a1b2c3d4-e5f6-7890-abcd-ef1234567890">
         </div>
-        <button class="btn btn-primary btn-block" onclick="checkStatus()">Consultar Estado</button>
+        <button class="btn btn-primary btn-block" onclick="checkStatus()">Consultar estado</button>
       </div>
 
-      <!-- Result -->
       <div id="status-result" class="hidden mt-24">
         <div class="status-card">
-          <div class="status-icon" id="status-icon">&#9203;</div>
           <h3 id="status-title">Cargando...</h3>
           <p id="status-text" style="color: var(--text-secondary); margin: 8px 0 16px;"></p>
           <div class="progress-bar"><div class="progress-fill" id="status-progress" style="width: 0%"></div></div>
@@ -62,18 +59,17 @@
 
   <footer class="footer">
     <div class="footer-inner">
-      <p>&copy; 2026 PhinodIA — Automatiza Sin Limites</p>
+      <p>2026 PhinodIA. Todos los derechos reservados.</p>
       <div class="footer-links">
-        <a href="https://phinodia.com/privacidad">Privacidad</a>
-        <a href="https://phinodia.com/terminos">Terminos</a>
-        <a href="https://phinodia.com/habeas-data">Habeas Data</a>
+        <a href="https://phinodia.com/politica-de-privacidad/">Privacidad</a>
+        <a href="https://phinodia.com/condiciones-del-servicio/">Terminos</a>
+        <a href="https://phinodia.com/habeas-data/">Habeas Data</a>
       </div>
     </div>
   </footer>
 
   <script src="/static/js/api.js"></script>
   <script>
-    // Check URL params for job_id
     const params = new URLSearchParams(window.location.search);
     if (params.get('job_id')) {
       document.getElementById('job-id-input').value = params.get('job_id');
@@ -91,15 +87,13 @@
         const badge = document.getElementById('status-badge');
         const title = document.getElementById('status-title');
         const text = document.getElementById('status-text');
-        const icon = document.getElementById('status-icon');
 
         progress.style.width = status.progress + '%';
 
         if (status.status === 'completed') {
           badge.className = 'status-badge completed'; badge.textContent = 'Completado';
-          title.textContent = 'Tu contenido esta listo!';
-          text.textContent = `Tipo: ${status.result_type || 'archivo'}`;
-          icon.textContent = '\u2705';
+          title.textContent = 'Tu contenido esta listo.';
+          text.textContent = 'Tipo: ' + (status.result_type || 'archivo');
           progress.style.width = '100%';
           if (status.result_url) {
             document.getElementById('status-download').classList.remove('hidden');
@@ -109,17 +103,14 @@
           badge.className = 'status-badge failed'; badge.textContent = 'Error';
           title.textContent = 'Hubo un error';
           text.textContent = status.error_message || 'Intenta de nuevo.';
-          icon.textContent = '\u274C';
         } else if (status.status === 'error') {
           badge.className = 'status-badge failed'; badge.textContent = 'No encontrado';
           title.textContent = 'Trabajo no encontrado';
           text.textContent = 'Verifica el ID e intenta de nuevo.';
-          icon.textContent = '\u2753';
         } else {
           badge.className = 'status-badge processing'; badge.textContent = 'Procesando';
           title.textContent = 'Generando tu contenido...';
           text.textContent = 'Esto puede tomar unos minutos.';
-          icon.textContent = '\u23F3';
         }
       });
     }
