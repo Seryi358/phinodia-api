@@ -4,15 +4,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.config import Settings
-from app.database import init_db
-
 settings = Settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs("data/uploads", exist_ok=True)
-    await init_db()
     yield
 
 

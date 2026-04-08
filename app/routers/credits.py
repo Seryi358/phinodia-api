@@ -1,7 +1,5 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_db_session
 from app.services.credits import CreditService
 
 router = APIRouter()
@@ -17,7 +15,7 @@ class BalanceResponse(BaseModel):
 
 
 @router.get("/check", response_model=BalanceResponse)
-async def check_credits(email: str = Query(...), session: AsyncSession = Depends(get_db_session)):
-    svc = CreditService(session)
+async def check_credits(email: str = Query(...)):
+    svc = CreditService()
     balance = await svc.get_balance(email)
     return BalanceResponse(**balance)

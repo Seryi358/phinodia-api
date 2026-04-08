@@ -1,59 +1,51 @@
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import User, Credit
+from app.database import db
 
 SERVICE_TYPES = ["video_8s", "video_15s", "video_22s", "video_30s", "image", "landing_page"]
 
 
 class CreditService:
-    def __init__(self, session: AsyncSession):
-        self.session = session
 
-    async def get_or_create_user(self, email: str, name: str | None = None) -> User:
-        result = await self.session.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
+    async def get_or_create_user(self, email: str) -> dict:
+        user = await db.select_one("users", {"email": f"eq.{email}"})
         if user:
             return user
-        user = User(email=email, name=name)
-        self.session.add(user)
-        await self.session.commit()
-        await self.session.refresh(user)
+        user = await db.insert("users", {"email": email, "credits": 0})
         return user
 
-    async def grant_credits(self, user_id: int, service_type: str, amount: int) -> Credit:
-        result = await self.session.execute(
-            select(Credit).where(Credit.user_id == user_id, Credit.service_type == service_type)
-        )
-        credit = result.scalar_one_or_none()
-        if credit:
-            credit.total += amount
+    async def grant_credits(self, user_id: str, service_type: str, amount: int):
+        row = await db.select_one("credits", {
+            "user_id": f"eq.{user_id}",
+            "service_type": f"eq.{service_type}",
+        })
+        if row:
+            new_total = row["total"] + amount
+            await db.update("credits", {"id": f"eq.{row['id']}"}, {"total": new_total})
         else:
-            credit = Credit(user_id=user_id, service_type=service_type, total=amount, used=0)
-            self.session.add(credit)
-        await self.session.commit()
-        await self.session.refresh(credit)
-        return credit
+            await db.insert("credits", {
+                "user_id": user_id,
+                "service_type": service_type,
+                "total": amount,
+                "used": 0,
+            })
 
-    async def deduct_credit(self, user_id: int, service_type: str) -> bool:
-        result = await self.session.execute(
-            select(Credit).where(Credit.user_id == user_id, Credit.service_type == service_type)
-        )
-        credit = result.scalar_one_or_none()
-        if not credit or credit.remaining <= 0:
+    async def deduct_credit(self, user_id: str, service_type: str) -> bool:
+        row = await db.select_one("credits", {
+            "user_id": f"eq.{user_id}",
+            "service_type": f"eq.{service_type}",
+        })
+        if not row or (row["total"] - row["used"]) <= 0:
             return False
-        credit.used += 1
-        await self.session.commit()
+        await db.update("credits", {"id": f"eq.{row['id']}"}, {"used": row["used"] + 1})
         return True
 
     async def get_balance(self, email: str) -> dict[str, int]:
-        result = await self.session.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
+        user = await db.select_one("users", {"email": f"eq.{email}"})
         if not user:
             return {st: 0 for st in SERVICE_TYPES}
-        result = await self.session.execute(select(Credit).where(Credit.user_id == user.id))
-        credits = result.scalars().all()
+        rows = await db.select("credits", {"user_id": f"eq.{user['id']}"})
         balance = {st: 0 for st in SERVICE_TYPES}
-        for c in credits:
-            if c.service_type in balance:
-                balance[c.service_type] = c.remaining
+        for row in rows:
+            st = row.get("service_type")
+            if st in balance:
+                balance[st] = row["total"] - row["used"]
         return balance

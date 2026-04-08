@@ -22,8 +22,11 @@ class Settings(BaseSettings):
     gmail_refresh_token: str
     gmail_sender_email: str = "scastellanos@phinodia.com"
 
+    # Supabase
+    supabase_url: str = "https://bxeiecdxryelwrtcwupe.supabase.co"
+    supabase_service_key: str = ""
+
     # App
-    database_url: str = "sqlite+aiosqlite:///./phinodia.db"
     cors_origins: list[str] = ["https://phinodia.com", "https://www.phinodia.com"]
     api_base_url: str = "https://api.phinodia.com"
 
