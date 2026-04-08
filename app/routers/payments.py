@@ -1,15 +1,56 @@
+import hashlib
 import logging
+import time
+import secrets
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database import get_db_session
 from app.models import Transaction
 from app.services.credits import CreditService
-from app.services.wompi import verify_webhook_signature, resolve_package
+from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU
 
 router = APIRouter()
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+
+class CheckoutRequest(BaseModel):
+    sku: str
+    email: EmailStr
+
+
+class CheckoutResponse(BaseModel):
+    reference: str
+    amount_cents: int
+    currency: str
+    integrity_hash: str
+    public_key: str
+
+
+@router.post("/checkout", response_model=CheckoutResponse)
+async def create_checkout(req: CheckoutRequest):
+    """Generate Wompi checkout parameters with integrity hash."""
+    package = PACKAGES_BY_SKU.get(req.sku)
+    if not package:
+        raise HTTPException(400, f"Paquete desconocido: {req.sku}")
+
+    reference = f"PH-{req.sku}-{int(time.time())}-{secrets.token_hex(4)}"
+    currency = "COP"
+    amount = package["amount"]
+
+    # Wompi integrity: SHA256(referencia + monto + moneda + llave_integridad)
+    concat = f"{reference}{amount}{currency}{settings.wompi_integrity_secret}"
+    integrity_hash = hashlib.sha256(concat.encode()).hexdigest()
+
+    return CheckoutResponse(
+        reference=reference,
+        amount_cents=amount,
+        currency=currency,
+        integrity_hash=integrity_hash,
+        public_key=settings.wompi_public_key,
+    )
 
 
 @router.post("/webhook")

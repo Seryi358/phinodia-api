@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Precios — PhinodIA | Videos, Imagenes y Landing Pages con IA</title>
+  <meta name="description" content="Planes y precios para generar videos UGC, imagenes de producto y landing pages con inteligencia artificial. Paga con tarjeta, PSE o Nequi.">
+  <meta name="robots" content="index, follow">
+  <link rel="icon" href="https://ik.imagekit.io/nllhy6wch/Logo%20Google%20Workspace.png?updatedAt=1767905998676">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://checkout.wompi.co/widget.js"></script>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <img src="https://ik.imagekit.io/nllhy6wch/White%20Logo%20Transparent%20Background.png?updatedAt=1771340685783" alt="PhinodIA" height="26">
+      </a>
+      <div class="nav-links">
+        <a href="/videos">Videos</a>
+        <a href="/imagenes">Imagenes</a>
+        <a href="/landing-pages">Landing Pages</a>
+        <a href="/creditos">Mis Creditos</a>
+        <a href="/precios" class="nav-cta">Precios</a>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">&#9776;</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="hero" style="padding-bottom: 24px;">
+      <span class="hero-badge">Precios</span>
+      <h1>Planes para cada <span class="gradient">necesidad</span></h1>
+      <p>Compra creditos y genera contenido cuando quieras. Paga con tarjeta de credito, PSE, Nequi o Bancolombia.</p>
+    </section>
+
+    <!-- Email input -->
+    <div class="form-card" style="max-width: 400px; margin: 0 auto 48px;">
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="pricing-email">Tu correo electronico</label>
+        <input type="email" id="pricing-email" class="form-input" placeholder="tucorreo@ejemplo.com" required>
+        <p class="form-hint">Necesario para asociar tus creditos al pago.</p>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs" style="max-width: 600px; margin: 0 auto 32px; justify-content: center;">
+      <button class="tab active" onclick="showTab('videos-tab', this)">&#127909; Videos</button>
+      <button class="tab" onclick="showTab('images-tab', this)">&#128247; Imagenes</button>
+      <button class="tab" onclick="showTab('landings-tab', this)">&#128196; Landing Pages</button>
+    </div>
+
+    <!-- Videos Tab -->
+    <div id="videos-tab" class="tab-content">
+      <div class="section-header" style="margin-bottom: 32px;">
+        <h2>Videos UGC</h2>
+        <p>Videos de producto con acento colombiano generados con VEO 3.1</p>
+      </div>
+
+      <!-- 8s Videos -->
+      <h3 style="margin-bottom: 16px; color: var(--text-secondary); font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">Reel Express — 8 segundos</h3>
+      <div class="pricing-grid mb-24">
+        <div class="pricing-card">
+          <div class="pricing-credits">5</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$24.990</div>
+          <div class="pricing-per">$4.998 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_8s_5')">Comprar</button>
+        </div>
+        <div class="pricing-card popular">
+          <div class="pricing-credits">10</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$34.990</div>
+          <div class="pricing-per">$3.499 por video</div>
+          <button class="btn btn-primary btn-block btn-sm" onclick="buyPlan('video_8s_10')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">20</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$59.990</div>
+          <div class="pricing-per">$2.999 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_8s_20')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">50</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$129.990</div>
+          <div class="pricing-per">$2.600 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_8s_50')">Comprar</button>
+        </div>
+      </div>
+
+      <!-- 15s Videos -->
+      <h3 style="margin-bottom: 16px; color: var(--text-secondary); font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">Reel Standard — 15 segundos</h3>
+      <div class="pricing-grid mb-24">
+        <div class="pricing-card">
+          <div class="pricing-credits">5</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$39.990</div>
+          <div class="pricing-per">$7.998 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_15s_5')">Comprar</button>
+        </div>
+        <div class="pricing-card popular">
+          <div class="pricing-credits">10</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$54.990</div>
+          <div class="pricing-per">$5.499 por video</div>
+          <button class="btn btn-primary btn-block btn-sm" onclick="buyPlan('video_15s_10')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">20</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$99.990</div>
+          <div class="pricing-per">$4.999 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_15s_20')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">50</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$219.990</div>
+          <div class="pricing-per">$4.400 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_15s_50')">Comprar</button>
+        </div>
+      </div>
+
+      <!-- 22s Videos -->
+      <h3 style="margin-bottom: 16px; color: var(--text-secondary); font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">Reel Plus — 22 segundos</h3>
+      <div class="pricing-grid mb-24">
+        <div class="pricing-card">
+          <div class="pricing-credits">5</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$59.990</div>
+          <div class="pricing-per">$11.998 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_22s_5')">Comprar</button>
+        </div>
+        <div class="pricing-card popular">
+          <div class="pricing-credits">10</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$84.990</div>
+          <div class="pricing-per">$8.499 por video</div>
+          <button class="btn btn-primary btn-block btn-sm" onclick="buyPlan('video_22s_10')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">20</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$149.990</div>
+          <div class="pricing-per">$7.499 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_22s_20')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">50</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$329.990</div>
+          <div class="pricing-per">$6.600 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_22s_50')">Comprar</button>
+        </div>
+      </div>
+
+      <!-- 30s Videos -->
+      <h3 style="margin-bottom: 16px; color: var(--text-secondary); font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">Comercial — 30 segundos</h3>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <div class="pricing-credits">5</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$79.990</div>
+          <div class="pricing-per">$15.998 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_30s_5')">Comprar</button>
+        </div>
+        <div class="pricing-card popular">
+          <div class="pricing-credits">10</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$109.990</div>
+          <div class="pricing-per">$10.999 por video</div>
+          <button class="btn btn-primary btn-block btn-sm" onclick="buyPlan('video_30s_10')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">20</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$199.990</div>
+          <div class="pricing-per">$9.999 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_30s_20')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">50</div>
+          <div class="pricing-label">videos</div>
+          <div class="pricing-price">$449.990</div>
+          <div class="pricing-per">$9.000 por video</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('video_30s_50')">Comprar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Images Tab -->
+    <div id="images-tab" class="tab-content hidden">
+      <div class="section-header" style="margin-bottom: 32px;">
+        <h2>Imagenes de Producto</h2>
+        <p>Fotos profesionales estilo Instagram generadas con Nano Banana 2</p>
+      </div>
+
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <div class="pricing-credits">5</div>
+          <div class="pricing-label">imagenes</div>
+          <div class="pricing-price">$19.990</div>
+          <div class="pricing-per">$3.998 por imagen</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('image_5')">Comprar</button>
+        </div>
+        <div class="pricing-card popular">
+          <div class="pricing-credits">10</div>
+          <div class="pricing-label">imagenes</div>
+          <div class="pricing-price">$24.990</div>
+          <div class="pricing-per">$2.499 por imagen</div>
+          <button class="btn btn-primary btn-block btn-sm" onclick="buyPlan('image_10')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">20</div>
+          <div class="pricing-label">imagenes</div>
+          <div class="pricing-price">$49.990</div>
+          <div class="pricing-per">$2.499 por imagen</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('image_20')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">50</div>
+          <div class="pricing-label">imagenes</div>
+          <div class="pricing-price">$119.990</div>
+          <div class="pricing-per">$2.400 por imagen</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('image_50')">Comprar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Landing Pages Tab -->
+    <div id="landings-tab" class="tab-content hidden">
+      <div class="section-header" style="margin-bottom: 32px;">
+        <h2>Landing Pages</h2>
+        <p>Paginas de venta con AIDA y neuromarketing, listas para usar</p>
+      </div>
+
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <div class="pricing-credits">5</div>
+          <div class="pricing-label">landing pages</div>
+          <div class="pricing-price">$79.990</div>
+          <div class="pricing-per">$15.998 por landing</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('landing_5')">Comprar</button>
+        </div>
+        <div class="pricing-card popular">
+          <div class="pricing-credits">10</div>
+          <div class="pricing-label">landing pages</div>
+          <div class="pricing-price">$159.990</div>
+          <div class="pricing-per">$15.999 por landing</div>
+          <button class="btn btn-primary btn-block btn-sm" onclick="buyPlan('landing_10')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">20</div>
+          <div class="pricing-label">landing pages</div>
+          <div class="pricing-price">$199.990</div>
+          <div class="pricing-per">$9.999 por landing</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('landing_20')">Comprar</button>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-credits">50</div>
+          <div class="pricing-label">landing pages</div>
+          <div class="pricing-price">$299.990</div>
+          <div class="pricing-per">$6.000 por landing</div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="buyPlan('landing_50')">Comprar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payment methods -->
+    <div class="text-center mt-48" style="color: var(--text-tertiary); font-size: 13px;">
+      <p>Pagos procesados de forma segura por Wompi. Aceptamos tarjeta de credito, PSE, Nequi y Bancolombia.</p>
+      <p style="margin-top: 8px;">Precios en pesos colombianos (COP) con IVA incluido.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <p>&copy; 2026 PhinodIA — Automatiza Sin Limites</p>
+      <div class="footer-links">
+        <a href="https://phinodia.com/privacidad">Privacidad</a>
+        <a href="https://phinodia.com/terminos">Terminos</a>
+        <a href="https://phinodia.com/habeas-data">Habeas Data</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    function showTab(tabId, btn) {
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(tabId).classList.remove('hidden');
+      btn.classList.add('active');
+    }
+
+    function buyPlan(sku) {
+      const email = document.getElementById('pricing-email').value.trim();
+      if (!email || !email.includes('@')) {
+        showToast('Ingresa tu correo electronico primero', 'error');
+        document.getElementById('pricing-email').focus();
+        return;
+      }
+      openWompiCheckout(sku, email, window.location.origin + '/precios');
+    }
+  </script>
+</body>
+</html>

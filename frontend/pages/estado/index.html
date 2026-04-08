@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estado de tu Generacion — PhinodIA</title>
+  <meta name="description" content="Consulta el estado de tu video, imagen o landing page generada con PhinodIA.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="https://ik.imagekit.io/nllhy6wch/Logo%20Google%20Workspace.png?updatedAt=1767905998676">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <img src="https://ik.imagekit.io/nllhy6wch/White%20Logo%20Transparent%20Background.png?updatedAt=1771340685783" alt="PhinodIA" height="26">
+      </a>
+      <div class="nav-links">
+        <a href="/videos">Videos</a>
+        <a href="/imagenes">Imagenes</a>
+        <a href="/landing-pages">Landing Pages</a>
+        <a href="/creditos">Mis Creditos</a>
+        <a href="/precios" class="nav-cta">Precios</a>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">&#9776;</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="hero" style="padding-bottom: 32px;">
+      <h1>Estado de tu <span class="gradient">generacion</span></h1>
+      <p>Consulta el progreso de tu video, imagen o landing page.</p>
+    </section>
+
+    <div class="form-card" style="max-width: 500px; margin: 0 auto;">
+      <!-- Search -->
+      <div id="status-search" class="card">
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label for="job-id-input">ID del trabajo</label>
+          <input type="text" id="job-id-input" class="form-input" placeholder="Ej: a1b2c3d4-e5f6-7890-abcd-ef1234567890">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="checkStatus()">Consultar Estado</button>
+      </div>
+
+      <!-- Result -->
+      <div id="status-result" class="hidden mt-24">
+        <div class="status-card">
+          <div class="status-icon" id="status-icon">&#9203;</div>
+          <h3 id="status-title">Cargando...</h3>
+          <p id="status-text" style="color: var(--text-secondary); margin: 8px 0 16px;"></p>
+          <div class="progress-bar"><div class="progress-fill" id="status-progress" style="width: 0%"></div></div>
+          <span class="status-badge" id="status-badge"></span>
+
+          <div id="status-download" class="hidden mt-24">
+            <a id="status-download-link" href="#" target="_blank" class="btn btn-primary btn-lg">Descargar</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <p>&copy; 2026 PhinodIA — Automatiza Sin Limites</p>
+      <div class="footer-links">
+        <a href="https://phinodia.com/privacidad">Privacidad</a>
+        <a href="https://phinodia.com/terminos">Terminos</a>
+        <a href="https://phinodia.com/habeas-data">Habeas Data</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    // Check URL params for job_id
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('job_id')) {
+      document.getElementById('job-id-input').value = params.get('job_id');
+      checkStatus();
+    }
+
+    function checkStatus() {
+      const jobId = document.getElementById('job-id-input').value.trim();
+      if (!jobId) { showToast('Ingresa el ID del trabajo', 'error'); return; }
+
+      document.getElementById('status-result').classList.remove('hidden');
+
+      pollJobStatus(jobId, (status) => {
+        const progress = document.getElementById('status-progress');
+        const badge = document.getElementById('status-badge');
+        const title = document.getElementById('status-title');
+        const text = document.getElementById('status-text');
+        const icon = document.getElementById('status-icon');
+
+        progress.style.width = status.progress + '%';
+
+        if (status.status === 'completed') {
+          badge.className = 'status-badge completed'; badge.textContent = 'Completado';
+          title.textContent = 'Tu contenido esta listo!';
+          text.textContent = `Tipo: ${status.result_type || 'archivo'}`;
+          icon.textContent = '\u2705';
+          progress.style.width = '100%';
+          if (status.result_url) {
+            document.getElementById('status-download').classList.remove('hidden');
+            document.getElementById('status-download-link').href = status.result_url;
+          }
+        } else if (status.status === 'failed') {
+          badge.className = 'status-badge failed'; badge.textContent = 'Error';
+          title.textContent = 'Hubo un error';
+          text.textContent = status.error_message || 'Intenta de nuevo.';
+          icon.textContent = '\u274C';
+        } else if (status.status === 'error') {
+          badge.className = 'status-badge failed'; badge.textContent = 'No encontrado';
+          title.textContent = 'Trabajo no encontrado';
+          text.textContent = 'Verifica el ID e intenta de nuevo.';
+          icon.textContent = '\u2753';
+        } else {
+          badge.className = 'status-badge processing'; badge.textContent = 'Procesando';
+          title.textContent = 'Generando tu contenido...';
+          text.textContent = 'Esto puede tomar unos minutos.';
+          icon.textContent = '\u23F3';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

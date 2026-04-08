@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generar Imagenes de Producto con IA — PhinodIA</title>
+  <meta name="description" content="Genera imagenes de producto profesionales con inteligencia artificial. Estilo Instagram, iluminacion natural, listas para tus campanas de marketing.">
+  <meta name="robots" content="index, follow">
+  <link rel="icon" href="https://ik.imagekit.io/nllhy6wch/Logo%20Google%20Workspace.png?updatedAt=1767905998676">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <img src="https://ik.imagekit.io/nllhy6wch/White%20Logo%20Transparent%20Background.png?updatedAt=1771340685783" alt="PhinodIA" height="26">
+      </a>
+      <div class="nav-links">
+        <a href="/videos">Videos</a>
+        <a href="/imagenes" class="active">Imagenes</a>
+        <a href="/landing-pages">Landing Pages</a>
+        <a href="/creditos">Mis Creditos</a>
+        <a href="/precios" class="nav-cta">Precios</a>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">&#9776;</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="hero" style="padding-bottom: 32px;">
+      <span class="hero-badge">&#128247; Imagenes</span>
+      <h1>Fotos de producto <span class="gradient">profesionales</span></h1>
+      <p>La IA genera imagenes estilo Instagram con contexto lifestyle, iluminacion natural y composicion profesional usando Nano Banana 2.</p>
+    </section>
+
+    <div class="form-card card">
+      <form id="image-form" onsubmit="return false;">
+
+        <div class="form-group">
+          <label>Foto del producto</label>
+          <div class="file-upload" id="image-dropzone">
+            <input type="file" accept="image/jpeg,image/png,image/webp" name="product_image">
+            <div class="file-upload-icon">&#128247;</div>
+            <div class="file-upload-text">Arrastra tu imagen aqui o <strong>haz clic para seleccionar</strong></div>
+            <img id="image-preview" class="file-preview hidden" alt="Vista previa">
+          </div>
+          <input type="hidden" id="image-image-url" name="image_url">
+          <p class="form-hint">JPEG, PNG o WebP. Maximo 10MB.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="image-product-name">Nombre del producto</label>
+          <input type="text" id="image-product-name" name="product_name" class="form-input" placeholder="Ej: Crema Hidratante NaturaSkin" required>
+        </div>
+
+        <div class="form-group">
+          <label for="image-description">Describe que tipo de imagen quieres</label>
+          <textarea id="image-description" name="description" class="form-textarea" placeholder="Ej: Quiero una foto del producto sobre una mesa de madera con plantas, luz natural de ventana, estilo minimalista para Instagram..." required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Formato</label>
+          <div class="option-grid" id="ratio-picker">
+            <button type="button" class="option-btn selected" data-value="1:1">&#11036; 1:1<br><small style="color: var(--text-tertiary);">Instagram</small></button>
+            <button type="button" class="option-btn" data-value="9:16">&#128241; 9:16<br><small style="color: var(--text-tertiary);">Story</small></button>
+            <button type="button" class="option-btn" data-value="16:9">&#128187; 16:9<br><small style="color: var(--text-tertiary);">Banner</small></button>
+            <button type="button" class="option-btn" data-value="4:5">&#128196; 4:5<br><small style="color: var(--text-tertiary);">Feed</small></button>
+          </div>
+          <input type="hidden" id="image-ratio" name="aspect_ratio" value="1:1">
+        </div>
+
+        <div class="form-group">
+          <label for="image-creative">Direccion creativa (opcional)</label>
+          <input type="text" id="image-creative" name="creative_direction" class="form-input" placeholder="Ej: Tonos calidos, fondo bokeh, estilo flat lay">
+        </div>
+
+        <div class="form-group">
+          <label for="image-email">Tu correo electronico</label>
+          <input type="email" id="image-email" name="email" class="form-input" placeholder="tucorreo@ejemplo.com" required>
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
+            <input type="checkbox" id="image-consent" name="data_consent" required>
+            <label for="image-consent">Acepto el tratamiento de mis datos personales conforme a la <a href="https://phinodia.com/privacidad" target="_blank">Politica de Privacidad</a> y los <a href="https://phinodia.com/terminos" target="_blank">Terminos de Servicio</a>. Ley 1581 de 2012.</label>
+          </div>
+        </div>
+
+        <button type="submit" id="image-submit" class="btn btn-primary btn-block btn-lg" onclick="submitImage()">Generar Imagen</button>
+      </form>
+
+      <div id="image-result" class="hidden mt-32">
+        <div class="status-card">
+          <div class="status-icon" id="image-status-icon">&#9203;</div>
+          <h3 id="image-status-title">Generando tu imagen...</h3>
+          <p id="image-status-text" style="color: var(--text-secondary); margin: 8px 0 16px;">Esto toma entre 30 segundos y 2 minutos.</p>
+          <div class="progress-bar"><div class="progress-fill" id="image-progress" style="width: 0%"></div></div>
+          <span class="status-badge processing" id="image-status-badge">Procesando</span>
+          <div id="image-download" class="hidden mt-24">
+            <img id="image-result-preview" src="" alt="Resultado" style="max-width: 100%; border-radius: 12px; margin-bottom: 16px;">
+            <a id="image-download-link" href="#" target="_blank" class="btn btn-primary btn-lg">Descargar Imagen</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <p>&copy; 2026 PhinodIA — Automatiza Sin Limites</p>
+      <div class="footer-links">
+        <a href="https://phinodia.com/privacidad">Privacidad</a>
+        <a href="https://phinodia.com/terminos">Terminos</a>
+        <a href="https://phinodia.com/habeas-data">Habeas Data</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    initFileUpload('image-dropzone', 'image-preview', 'image-image-url');
+    initOptionPicker('ratio-picker', 'image-ratio');
+
+    async function submitImage() {
+      const form = getFormData('image-form');
+      if (!form.image_url) { showToast('Sube una foto de tu producto', 'error'); return; }
+      if (!form.product_name) { showToast('Escribe el nombre del producto', 'error'); return; }
+      if (!form.description) { showToast('Describe que tipo de imagen quieres', 'error'); return; }
+      if (!form.email) { showToast('Ingresa tu correo', 'error'); return; }
+      if (!form.data_consent) { showToast('Debes aceptar el tratamiento de datos', 'error'); return; }
+
+      setLoading('image-submit', true);
+      try {
+        const result = await generateImage(form);
+        document.getElementById('image-form').classList.add('hidden');
+        document.getElementById('image-result').classList.remove('hidden');
+
+        pollJobStatus(result.job_id, (status) => {
+          document.getElementById('image-progress').style.width = status.progress + '%';
+          const badge = document.getElementById('image-status-badge');
+          const title = document.getElementById('image-status-title');
+          const text = document.getElementById('image-status-text');
+          const icon = document.getElementById('image-status-icon');
+
+          if (status.status === 'completed') {
+            badge.className = 'status-badge completed'; badge.textContent = 'Completado';
+            title.textContent = 'Tu imagen esta lista!';
+            text.textContent = 'Descargala ahora.';
+            icon.textContent = '\u2705';
+            document.getElementById('image-progress').style.width = '100%';
+            if (status.result_url) {
+              document.getElementById('image-download').classList.remove('hidden');
+              document.getElementById('image-result-preview').src = status.result_url;
+              document.getElementById('image-download-link').href = status.result_url;
+            }
+          } else if (status.status === 'failed') {
+            badge.className = 'status-badge failed'; badge.textContent = 'Error';
+            title.textContent = 'Hubo un error';
+            text.textContent = status.error_message || 'Intenta de nuevo.';
+            icon.textContent = '\u274C';
+          }
+        });
+      } catch (err) {
+        setLoading('image-submit', false);
+        showToast(err.message, 'error');
+      }
+    }
+  </script>
+</body>
+</html>
