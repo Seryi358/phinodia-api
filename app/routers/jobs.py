@@ -10,7 +10,7 @@ settings = Settings()
 
 KIE_STATE_MAP = {
     "waiting": "processing", "queuing": "processing", "generating": "processing",
-    "success": "completed", "fail": "failed",
+    "success": "completed", "fail": "failed", "failed": "failed",
 }
 
 
