@@ -68,6 +68,18 @@ Generate ONLY the continuation prompt. No explanations."""
         )
         return await self._call_gpt(VIDEO_SYSTEM, user_msg)
 
+    async def compress_for_veo(self, long_prompt: str) -> str:
+        """Compress a detailed video script into a short VEO 3.1-compatible prompt (<500 chars)."""
+        system = """You compress detailed video scripts into short VEO 3.1 prompts.
+Rules:
+- Output MUST be under 400 characters total
+- Describe the scene visually: who, what, where, action, camera style
+- Include lighting, mood, and product placement
+- Use present tense, descriptive language
+- NO frame-by-frame breakdown, NO timestamps, NO audio descriptions
+- Output ONLY the compressed prompt, nothing else"""
+        return await self._call_gpt(system, f"Compress this into a short VEO prompt:\n\n{long_prompt}")
+
     async def generate_image_prompt(
         self,
         product_name: str,

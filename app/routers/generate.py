@@ -95,10 +95,12 @@ async def _process_video(job_id: str, req: VideoRequest):
             creative_direction=req.creative_direction,
             product_analysis=product_analysis, buyer_persona=buyer_persona,
         )
+        # Compress the detailed script into a short VEO 3.1-compatible prompt
+        veo_prompt = await script_gen.compress_for_veo(prompt)
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
 
         aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
-        task_id = await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect)
+        task_id = await kie.create_video_task(prompt=veo_prompt, image_url=first_frame_url, aspect_ratio=aspect)
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
 
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
