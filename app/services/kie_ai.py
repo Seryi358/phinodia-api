@@ -25,11 +25,12 @@ class KieAIClient:
         aspect_ratio: str = "9:16",
         model: str = "veo3",
     ) -> str:
-        """Generate base 8s video from prompt using VEO 3.1 (TEXT_2_VIDEO)"""
+        """Generate base 8s video from first frame image + prompt using VEO 3.1"""
         body = {
             "prompt": prompt,
+            "imageUrls": [image_url],
             "model": model,
-            "generationType": "TEXT_2_VIDEO",
+            "generationType": "IMAGE_2_VIDEO",
             "aspect_ratio": aspect_ratio,
             "enableTranslation": False,
         }
