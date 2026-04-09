@@ -15,6 +15,20 @@ FORMAT_TO_ASPECT = {"portrait": "9:16", "landscape": "16:9"}
 DURATION_EXTENSIONS = {8: 0, 15: 1, 22: 2, 30: 3}
 
 
+def _build_description(req) -> str:
+    """Combine all user-provided fields into a rich description for the AI agents."""
+    parts = []
+    if hasattr(req, 'product_category') and req.product_category:
+        parts.append(f"Tipo de producto: {req.product_category}")
+    if hasattr(req, 'pain_point') and req.pain_point:
+        parts.append(f"Problema que resuelve: {req.pain_point}")
+    if hasattr(req, 'target_audience') and req.target_audience:
+        parts.append(f"Publico objetivo: {req.target_audience}")
+    if req.description:
+        parts.append(f"Instrucciones del usuario: {req.description}")
+    return "\n".join(parts) if parts else req.description
+
+
 class VideoRequest(BaseModel):
     email: EmailStr
     image_url: str
@@ -22,6 +36,8 @@ class VideoRequest(BaseModel):
     format: str
     duration: int
     product_name: str
+    product_category: str = ""
+    pain_point: str = ""
     creative_direction: str = ""
     data_consent: bool
 
@@ -32,6 +48,7 @@ class ImageRequest(BaseModel):
     description: str
     aspect_ratio: str = "1:1"
     product_name: str
+    product_category: str = ""
     creative_direction: str = ""
     data_consent: bool
 
@@ -41,6 +58,8 @@ class LandingRequest(BaseModel):
     image_url: str
     description: str
     product_name: str
+    product_category: str = ""
+    target_audience: str = ""
     style_preference: str = ""
     data_consent: bool
 
@@ -63,23 +82,29 @@ async def _poll_video_until_done(kie: KieAIClient, task_id: str, max_polls: int 
 async def _process_video(job_id: str, req: VideoRequest):
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
     kie = KieAIClient(api_key=settings.kie_api_key)
+    rich_description = _build_description(req)
     try:
+        # Step 1: Deep product analysis (physical characteristics, branding, UGC handling)
         product_analysis = await script_gen.analyze_product(
-            product_name=req.product_name, description=req.description,
+            product_name=req.product_name, description=rich_description,
         )
+
+        # Step 2: Buyer persona (ideal Colombian UGC creator)
         buyer_persona = await script_gen.generate_buyer_persona(
             product_name=req.product_name, product_analysis=product_analysis,
         )
+
+        # Step 3: Generate first frame with Nano Banana 2 (prevents product distortion)
         first_frame_prompt = await script_gen.generate_image_prompt(
-            product_name=req.product_name, description=req.description,
+            product_name=req.product_name, description=rich_description,
             aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
-            creative_direction="UGC first frame: product in real-world context, natural lighting, iPhone photo style",
+            creative_direction="UGC first frame: product held naturally in hand, real-world context, natural lighting, iPhone selfie style. Product must be clearly visible with correct proportions.",
         )
         first_frame_task_id = await kie.create_image_task(
             prompt=first_frame_prompt, image_url=req.image_url,
             aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
         )
-        first_frame_url = req.image_url
+        first_frame_url = req.image_url  # fallback
         for _ in range(60):
             img_status = await kie.get_task_status(first_frame_task_id)
             if img_status["state"] == "success" and img_status["result_urls"]:
@@ -89,20 +114,23 @@ async def _process_video(job_id: str, req: VideoRequest):
                 break
             await asyncio.sleep(3)
 
+        # Step 4: Generate full video script (AIDA, Colombian Spanish, second-by-second)
+        # This prompt includes product_analysis + buyer_persona for maximum context
         prompt = await script_gen.generate_video_prompt(
-            product_name=req.product_name, description=req.description,
+            product_name=req.product_name, description=rich_description,
             duration=req.duration, format_type=req.format,
             creative_direction=req.creative_direction,
             product_analysis=product_analysis, buyer_persona=buyer_persona,
         )
-        # Compress the detailed script into a short VEO 3.1-compatible prompt
-        veo_prompt = await script_gen.compress_for_veo(prompt)
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
 
+        # Step 5: Send FULL prompt to VEO 3.1 with first frame image
+        # DO NOT compress — VEO needs the full context for audio, language, and product accuracy
         aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
-        task_id = await kie.create_video_task(prompt=veo_prompt, image_url=first_frame_url, aspect_ratio=aspect)
+        task_id = await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect)
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
 
+        # Step 6: Extend video for durations > 8s
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
         current_task_id = task_id
         for ext_num in range(1, num_extensions + 1):
@@ -125,9 +153,10 @@ async def _process_video(job_id: str, req: VideoRequest):
 async def _process_image(job_id: str, req: ImageRequest):
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
     kie = KieAIClient(api_key=settings.kie_api_key)
+    rich_description = _build_description(req)
     try:
         prompt = await script_gen.generate_image_prompt(
-            product_name=req.product_name, description=req.description,
+            product_name=req.product_name, description=rich_description,
             aspect_ratio=req.aspect_ratio, creative_direction=req.creative_direction,
         )
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
@@ -140,10 +169,11 @@ async def _process_image(job_id: str, req: ImageRequest):
 async def _process_landing(job_id: str, req: LandingRequest):
     from datetime import datetime, timezone
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
+    rich_description = _build_description(req)
     try:
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "generating"})
         html = await script_gen.generate_landing_page(
-            product_name=req.product_name, description=req.description,
+            product_name=req.product_name, description=rich_description,
             image_url=req.image_url, style_preference=req.style_preference,
         )
         await db.update("jobs", {"id": f"eq.{job_id}"}, {

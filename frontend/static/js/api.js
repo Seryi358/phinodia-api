@@ -118,6 +118,8 @@ async function generateVideo(formData) {
     format: formData.format,
     duration: parseInt(formData.duration),
     product_name: formData.product_name,
+    product_category: formData.product_category || '',
+    pain_point: formData.pain_point || '',
     creative_direction: formData.creative_direction || '',
     data_consent: formData.data_consent,
   });
@@ -131,6 +133,7 @@ async function generateImage(formData) {
     description: formData.description,
     aspect_ratio: formData.aspect_ratio,
     product_name: formData.product_name,
+    product_category: formData.product_category || '',
     creative_direction: formData.creative_direction || '',
     data_consent: formData.data_consent,
   });
@@ -143,6 +146,8 @@ async function generateLanding(formData) {
     image_url: formData.image_url,
     description: formData.description,
     product_name: formData.product_name,
+    product_category: formData.product_category || '',
+    target_audience: formData.target_audience || '',
     style_preference: formData.style_preference || '',
     data_consent: formData.data_consent,
   });
