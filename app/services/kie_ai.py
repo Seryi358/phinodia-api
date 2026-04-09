@@ -23,14 +23,13 @@ class KieAIClient:
         prompt: str,
         image_url: str,
         aspect_ratio: str = "9:16",
-        model: str = "veo3_fast",
+        model: str = "veo3",
     ) -> str:
-        """Generate base 8s video from first frame image + prompt using VEO 3.1"""
+        """Generate base 8s video from prompt using VEO 3.1 (TEXT_2_VIDEO)"""
         body = {
             "prompt": prompt,
-            "imageUrls": [image_url],
             "model": model,
-            "generationType": "FIRST_AND_LAST_FRAMES_2_VIDEO",
+            "generationType": "TEXT_2_VIDEO",
             "aspect_ratio": aspect_ratio,
             "enableTranslation": False,
         }
@@ -75,7 +74,12 @@ class KieAIClient:
         state_map = {0: "generating", 1: "success", 2: "failed", 3: "failed"}
         state = state_map.get(success_flag, "generating")
 
+        # Video URL can be in data.videoUrl or data.response.resultUrls
         video_url = data.get("videoUrl", "")
+        if not video_url:
+            response = data.get("response") or {}
+            result_urls = response.get("resultUrls") or []
+            video_url = result_urls[0] if result_urls else ""
 
         return {
             "state": state,
