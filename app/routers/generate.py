@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from app.config import Settings
@@ -9,10 +10,31 @@ from app.services.credits import CreditService
 
 router = APIRouter()
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 DURATION_TO_SERVICE = {8: "video_8s", 15: "video_15s", 22: "video_22s", 30: "video_30s"}
 FORMAT_TO_ASPECT = {"portrait": "9:16", "landscape": "16:9"}
 DURATION_EXTENSIONS = {8: 0, 15: 1, 22: 2, 30: 3}
+
+# Max retries for KIE AI generation failures
+MAX_RETRIES = 3
+
+# User-friendly error messages based on KIE AI errors
+ERROR_MESSAGES = {
+    "timed out": "La generacion tomo demasiado tiempo. Por favor intenta de nuevo con una descripcion mas corta.",
+    "content policy": "Tu solicitud fue rechazada por politicas de contenido. Intenta con una descripcion diferente que no incluya contenido sensible.",
+    "rate limit": "El servicio esta saturado en este momento. Tu credito fue restaurado, intenta de nuevo en unos minutos.",
+    "invalid": "Hubo un problema con los datos enviados. Verifica tu imagen y descripcion e intenta de nuevo.",
+}
+
+
+def _friendly_error(raw_error: str) -> str:
+    """Convert technical KIE AI errors to user-friendly Spanish messages."""
+    lower = raw_error.lower()
+    for key, msg in ERROR_MESSAGES.items():
+        if key in lower:
+            return msg
+    return f"Hubo un error en la generacion. Por favor intenta de nuevo. Si el problema persiste, contactanos a scastellanos@phinodia.com"
 
 
 def _build_description(req) -> str:
@@ -70,13 +92,35 @@ class GenerateResponse(BaseModel):
     message: str
 
 
-async def _poll_video_until_done(kie: KieAIClient, task_id: str, max_polls: int = 120, interval: float = 5.0) -> dict:
+async def _poll_until_done(kie: KieAIClient, task_id: str, is_video: bool, max_polls: int = 120, interval: float = 5.0) -> dict:
     for _ in range(max_polls):
-        status = await kie.get_video_status(task_id)
-        if status["state"] in ("success", "failed"):
+        if is_video:
+            status = await kie.get_video_status(task_id)
+        else:
+            status = await kie.get_task_status(task_id)
+        if status["state"] in ("success", "failed", "fail"):
             return status
         await asyncio.sleep(interval)
     return {"state": "failed", "progress": 0, "result_urls": []}
+
+
+async def _retry_kie_task(kie: KieAIClient, create_fn, poll_is_video: bool, max_retries: int = MAX_RETRIES) -> tuple[str, dict]:
+    """Retry KIE AI task creation + polling up to max_retries times."""
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            task_id = await create_fn()
+            status = await _poll_until_done(kie, task_id, is_video=poll_is_video, max_polls=90)
+            if status["state"] == "success":
+                return task_id, status
+            last_error = f"Attempt {attempt + 1} failed"
+            logger.warning("KIE task %s failed on attempt %d", task_id, attempt + 1)
+        except Exception as e:
+            last_error = str(e)
+            logger.warning("KIE task creation failed on attempt %d: %s", attempt + 1, e)
+        if attempt < max_retries - 1:
+            await asyncio.sleep(5)
+    return "", {"state": "failed", "result_urls": [], "error": last_error}
 
 
 async def _process_video(job_id: str, req: VideoRequest):
@@ -84,38 +128,33 @@ async def _process_video(job_id: str, req: VideoRequest):
     kie = KieAIClient(api_key=settings.kie_api_key)
     rich_description = _build_description(req)
     try:
-        # Step 1: Deep product analysis (physical characteristics, branding, UGC handling)
+        # Step 1: Deep product analysis
         product_analysis = await script_gen.analyze_product(
             product_name=req.product_name, description=rich_description,
         )
 
-        # Step 2: Buyer persona (ideal Colombian UGC creator)
+        # Step 2: Buyer persona (Colombian UGC creator)
         buyer_persona = await script_gen.generate_buyer_persona(
             product_name=req.product_name, product_analysis=product_analysis,
         )
 
-        # Step 3: Generate first frame with Nano Banana 2 (prevents product distortion)
+        # Step 3: Generate first frame with Nano Banana 2 (POV selfie, no phone visible)
         first_frame_prompt = await script_gen.generate_image_prompt(
             product_name=req.product_name, description=rich_description,
             aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
-            creative_direction="POV selfie perspective, camera is at arms length. Person looking directly at camera holding the product with label visible. No phone visible in frame, the camera IS the viewer perspective. Natural lighting, casual authentic setting. Product clearly visible with correct proportions and readable text.",
+            creative_direction="POV selfie perspective, camera at arms length. Person looking directly at camera holding the product with label visible. No phone visible in frame, camera IS the viewer perspective. Natural lighting, casual authentic setting. Product with correct proportions and readable text.",
         )
-        first_frame_task_id = await kie.create_image_task(
-            prompt=first_frame_prompt, image_url=req.image_url,
-            aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
-        )
-        first_frame_url = req.image_url  # fallback
-        for _ in range(60):
-            img_status = await kie.get_task_status(first_frame_task_id)
-            if img_status["state"] == "success" and img_status["result_urls"]:
-                first_frame_url = img_status["result_urls"][0]
-                break
-            if img_status["state"] in ("fail", "failed"):
-                break
-            await asyncio.sleep(3)
 
-        # Step 4: Generate full video script (AIDA, Colombian Spanish, second-by-second)
-        # This prompt includes product_analysis + buyer_persona for maximum context
+        # Retry first frame generation
+        aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
+        ff_task_id, ff_status = await _retry_kie_task(
+            kie,
+            lambda: kie.create_image_task(prompt=first_frame_prompt, image_url=req.image_url, aspect_ratio=aspect),
+            poll_is_video=False, max_retries=2,
+        )
+        first_frame_url = ff_status["result_urls"][0] if ff_status["state"] == "success" and ff_status["result_urls"] else req.image_url
+
+        # Step 4: Generate video prompt (AIDA, Colombian Spanish, raw/imperfect)
         prompt = await script_gen.generate_video_prompt(
             product_name=req.product_name, description=rich_description,
             duration=req.duration, format_type=req.format,
@@ -124,24 +163,33 @@ async def _process_video(job_id: str, req: VideoRequest):
         )
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
 
-        # Step 5: Send prompt to VEO 3.1
-        # Try IMAGE_2_VIDEO first (better product accuracy), fallback to TEXT_2_VIDEO if timeout
-        aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
-        task_id = await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect, use_image=True)
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
+        # Step 5: Generate video with VEO 3.1 (retry with fallback)
+        async def _create_video_with_image():
+            return await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect, use_image=True)
 
-        # Poll for base video — if IMAGE_2_VIDEO fails, retry with TEXT_2_VIDEO
-        base_status = await _poll_video_until_done(kie, task_id, max_polls=90, interval=5.0)
-        if base_status["state"] == "failed":
-            # Fallback: retry without image (TEXT_2_VIDEO is more stable)
-            task_id = await kie.create_video_task(prompt=prompt, image_url="", aspect_ratio=aspect, use_image=False)
-            await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
-            base_status = await _poll_video_until_done(kie, task_id, max_polls=90, interval=5.0)
-            if base_status["state"] == "failed":
-                await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                    "status": "failed", "error_message": "Video generation failed after retry"
-                })
-                return
+        async def _create_video_text_only():
+            return await kie.create_video_task(prompt=prompt, image_url="", aspect_ratio=aspect, use_image=False)
+
+        # Try IMAGE_2_VIDEO with retries
+        task_id, base_status = await _retry_kie_task(kie, _create_video_with_image, poll_is_video=True, max_retries=2)
+
+        # If IMAGE_2_VIDEO failed, fallback to TEXT_2_VIDEO with retries
+        if base_status["state"] != "success":
+            logger.info("IMAGE_2_VIDEO failed for job %s, falling back to TEXT_2_VIDEO", job_id)
+            task_id, base_status = await _retry_kie_task(kie, _create_video_text_only, poll_is_video=True, max_retries=2)
+
+        if base_status["state"] != "success":
+            # All retries exhausted — refund credit and show friendly error
+            credit_svc = CreditService()
+            service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
+            user = await credit_svc.get_or_create_user(req.email)
+            await credit_svc.grant_credits(user["id"], service_type, 1)
+            await db.update("jobs", {"id": f"eq.{job_id}"}, {
+                "status": "failed", "error_message": _friendly_error(base_status.get("error", "unknown"))
+            })
+            return
+
+        await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
 
         # Step 6: Extend video for durations > 8s
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
@@ -150,17 +198,25 @@ async def _process_video(job_id: str, req: VideoRequest):
             ext_prompt = await script_gen.generate_extension_prompt(
                 original_prompt=prompt, extension_number=ext_num, duration=req.duration,
             )
-            current_task_id = await kie.extend_video(task_id=current_task_id, prompt=ext_prompt)
-            await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": current_task_id})
-            ext_status = await _poll_video_until_done(kie, current_task_id)
-            if ext_status["state"] != "success":
+            try:
+                current_task_id = await kie.extend_video(task_id=current_task_id, prompt=ext_prompt)
+                await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": current_task_id})
+                ext_status = await _poll_until_done(kie, current_task_id, is_video=True)
+                if ext_status["state"] != "success":
+                    await db.update("jobs", {"id": f"eq.{job_id}"}, {
+                        "status": "failed", "error_message": f"La extension del video fallo. Tu video de 8 segundos fue generado correctamente."
+                    })
+                    return
+            except Exception as e:
+                logger.error("Extension %d failed for job %s: %s", ext_num, job_id, e)
                 await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                    "status": "failed", "error_message": f"Video extension {ext_num} failed"
+                    "status": "failed", "error_message": f"La extension del video fallo. Intenta con una duracion mas corta."
                 })
                 return
 
     except Exception as e:
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": str(e)})
+        logger.error("Video pipeline failed for job %s: %s", job_id, e)
+        await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": _friendly_error(str(e))})
 
 
 async def _process_image(job_id: str, req: ImageRequest):
@@ -173,29 +229,63 @@ async def _process_image(job_id: str, req: ImageRequest):
             aspect_ratio=req.aspect_ratio, creative_direction=req.creative_direction,
         )
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
-        task_id = await kie.create_image_task(prompt=prompt, image_url=req.image_url, aspect_ratio=req.aspect_ratio)
+
+        # Retry image generation up to MAX_RETRIES
+        task_id, status = await _retry_kie_task(
+            kie,
+            lambda: kie.create_image_task(prompt=prompt, image_url=req.image_url, aspect_ratio=req.aspect_ratio),
+            poll_is_video=False,
+        )
+
+        if status["state"] != "success":
+            credit_svc = CreditService()
+            user = await credit_svc.get_or_create_user(req.email)
+            await credit_svc.grant_credits(user["id"], "image", 1)
+            await db.update("jobs", {"id": f"eq.{job_id}"}, {
+                "status": "failed", "error_message": _friendly_error(status.get("error", "unknown"))
+            })
+            return
+
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
+
     except Exception as e:
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": str(e)})
+        logger.error("Image generation failed for job %s: %s", job_id, e)
+        await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": _friendly_error(str(e))})
 
 
 async def _process_landing(job_id: str, req: LandingRequest):
     from datetime import datetime, timezone
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
     rich_description = _build_description(req)
-    try:
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "generating"})
-        html = await script_gen.generate_landing_page(
-            product_name=req.product_name, description=rich_description,
-            image_url=req.image_url, style_preference=req.style_preference,
-        )
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {
-            "generated_prompt": f"[Landing page HTML — {len(html)} chars]",
-            "result_url": html, "result_type": "html",
-            "status": "completed", "completed_at": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception as e:
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": str(e)})
+
+    # Retry landing page generation up to MAX_RETRIES
+    for attempt in range(MAX_RETRIES):
+        try:
+            await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "generating"})
+            html = await script_gen.generate_landing_page(
+                product_name=req.product_name, description=rich_description,
+                image_url=req.image_url, style_preference=req.style_preference,
+            )
+            if html and len(html) > 500:
+                await db.update("jobs", {"id": f"eq.{job_id}"}, {
+                    "generated_prompt": f"[Landing page HTML — {len(html)} chars]",
+                    "result_url": html, "result_type": "html",
+                    "status": "completed", "completed_at": datetime.now(timezone.utc).isoformat(),
+                })
+                return
+            logger.warning("Landing page too short (%d chars) on attempt %d", len(html) if html else 0, attempt + 1)
+        except Exception as e:
+            logger.warning("Landing generation attempt %d failed: %s", attempt + 1, e)
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(3)
+
+    # All retries failed — refund credit
+    credit_svc = CreditService()
+    user = await credit_svc.get_or_create_user(req.email)
+    await credit_svc.grant_credits(user["id"], "landing_page", 1)
+    await db.update("jobs", {"id": f"eq.{job_id}"}, {
+        "status": "failed", "error_message": "No se pudo generar la landing page. Tu credito fue restaurado. Intenta de nuevo con una descripcion mas detallada."
+    })
 
 
 @router.post("/video", response_model=GenerateResponse, status_code=202)
@@ -208,7 +298,7 @@ async def generate_video(req: VideoRequest):
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(req.email)
     if not await credit_svc.deduct_credit(user["id"], service_type):
-        raise HTTPException(402, "Insufficient credits for this service")
+        raise HTTPException(402, "No tienes creditos suficientes para este servicio. Compra mas creditos en la seccion de precios.")
     job = await db.insert("jobs", {
         "user_id": user["id"], "service_type": service_type,
         "input_image_url": req.image_url, "input_description": req.description,
@@ -216,7 +306,7 @@ async def generate_video(req: VideoRequest):
     })
     asyncio.create_task(_process_video(job["id"], req))
     return GenerateResponse(job_id=job["id"], status="processing",
-                            message="Your video is being generated. Check /api/v1/jobs/status/{job_id} for updates.")
+                            message="Tu video esta siendo generado. Esto puede tomar unos minutos.")
 
 
 @router.post("/image", response_model=GenerateResponse, status_code=202)
@@ -226,7 +316,7 @@ async def generate_image(req: ImageRequest):
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(req.email)
     if not await credit_svc.deduct_credit(user["id"], "image"):
-        raise HTTPException(402, "Insufficient credits for this service")
+        raise HTTPException(402, "No tienes creditos suficientes para este servicio. Compra mas creditos en la seccion de precios.")
     job = await db.insert("jobs", {
         "user_id": user["id"], "service_type": "image",
         "input_image_url": req.image_url, "input_description": req.description,
@@ -234,7 +324,7 @@ async def generate_image(req: ImageRequest):
     })
     asyncio.create_task(_process_image(job["id"], req))
     return GenerateResponse(job_id=job["id"], status="processing",
-                            message="Your image is being generated. Check /api/v1/jobs/status/{job_id} for updates.")
+                            message="Tu imagen esta siendo generada. Esto toma entre 30 segundos y 2 minutos.")
 
 
 @router.post("/landing", response_model=GenerateResponse, status_code=202)
@@ -244,7 +334,7 @@ async def generate_landing(req: LandingRequest):
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(req.email)
     if not await credit_svc.deduct_credit(user["id"], "landing_page"):
-        raise HTTPException(402, "Insufficient credits for this service")
+        raise HTTPException(402, "No tienes creditos suficientes para este servicio. Compra mas creditos en la seccion de precios.")
     job = await db.insert("jobs", {
         "user_id": user["id"], "service_type": "landing_page",
         "input_image_url": req.image_url, "input_description": req.description,
@@ -252,4 +342,4 @@ async def generate_landing(req: LandingRequest):
     })
     asyncio.create_task(_process_landing(job["id"], req))
     return GenerateResponse(job_id=job["id"], status="processing",
-                            message="Your landing page is being generated. Check /api/v1/jobs/status/{job_id} for updates.")
+                            message="Tu landing page esta siendo generada. Esto toma entre 30 segundos y 2 minutos.")
