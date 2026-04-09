@@ -142,7 +142,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         first_frame_prompt = await script_gen.generate_image_prompt(
             product_name=req.product_name, description=rich_description,
             aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
-            creative_direction="POV selfie perspective, camera at arms length. Person looking directly at camera holding the product with label visible. No phone visible in frame, camera IS the viewer perspective. Natural lighting, casual authentic setting. Product with correct proportions and readable text.",
+            creative_direction="Close-up selfie photo taken with front-facing phone camera at arm's length. Young woman smiling at camera, one arm extended toward viewer holding the phone (arm visible reaching forward), other hand holding the product at chest level with label facing camera. Slightly above eye-level angle, natural window light, casual home background. Raw unedited phone photo quality.",
         )
 
         # Retry first frame generation
