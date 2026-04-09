@@ -26,8 +26,11 @@ class SupabaseClient:
     async def select_one(self, table: str, params: dict | None = None) -> dict | None:
         p = dict(params or {})
         p["limit"] = "1"
-        rows = await self.select(table, p)
-        return rows[0] if rows else None
+        try:
+            rows = await self.select(table, p)
+            return rows[0] if rows else None
+        except httpx.HTTPStatusError:
+            return None
 
     async def insert(self, table: str, data: dict) -> dict:
         r = await self._client.post(f"/{table}", json=data)
