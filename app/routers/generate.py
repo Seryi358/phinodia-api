@@ -98,7 +98,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         first_frame_prompt = await script_gen.generate_image_prompt(
             product_name=req.product_name, description=rich_description,
             aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
-            creative_direction="UGC first frame: product held naturally in hand, real-world context, natural lighting, iPhone selfie style. Product must be clearly visible with correct proportions.",
+            creative_direction="POV selfie perspective, camera is at arms length. Person looking directly at camera holding the product with label visible. No phone visible in frame, the camera IS the viewer perspective. Natural lighting, casual authentic setting. Product clearly visible with correct proportions and readable text.",
         )
         first_frame_task_id = await kie.create_image_task(
             prompt=first_frame_prompt, image_url=req.image_url,

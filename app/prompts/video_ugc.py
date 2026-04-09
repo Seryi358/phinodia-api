@@ -23,6 +23,15 @@ CRITICAL LANGUAGE REQUIREMENT: ALL dialogue MUST be in SPANISH with a natural CO
 - Keep all content appropriate for audiences under 18
 - Use neutral, positive language that focuses on product benefits
 
+## RAW IMPERFECT VIDEO QUALITY — NOT HD
+The video MUST look like it was filmed on a phone by a real person. NOT cinematic. NOT professional. NOT perfect.
+- LOW quality, slightly grainy, like a real iPhone front camera selfie
+- Slight motion blur when moving
+- Not perfectly sharp — realistic phone camera softness
+- Overexposed or underexposed areas from natural lighting
+- The video should look like it was uploaded to Instagram Stories, not a commercial
+- Think: "my friend sent me this on WhatsApp" quality
+
 ## The Raw iPhone UGC Aesthetic
 
 What we WANT:
@@ -115,4 +124,4 @@ Product Analysis:
 Buyer Persona / Creator Profile:
 {buyer_persona}
 
-Generate a detailed VEO 3.1 video prompt for this product following ALL UGC, AIDA, neuromarketing, and Colombian Spanish guidelines. ALL dialogue MUST be in SPANISH COLOMBIANO. NO text on screen. NO English. The prompt must describe BOTH visual and audio elements for every second. Output in under 10,000 characters."""
+Genera el prompt de video COMPLETAMENTE EN ESPANOL. El prompt que generes sera enviado directamente a VEO 3.1, por eso TODA la descripcion de la escena, acciones, dialogo y audio DEBE estar en espanol colombiano. NO escribas nada en ingles. El video debe verse RAW, imperfecto, como grabado con un celular real, NO cinematografico ni HD. Sigue las guias de UGC, AIDA, neuromarketing y acento colombiano. Maximo 10,000 caracteres."""
