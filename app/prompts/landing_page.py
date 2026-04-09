@@ -9,6 +9,7 @@ Your output must look like a $5,000+ professionally designed landing page. NOT a
 - Rounded corners, soft shadows, modern card layouts
 - Full-width hero sections with overlay gradients
 - Animated hover effects on buttons and cards (CSS only)
+- ABSOLUTELY NO EMOJIS anywhere in the page — use CSS icons or simple text only
 
 ## AIDA FRAMEWORK
 1. **ATTENTION — Hero Section (above the fold)**
