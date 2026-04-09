@@ -124,27 +124,40 @@ async def _process_video(job_id: str, req: VideoRequest):
         )
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
 
-        # Step 5: Send FULL prompt to VEO 3.1 with first frame image
-        # DO NOT compress — VEO needs the full context for audio, language, and product accuracy
+        # Step 5: Send prompt to VEO 3.1
+        # Try IMAGE_2_VIDEO first (better product accuracy), fallback to TEXT_2_VIDEO if timeout
         aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
-        task_id = await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect)
+        task_id = await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect, use_image=True)
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
+
+        # Poll for base video — if IMAGE_2_VIDEO fails, retry with TEXT_2_VIDEO
+        base_status = await _poll_video_until_done(kie, task_id, max_polls=90, interval=5.0)
+        if base_status["state"] == "failed":
+            # Fallback: retry without image (TEXT_2_VIDEO is more stable)
+            task_id = await kie.create_video_task(prompt=prompt, image_url="", aspect_ratio=aspect, use_image=False)
+            await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
+            base_status = await _poll_video_until_done(kie, task_id, max_polls=90, interval=5.0)
+            if base_status["state"] == "failed":
+                await db.update("jobs", {"id": f"eq.{job_id}"}, {
+                    "status": "failed", "error_message": "Video generation failed after retry"
+                })
+                return
 
         # Step 6: Extend video for durations > 8s
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
         current_task_id = task_id
         for ext_num in range(1, num_extensions + 1):
-            status = await _poll_video_until_done(kie, current_task_id)
-            if status["state"] != "success":
-                await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                    "status": "failed", "error_message": f"Video generation failed at extension {ext_num}"
-                })
-                return
             ext_prompt = await script_gen.generate_extension_prompt(
                 original_prompt=prompt, extension_number=ext_num, duration=req.duration,
             )
             current_task_id = await kie.extend_video(task_id=current_task_id, prompt=ext_prompt)
             await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": current_task_id})
+            ext_status = await _poll_video_until_done(kie, current_task_id)
+            if ext_status["state"] != "success":
+                await db.update("jobs", {"id": f"eq.{job_id}"}, {
+                    "status": "failed", "error_message": f"Video extension {ext_num} failed"
+                })
+                return
 
     except Exception as e:
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": str(e)})

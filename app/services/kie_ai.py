@@ -24,16 +24,26 @@ class KieAIClient:
         image_url: str,
         aspect_ratio: str = "9:16",
         model: str = "veo3",
+        use_image: bool = True,
     ) -> str:
-        """Generate base 8s video from first frame image + prompt using VEO 3.1"""
-        body = {
-            "prompt": prompt,
-            "imageUrls": [image_url],
-            "model": model,
-            "generationType": "IMAGE_2_VIDEO",
-            "aspect_ratio": aspect_ratio,
-            "enableTranslation": False,
-        }
+        """Generate base 8s video using VEO 3.1. Tries IMAGE_2_VIDEO first, falls back to TEXT_2_VIDEO."""
+        if use_image and image_url:
+            body = {
+                "prompt": prompt,
+                "imageUrls": [image_url],
+                "model": model,
+                "generationType": "IMAGE_2_VIDEO",
+                "aspect_ratio": aspect_ratio,
+                "enableTranslation": False,
+            }
+        else:
+            body = {
+                "prompt": prompt,
+                "model": model,
+                "generationType": "TEXT_2_VIDEO",
+                "aspect_ratio": aspect_ratio,
+                "enableTranslation": False,
+            }
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
                 f"{KIE_BASE_URL}/veo/generate",
