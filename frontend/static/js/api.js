@@ -4,6 +4,11 @@
 
 const API = window.location.origin + '/api/v1';
 
+// ── Email Validation ──────────────────────────
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 // ── Toast Notifications ────────────────────────
 function initToasts() {
   if (!document.querySelector('.toast-container')) {

@@ -138,9 +138,9 @@
     <div class="footer-inner">
       <p>2026 PhinodIA. Todos los derechos reservados.</p>
       <div class="footer-links">
-        <a href="https://phinodia.com/politica-de-privacidad/">Privacidad</a>
-        <a href="https://phinodia.com/condiciones-del-servicio/">Terminos</a>
-        <a href="https://phinodia.com/habeas-data/">Habeas Data</a>
+        <a href="https://phinodia.com/politica-de-privacidad/" target="_blank">Privacidad</a>
+        <a href="https://phinodia.com/condiciones-del-servicio/" target="_blank">Terminos</a>
+        <a href="https://phinodia.com/habeas-data/" target="_blank">Habeas Data</a>
       </div>
     </div>
   </footer>
@@ -156,7 +156,7 @@
       if (!form.image_url) { showToast('Sube una foto de tu producto', 'error'); return; }
       if (!form.product_name) { showToast('Escribe el nombre del producto', 'error'); return; }
       if (!form.description) { showToast('Describe tu vision para el video', 'error'); return; }
-      if (!form.email) { showToast('Ingresa tu correo electronico', 'error'); return; }
+      if (!form.email || !isValidEmail(form.email)) { showToast('Ingresa un correo electronico valido', 'error'); return; }
       if (!form.data_consent) { showToast('Debes aceptar el tratamiento de datos', 'error'); return; }
 
       setLoading('video-submit', true);
