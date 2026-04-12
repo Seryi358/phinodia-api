@@ -6,7 +6,7 @@
   <title>Mis Creditos — PhinodIA</title>
   <meta name="description" content="Consulta tu balance de creditos en PhinodIA.">
   <meta name="robots" content="noindex">
-  <link rel="icon" href="https://ik.imagekit.io/nllhy6wch/Logo%20Google%20Workspace.png?updatedAt=1767905998676">
+  <link rel="icon" href="/static/images/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -86,10 +86,26 @@
         const grid = document.getElementById('credits-grid');
         grid.innerHTML = '';
 
+        // Show general credits prominently if available
+        const general = balance.general || 0;
+        if (general > 0) {
+          grid.innerHTML += '<div class="credit-item" style="grid-column: 1 / -1; background: var(--accent-subtle);"><div class="credit-count" style="font-size: 48px;">' + general + '</div><div class="credit-label" style="font-size: 15px; color: var(--text-tertiary);">Creditos disponibles</div><div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Usables para cualquier servicio</div></div>';
+        }
+
+        // Show per-service credits
+        let hasServiceCredits = false;
         Object.entries(balance).forEach(([key, value]) => {
+          if (key === 'general') return;
+          if (value > 0) hasServiceCredits = true;
           const label = LABELS[key] || key;
           grid.innerHTML += '<div class="credit-item"><div class="credit-count">' + value + '</div><div class="credit-label">' + label + '</div></div>';
         });
+
+        // Show total available
+        const total = general + Object.entries(balance).reduce((sum, [k, v]) => k !== 'general' ? sum + v : sum, 0);
+        if (total === 0) {
+          grid.innerHTML = '<div class="credit-item" style="grid-column: 1 / -1;"><div class="credit-count" style="color: var(--text-secondary);">0</div><div class="credit-label">No tienes creditos disponibles</div></div>';
+        }
 
         document.getElementById('credits-result').classList.remove('hidden');
       } catch (err) {

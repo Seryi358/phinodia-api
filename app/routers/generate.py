@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from app.config import Settings
@@ -183,17 +184,20 @@ async def _process_video(job_id: str, req: VideoRequest):
             credit_svc = CreditService()
             service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
             user = await credit_svc.get_or_create_user(req.email)
-            await credit_svc.grant_credits(user["id"], service_type, 1)
+            await credit_svc.refund_credit(user["id"], service_type)
             await db.update("jobs", {"id": f"eq.{job_id}"}, {
                 "status": "failed", "error_message": _friendly_error(base_status.get("error", "unknown"))
             })
             return
 
+        # Save base video result URL for fallback
+        base_result_url = base_status["result_urls"][0] if base_status.get("result_urls") else ""
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
 
         # Step 6: Extend video for durations > 8s
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
         current_task_id = task_id
+        final_result_url = base_result_url
         for ext_num in range(1, num_extensions + 1):
             ext_prompt = await script_gen.generate_extension_prompt(
                 original_prompt=prompt, extension_number=ext_num, duration=req.duration,
@@ -203,16 +207,28 @@ async def _process_video(job_id: str, req: VideoRequest):
                 await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": current_task_id})
                 ext_status = await _poll_until_done(kie, current_task_id, is_video=True)
                 if ext_status["state"] != "success":
+                    # Extension failed — save the base video as partial result
                     await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                        "status": "failed", "error_message": f"La extension del video fallo. Tu video de 8 segundos fue generado correctamente."
+                        "status": "completed", "result_url": base_result_url, "result_type": "mp4",
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "error_message": f"La extension fallo, pero tu video base de 8 segundos esta listo.",
                     })
                     return
+                final_result_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else final_result_url
             except Exception as e:
                 logger.error("Extension %d failed for job %s: %s", ext_num, job_id, e)
                 await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                    "status": "failed", "error_message": f"La extension del video fallo. Intenta con una duracion mas corta."
+                    "status": "completed", "result_url": base_result_url, "result_type": "mp4",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "error_message": f"La extension fallo, pero tu video base de 8 segundos esta listo.",
                 })
                 return
+
+        # All extensions done (or no extensions needed) — save final result
+        await db.update("jobs", {"id": f"eq.{job_id}"}, {
+            "status": "completed", "result_url": final_result_url, "result_type": "mp4",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
 
     except Exception as e:
         logger.error("Video pipeline failed for job %s: %s", job_id, e)
@@ -240,13 +256,18 @@ async def _process_image(job_id: str, req: ImageRequest):
         if status["state"] != "success":
             credit_svc = CreditService()
             user = await credit_svc.get_or_create_user(req.email)
-            await credit_svc.grant_credits(user["id"], "image", 1)
+            await credit_svc.refund_credit(user["id"], "image")
             await db.update("jobs", {"id": f"eq.{job_id}"}, {
                 "status": "failed", "error_message": _friendly_error(status.get("error", "unknown"))
             })
             return
 
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
+        result_url = status["result_urls"][0] if status.get("result_urls") else ""
+        await db.update("jobs", {"id": f"eq.{job_id}"}, {
+            "kie_task_id": task_id, "status": "completed",
+            "result_url": result_url, "result_type": "jpg",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
 
     except Exception as e:
         logger.error("Image generation failed for job %s: %s", job_id, e)
@@ -254,7 +275,6 @@ async def _process_image(job_id: str, req: ImageRequest):
 
 
 async def _process_landing(job_id: str, req: LandingRequest):
-    from datetime import datetime, timezone
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
     rich_description = _build_description(req)
 
@@ -282,7 +302,7 @@ async def _process_landing(job_id: str, req: LandingRequest):
     # All retries failed — refund credit
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(req.email)
-    await credit_svc.grant_credits(user["id"], "landing_page", 1)
+    await credit_svc.refund_credit(user["id"], "landing_page")
     await db.update("jobs", {"id": f"eq.{job_id}"}, {
         "status": "failed", "error_message": "No se pudo generar la landing page. Tu credito fue restaurado. Intenta de nuevo con una descripcion mas detallada."
     })

@@ -8,6 +8,7 @@ from app.config import Settings
 from app.database import db
 from app.services.credits import CreditService
 from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU
+from app.services.gmail import GmailSender, build_purchase_email
 
 router = APIRouter()
 settings = Settings()
@@ -69,7 +70,18 @@ async def wompi_webhook(event: dict):
         logger.warning("Webhook missing customer_email for tx %s", tx_data.get("id"))
         return {"status": "ok", "action": "none"}
 
-    package = resolve_package(amount)
+    # Extract SKU from reference (format: PH-{sku}-{timestamp}-{hex})
+    ref_parts = reference.split("-")
+    sku_from_ref = "-".join(ref_parts[1:-2]) if len(ref_parts) >= 4 else None
+
+    # Deduplicate: check if this transaction was already processed
+    wompi_tx_id = str(tx_data.get("id", reference))
+    existing = await db.select_one("transactions", {"wompi_transaction_id": f"eq.{wompi_tx_id}"})
+    if existing:
+        logger.info("Duplicate webhook for tx %s — ignoring", wompi_tx_id)
+        return {"status": "ok", "action": "duplicate"}
+
+    package = resolve_package(amount, sku_from_ref)
     if not package:
         logger.warning("Unknown package for amount %d in tx %s", amount, tx_data.get("id"))
         return {"status": "ok", "action": "unknown_package"}
@@ -83,11 +95,23 @@ async def wompi_webhook(event: dict):
         "plan_name": f"{package['service']}_{package['credits']}",
         "credits_added": package["credits"],
         "amount_cop": amount,
-        "wompi_transaction_id": reference,
+        "wompi_transaction_id": wompi_tx_id,
         "status": status,
     })
 
     await credit_svc.grant_credits(user["id"], package["service"], package["credits"])
+
+    # Send purchase confirmation email
+    try:
+        subject, html = build_purchase_email(customer_email, package["service"], package["credits"], package["service"])
+        sender = GmailSender(
+            client_id=settings.gmail_client_id, client_secret=settings.gmail_client_secret,
+            refresh_token=settings.gmail_refresh_token, sender_email=settings.gmail_sender_email,
+        )
+        sender.send_email(to=customer_email, subject=subject, html_body=html)
+        logger.info("Purchase confirmation email sent to %s", customer_email)
+    except Exception as e:
+        logger.warning("Failed to send purchase email to %s: %s", customer_email, e)
 
     logger.info("Granted %d %s credits to %s (tx: %s)", package["credits"], package["service"], customer_email, reference)
     return {"status": "ok", "action": "credits_granted", "credits": package["credits"]}

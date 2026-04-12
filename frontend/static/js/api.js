@@ -155,14 +155,22 @@ async function generateLanding(formData) {
 
 // ── Job Status Polling ─────────────────────────
 async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
+  let errorCount = 0;
+  const maxErrors = 10;
   const poll = async () => {
     try {
       const data = await apiGet(`/jobs/status/${jobId}`);
+      errorCount = 0;
       onUpdate(data);
       if (data.status === 'completed' || data.status === 'failed') return;
       setTimeout(poll, intervalMs);
     } catch (err) {
-      onUpdate({ status: 'error', error_message: err.message });
+      errorCount++;
+      if (errorCount >= maxErrors) {
+        onUpdate({ status: 'error', error_message: 'Se perdio la conexion. Recarga la pagina e intenta de nuevo.' });
+        return;
+      }
+      setTimeout(poll, intervalMs * 2);
     }
   };
   poll();
