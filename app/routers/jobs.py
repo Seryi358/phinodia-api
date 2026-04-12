@@ -29,6 +29,24 @@ async def get_job_status(job_id: str):
     if not job:
         raise HTTPException(404, "Job not found")
 
+    # Auto-fail stuck jobs (older than 30 minutes still in processing/generating)
+    if job["status"] in ("generating", "processing") and job.get("created_at"):
+        try:
+            created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
+            age_minutes = (datetime.now(timezone.utc) - created).total_seconds() / 60
+            if age_minutes > 30:
+                await db.update("jobs", {"id": f"eq.{job_id}"}, {
+                    "status": "failed",
+                    "error_message": "La generacion tomo demasiado tiempo. Tu credito fue restaurado.",
+                })
+                from app.services.credits import CreditService
+                credit_svc = CreditService()
+                await credit_svc.refund_credit(job["user_id"], job.get("service_type"))
+                job["status"] = "failed"
+                job["error_message"] = "La generacion tomo demasiado tiempo. Tu credito fue restaurado."
+        except (ValueError, TypeError):
+            pass
+
     if job.get("kie_task_id") and job["status"] in ("generating", "processing"):
         kie = KieAIClient(api_key=settings.kie_api_key)
         if job["service_type"].startswith("video_"):

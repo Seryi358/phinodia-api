@@ -13,6 +13,9 @@ router = APIRouter()
 settings = Settings()
 logger = logging.getLogger(__name__)
 
+# Hold references to background tasks to prevent GC collection
+_background_tasks: set = set()
+
 DURATION_TO_SERVICE = {8: "video_8s", 15: "video_15s", 22: "video_22s", 30: "video_30s"}
 FORMAT_TO_ASPECT = {"portrait": "9:16", "landscape": "16:9"}
 DURATION_EXTENSIONS = {8: 0, 15: 1, 22: 2, 30: 3}
@@ -324,7 +327,9 @@ async def generate_video(req: VideoRequest):
         "input_image_url": req.image_url, "input_description": req.description,
         "input_format": req.format, "status": "processing",
     })
-    asyncio.create_task(_process_video(job["id"], req))
+    task = asyncio.create_task(_process_video(job["id"], req))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return GenerateResponse(job_id=job["id"], status="processing",
                             message="Tu video esta siendo generado. Esto puede tomar unos minutos.")
 
@@ -342,7 +347,9 @@ async def generate_image(req: ImageRequest):
         "input_image_url": req.image_url, "input_description": req.description,
         "input_format": req.aspect_ratio, "status": "processing",
     })
-    asyncio.create_task(_process_image(job["id"], req))
+    task = asyncio.create_task(_process_image(job["id"], req))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return GenerateResponse(job_id=job["id"], status="processing",
                             message="Tu imagen esta siendo generada. Esto toma entre 30 segundos y 2 minutos.")
 
@@ -360,6 +367,8 @@ async def generate_landing(req: LandingRequest):
         "input_image_url": req.image_url, "input_description": req.description,
         "status": "processing",
     })
-    asyncio.create_task(_process_landing(job["id"], req))
+    task = asyncio.create_task(_process_landing(job["id"], req))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return GenerateResponse(job_id=job["id"], status="processing",
                             message="Tu landing page esta siendo generada. Esto toma entre 30 segundos y 2 minutos.")

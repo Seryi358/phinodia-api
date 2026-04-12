@@ -20,6 +20,12 @@ async def upload_image(file: UploadFile = File(...)):
     if len(content) > MAX_SIZE:
         raise HTTPException(400, "La imagen no puede superar 10MB")
 
+    # Validate actual file content (magic bytes)
+    MAGIC = {b"\xff\xd8\xff": "jpg", b"\x89PNG": "png", b"RIFF": "webp"}
+    valid = any(content[:len(m)] == m for m in MAGIC)
+    if not valid:
+        raise HTTPException(400, "El archivo no es una imagen valida")
+
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
     if ext not in ("jpg", "jpeg", "png", "webp"):
         ext = "jpg"
