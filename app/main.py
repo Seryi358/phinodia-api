@@ -1,6 +1,6 @@
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.config import Settings
@@ -22,6 +22,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_cache_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    elif path.startswith("/uploads/"):
+        response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
 
 from app.routers import generate, jobs, credits, payments, email, upload  # noqa: E402
 
