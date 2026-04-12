@@ -28,10 +28,14 @@ app.add_middleware(
 async def add_cache_headers(request: Request, call_next):
     response: Response = await call_next(request)
     path = request.url.path
-    if path.startswith("/static/"):
+    if path.startswith("/static/css/") or path.startswith("/static/js/"):
+        response.headers["Cache-Control"] = "public, max-age=3600"
+    elif path.startswith("/static/images/"):
         response.headers["Cache-Control"] = "public, max-age=86400"
     elif path.startswith("/uploads/"):
         response.headers["Cache-Control"] = "public, max-age=3600"
+    elif path.endswith(".html") or path.endswith("/") or path == "/":
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 from app.routers import generate, jobs, credits, payments, email, upload  # noqa: E402
