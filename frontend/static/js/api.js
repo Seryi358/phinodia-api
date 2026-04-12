@@ -155,18 +155,27 @@ async function generateLanding(formData) {
 
 // ── Job Status Polling ─────────────────────────
 async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
-  let errorCount = 0;
-  const maxErrors = 10;
+  let networkErrors = 0;
+  const maxNetworkErrors = 10;
   const poll = async () => {
     try {
-      const data = await apiGet(`/jobs/status/${jobId}`);
-      errorCount = 0;
+      const res = await fetch(`${API}/jobs/status/${jobId}`);
+      if (res.status === 404) {
+        onUpdate({ status: 'error', error_message: 'Trabajo no encontrado. Verifica el ID.' });
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok) {
+        onUpdate({ status: 'error', error_message: data.detail || 'Error al consultar estado.' });
+        return;
+      }
+      networkErrors = 0;
       onUpdate(data);
       if (data.status === 'completed' || data.status === 'failed') return;
       setTimeout(poll, intervalMs);
     } catch (err) {
-      errorCount++;
-      if (errorCount >= maxErrors) {
+      networkErrors++;
+      if (networkErrors >= maxNetworkErrors) {
         onUpdate({ status: 'error', error_message: 'Se perdio la conexion. Recarga la pagina e intenta de nuevo.' });
         return;
       }
