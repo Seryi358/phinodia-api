@@ -272,6 +272,7 @@ async def _process_image(job_id: str, req: ImageRequest):
             product_name=req.product_name,
             description=rich_description + "\n\nProduct Analysis:\n" + product_analysis,
             aspect_ratio=req.aspect_ratio, creative_direction=creative,
+            is_ugc=(req.image_style == "ugc"),
         )
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
 

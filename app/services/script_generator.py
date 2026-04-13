@@ -1,6 +1,11 @@
 from openai import AsyncOpenAI
 from app.prompts.video_ugc import SYSTEM_PROMPT as VIDEO_SYSTEM, USER_TEMPLATE as VIDEO_USER
-from app.prompts.image_product import SYSTEM_PROMPT as IMAGE_SYSTEM, USER_TEMPLATE as IMAGE_USER
+from app.prompts.image_product import (
+    SYSTEM_PROMPT as IMAGE_SYSTEM,
+    USER_TEMPLATE as IMAGE_USER,
+    USER_TEMPLATE_UGC as IMAGE_UGC_USER,
+    get_variation_context, get_ugc_variation,
+)
 from app.prompts.landing_page import SYSTEM_PROMPT as LANDING_SYSTEM, USER_TEMPLATE as LANDING_USER
 
 ASPECT_RATIOS = {"portrait": "9:16", "landscape": "16:9"}
@@ -86,13 +91,31 @@ Rules:
         description: str,
         aspect_ratio: str = "1:1",
         creative_direction: str = "",
+        is_ugc: bool = False,
     ) -> str:
-        user_msg = IMAGE_USER.format(
-            product_name=product_name,
-            description=description,
-            aspect_ratio=aspect_ratio,
-            creative_direction=creative_direction or "Auto-generate creative direction",
-        )
+        variation = get_variation_context()
+        if is_ugc:
+            ugc_var = get_ugc_variation()
+            user_msg = IMAGE_UGC_USER.format(
+                product_name=product_name,
+                description=description,
+                aspect_ratio=aspect_ratio,
+                creative_direction=creative_direction or "Authentic UGC style",
+                setting=ugc_var["setting"],
+                imperfection=ugc_var["imperfection"],
+                angle=variation["angle"],
+            )
+        else:
+            user_msg = IMAGE_USER.format(
+                product_name=product_name,
+                description=description,
+                aspect_ratio=aspect_ratio,
+                creative_direction=creative_direction or "Auto-generate creative direction",
+                angle=variation["angle"],
+                composition=variation["composition"],
+                surface=variation["surface"],
+                lighting=variation["lighting"],
+            )
         return await self._call_gpt(IMAGE_SYSTEM, user_msg)
 
     async def generate_landing_page(
