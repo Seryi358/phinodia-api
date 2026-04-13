@@ -252,12 +252,16 @@ async def _process_image(job_id: str, req: ImageRequest):
         # Build creative direction based on style
         creative = req.creative_direction or ""
         if req.image_style == "ugc":
+            # Generate buyer persona for UGC influencer appearance
+            buyer_persona = await script_gen.generate_buyer_persona(
+                product_name=req.product_name, product_analysis=product_analysis,
+            )
             creative = (
-                "UGC influencer style Instagram photo. A young Colombian woman in her mid-20s "
-                "with natural makeup and casual clothing holds the product at chest level, "
-                "looking at camera with a warm authentic smile. Selfie angle, front-facing "
-                "phone camera perspective, natural window lighting, casual home background. "
-                "Raw unfiltered phone photo aesthetic, not studio quality. " + creative
+                "UGC influencer style Instagram photo. " + buyer_persona + " "
+                "She holds the product at chest level, looking at camera with a warm authentic smile. "
+                "Selfie angle, front-facing phone camera perspective, natural window lighting, "
+                "casual home background. Raw unfiltered phone photo aesthetic, not studio quality. "
+                + creative
             )
 
         prompt = await script_gen.generate_image_prompt(
