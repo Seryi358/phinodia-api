@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     supabase_service_key: str
 
     # App
-    cors_origins: list[str] = ["https://phinodia.com", "https://www.phinodia.com"]
+    cors_origins: list[str] = ["https://phinodia.com", "https://www.phinodia.com", "https://app.phinodia.com"]
     api_base_url: str = "https://api.phinodia.com"
 
     @property

@@ -84,7 +84,7 @@ def build_purchase_email(email: str, plan_name: str, credits: int, service_type:
     }
     label = service_labels.get(service_type, "Creditos")
     subject = f"Compra confirmada — {credits} creditos de {label}"
-    app_url = "https://n8n-phinodia-api.zb12wf.easypanel.host"
+    app_url = "https://app.phinodia.com"
     content = f"""
         <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; letter-spacing: -0.005em; color: #1d1d1f;">Compra confirmada.</h1>
         <p style="margin: 0 0 32px; font-size: 17px; color: #86868b; line-height: 1.47;">Tus creditos ya estan disponibles para usar.</p>

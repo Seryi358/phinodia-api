@@ -46,7 +46,7 @@ class RegisterReferralRequest(BaseModel):
 async def get_referral_code(email: str = Query(..., description="User email")):
     """Get or generate referral code for a user."""
     code = generate_referral_code(email)
-    link = f"https://n8n-phinodia-api.zb12wf.easypanel.host/precios/?ref={code}"
+    link = f"https://app.phinodia.com/precios/?ref={code}"
     return ReferralCodeResponse(referral_code=code, referral_link=link)
 
 
@@ -54,7 +54,7 @@ async def get_referral_code(email: str = Query(..., description="User email")):
 async def get_referral_stats(email: str = Query(..., description="User email")):
     """Get referral stats for a user."""
     code = generate_referral_code(email)
-    link = f"https://n8n-phinodia-api.zb12wf.easypanel.host/precios/?ref={code}"
+    link = f"https://app.phinodia.com/precios/?ref={code}"
 
     # Find all referral registrations where this user is the referrer
     registrations = await db.select("transactions", {
