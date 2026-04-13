@@ -71,7 +71,7 @@ async def get_referral_stats(email: str = Query(..., description="User email")):
 
     # Fetch all bonus transactions for this referrer once
     bonus_transactions = await db.select("transactions", {
-        "plan_name": "like.referral_bonus_*",
+        "plan_name": "like.referral_bonus_%",
         "status": "eq.REFERRAL_BONUS",
     })
     my_bonuses = [
@@ -188,7 +188,7 @@ async def process_referral_bonus(customer_email: str, service_type: str):
 
     # Check if bonus was already granted for this referral
     existing_bonuses = await db.select("transactions", {
-        "plan_name": "like.referral_bonus_*",
+        "plan_name": "like.referral_bonus_%",
         "status": "eq.REFERRAL_BONUS",
     })
     already_granted = any(
