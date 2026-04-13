@@ -286,7 +286,20 @@
         }).catch(function() {});  // Fire and forget
       }
 
-      openWompiCheckout(sku, email, window.location.origin + '/precios');
+      // Redirect to gracias page based on service type for Meta Pixel Purchase event
+      let graciasPage = 'https://phinodia.com/gracias-video/';
+      if (sku.startsWith('image')) graciasPage = 'https://phinodia.com/gracias-imagenes/';
+      if (sku.startsWith('landing')) graciasPage = 'https://phinodia.com/gracias-landing/';
+
+      // Find the plan price for the event value
+      let planPrice = 0;
+      for (const plans of Object.values(PLANS)) {
+        const found = plans.find(p => p.sku === sku);
+        if (found) { planPrice = found.price; break; }
+      }
+
+      const redirectUrl = graciasPage + '?plan=' + sku + '&value=' + planPrice;
+      openWompiCheckout(sku, email, redirectUrl);
     }
 
     renderPlans();
