@@ -53,6 +53,13 @@ async def health():
     return {"status": "ok"}
 
 
+# Serve favicon.ico at root (browsers request this automatically)
+@app.get("/favicon.ico")
+async def favicon():
+    from fastapi.responses import FileResponse
+    return FileResponse("frontend/static/images/favicon-32.png", media_type="image/png")
+
+
 # Serve uploaded files
 app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
