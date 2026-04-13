@@ -279,7 +279,46 @@ async def _process_image(job_id: str, req: ImageRequest):
 
 async def _process_landing(job_id: str, req: LandingRequest):
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
+    kie = KieAIClient(api_key=settings.kie_api_key)
     rich_description = _build_description(req)
+
+    try:
+        # Step 1: Product analysis (same as videos)
+        product_analysis = await script_gen.analyze_product(
+            product_name=req.product_name, description=rich_description,
+        )
+
+        # Step 2: Buyer persona
+        buyer_persona = await script_gen.generate_buyer_persona(
+            product_name=req.product_name, product_analysis=product_analysis,
+        )
+
+        # Step 3: Generate extra product images with Nano Banana 2
+        extra_image_urls = []
+        image_prompts = [
+            f"Professional product photography of {req.product_name} on a clean white surface with soft studio lighting, minimal shadows, centered composition, 4K quality",
+            f"Lifestyle flat lay photo featuring {req.product_name} surrounded by complementary items, warm natural lighting, Instagram aesthetic, top-down view",
+        ]
+        for img_prompt in image_prompts:
+            try:
+                task_id = await kie.create_image_task(
+                    prompt=img_prompt, image_url=req.image_url, aspect_ratio="16:9",
+                )
+                for _ in range(60):
+                    status = await kie.get_task_status(task_id)
+                    if status["state"] == "success" and status["result_urls"]:
+                        extra_image_urls.append(status["result_urls"][0])
+                        break
+                    if status["state"] in ("failed", "fail"):
+                        break
+                    await asyncio.sleep(3)
+            except Exception as e:
+                logger.warning("Extra image generation failed: %s", e)
+    except Exception as e:
+        logger.warning("Landing pre-processing failed: %s", e)
+        product_analysis = ""
+        buyer_persona = ""
+        extra_image_urls = []
 
     # Retry landing page generation up to MAX_RETRIES
     for attempt in range(MAX_RETRIES):
@@ -288,6 +327,8 @@ async def _process_landing(job_id: str, req: LandingRequest):
             html = await script_gen.generate_landing_page(
                 product_name=req.product_name, description=rich_description,
                 image_url=req.image_url, style_preference=req.style_preference,
+                product_analysis=product_analysis, buyer_persona=buyer_persona,
+                extra_image_urls=extra_image_urls,
             )
             if html and len(html) > 500:
                 await db.update("jobs", {"id": f"eq.{job_id}"}, {

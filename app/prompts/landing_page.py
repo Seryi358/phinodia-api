@@ -116,4 +116,21 @@ Description: {description}
 Product image URL: {image_url}
 Style preference: {style_preference}
 
-Generate a LONG, stunning, professional landing page (8-10 sections) with the product image used in at least 6 places with different CSS treatments. Colors must match the product brand. ALL text in Spanish Colombian. Fully responsive with @media queries."""
+PRODUCT ANALYSIS:
+{product_analysis}
+
+BUYER PERSONA (Target Customer):
+{buyer_persona}
+
+ADDITIONAL PRODUCT IMAGES (use these throughout the page for visual variety):
+{extra_images}
+
+INSTRUCTIONS:
+Generate a LONG, stunning, professional landing page (10+ sections) using AIDA framework.
+- Use the product analysis to write SPECIFIC, accurate copy (not generic marketing fluff)
+- Use the buyer persona to target the EXACT customer — address their specific pain points, desires, and language
+- Use ALL provided image URLs in different sections with different CSS treatments
+- Colors must match the product brand
+- ALL text in Colombian Spanish (informal "tu")
+- Fully responsive with @media queries for 768px and 480px
+- Output ONLY the complete HTML starting with <!DOCTYPE html>"""

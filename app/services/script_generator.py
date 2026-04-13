@@ -10,7 +10,7 @@ class ScriptGenerator:
     def __init__(self, api_key: str):
         self.client = AsyncOpenAI(api_key=api_key)
 
-    async def _call_gpt(self, system: str, user: str) -> str:
+    async def _call_gpt(self, system: str, user: str, max_tokens: int = 2000) -> str:
         response = await self.client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -18,7 +18,7 @@ class ScriptGenerator:
                 {"role": "user", "content": user},
             ],
             temperature=0.8,
-            max_tokens=2000,
+            max_tokens=max_tokens,
         )
         return response.choices[0].message.content.strip()
 
@@ -101,11 +101,17 @@ Rules:
         description: str,
         image_url: str,
         style_preference: str = "",
+        product_analysis: str = "",
+        buyer_persona: str = "",
+        extra_image_urls: list[str] | None = None,
     ) -> str:
         user_msg = LANDING_USER.format(
             product_name=product_name,
             description=description,
             image_url=image_url,
             style_preference=style_preference or "Modern, clean, professional",
+            product_analysis=product_analysis or "Not available",
+            buyer_persona=buyer_persona or "Not available",
+            extra_images="\n".join(extra_image_urls) if extra_image_urls else "None",
         )
-        return await self._call_gpt(LANDING_SYSTEM, user_msg)
+        return await self._call_gpt(LANDING_SYSTEM, user_msg, max_tokens=16000)
