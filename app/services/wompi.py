@@ -7,10 +7,10 @@ PACKAGES_BY_SKU = {
     "video_8s_20":  {"credits": 20, "service": "video_8s",  "amount": 59999000},    # $599,990 ($30k/vid)
     "video_8s_50":  {"credits": 50, "service": "video_8s",  "amount": 124999000},   # $1,249,990 ($25k/vid)
     # Videos 15s (Reel Standard) - API cost: ~$36,000 COP/video
-    "video_15s_5":  {"credits": 5,  "service": "video_15s", "amount": 34999000},    # $349,990 ($70k/vid)
-    "video_15s_10": {"credits": 10, "service": "video_15s", "amount": 59999000},    # $599,990 ($60k/vid)
+    "video_15s_5":  {"credits": 5,  "service": "video_15s", "amount": 35999000},    # $359,990 ($72k/vid)
+    "video_15s_10": {"credits": 10, "service": "video_15s", "amount": 61999000},    # $619,990 ($62k/vid)
     "video_15s_20": {"credits": 20, "service": "video_15s", "amount": 99999000},    # $999,990 ($50k/vid)
-    "video_15s_50": {"credits": 50, "service": "video_15s", "amount": 199999000},   # $1,999,990 ($40k/vid)
+    "video_15s_50": {"credits": 50, "service": "video_15s", "amount": 189999000},   # $1,899,990 ($38k/vid)
     # Videos 22s (Reel Plus) - API cost: ~$52,000 COP/video
     "video_22s_5":  {"credits": 5,  "service": "video_22s", "amount": 49999000},    # $499,990 ($100k/vid)
     "video_22s_10": {"credits": 10, "service": "video_22s", "amount": 84999000},    # $849,990 ($85k/vid)
@@ -30,7 +30,7 @@ PACKAGES_BY_SKU = {
     "landing_5":    {"credits": 5,  "service": "landing_page", "amount": 7999000},  # $79,990
     "landing_10":   {"credits": 10, "service": "landing_page", "amount": 14999000}, # $149,990
     "landing_20":   {"credits": 20, "service": "landing_page", "amount": 24999000}, # $249,990
-    "landing_50":   {"credits": 50, "service": "landing_page", "amount": 49999000}, # $499,990
+    "landing_50":   {"credits": 50, "service": "landing_page", "amount": 47999000}, # $479,990
 }
 
 
