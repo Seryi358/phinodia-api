@@ -236,6 +236,10 @@ async def _process_video(job_id: str, req: VideoRequest):
 
     except Exception as e:
         logger.error("Video pipeline failed for job %s: %s", job_id, e)
+        credit_svc = CreditService()
+        service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
+        user = await credit_svc.get_or_create_user(req.email)
+        await credit_svc.refund_credit(user["id"], service_type)
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": _friendly_error(str(e))})
 
 
@@ -296,6 +300,9 @@ async def _process_image(job_id: str, req: ImageRequest):
 
     except Exception as e:
         logger.error("Image generation failed for job %s: %s", job_id, e)
+        credit_svc = CreditService()
+        user = await credit_svc.get_or_create_user(req.email)
+        await credit_svc.refund_credit(user["id"], "image")
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": _friendly_error(str(e))})
 
 
