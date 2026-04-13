@@ -140,6 +140,7 @@ async function generateImage(formData) {
     product_name: formData.product_name,
     product_category: formData.product_category || '',
     creative_direction: formData.creative_direction || '',
+    image_style: formData.image_style || 'product',
     data_consent: formData.data_consent,
   });
 }

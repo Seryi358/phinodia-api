@@ -77,6 +77,15 @@
         </div>
 
         <div class="form-group">
+          <label>Estilo de imagen</label>
+          <div class="option-grid" id="style-picker" style="grid-template-columns: 1fr 1fr;">
+            <button type="button" class="option-btn selected" data-value="product">Producto<br><small>Estudio / Lifestyle</small></button>
+            <button type="button" class="option-btn" data-value="ugc">UGC / Influencer<br><small>Estilo Instagram</small></button>
+          </div>
+          <input type="hidden" id="image-style" name="image_style" value="product">
+        </div>
+
+        <div class="form-group">
           <label>Formato</label>
           <div class="option-grid" id="ratio-picker">
             <button type="button" class="option-btn selected" data-value="1:1">1:1<br><small>Instagram</small></button>
@@ -136,6 +145,7 @@
   <script src="/static/js/api.js?v=1776038838"></script>
   <script>
     initFileUpload('image-dropzone', 'image-preview', 'image-image-url');
+    initOptionPicker('style-picker', 'image-style');
     initOptionPicker('ratio-picker', 'image-ratio');
 
     async function submitImage() {

@@ -76,6 +76,7 @@ class ImageRequest(BaseModel):
     product_name: str
     product_category: str = ""
     creative_direction: str = ""
+    image_style: str = "product"
     data_consent: bool
 
 
@@ -243,9 +244,26 @@ async def _process_image(job_id: str, req: ImageRequest):
     kie = KieAIClient(api_key=settings.kie_api_key)
     rich_description = _build_description(req)
     try:
-        prompt = await script_gen.generate_image_prompt(
+        # Product analysis for better prompts
+        product_analysis = await script_gen.analyze_product(
             product_name=req.product_name, description=rich_description,
-            aspect_ratio=req.aspect_ratio, creative_direction=req.creative_direction,
+        )
+
+        # Build creative direction based on style
+        creative = req.creative_direction or ""
+        if req.image_style == "ugc":
+            creative = (
+                "UGC influencer style Instagram photo. A young Colombian woman in her mid-20s "
+                "with natural makeup and casual clothing holds the product at chest level, "
+                "looking at camera with a warm authentic smile. Selfie angle, front-facing "
+                "phone camera perspective, natural window lighting, casual home background. "
+                "Raw unfiltered phone photo aesthetic, not studio quality. " + creative
+            )
+
+        prompt = await script_gen.generate_image_prompt(
+            product_name=req.product_name,
+            description=rich_description + "\n\nProduct Analysis:\n" + product_analysis,
+            aspect_ratio=req.aspect_ratio, creative_direction=creative,
         )
         await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
 
