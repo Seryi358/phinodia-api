@@ -88,17 +88,12 @@
         const grid = document.getElementById('credits-grid');
         grid.innerHTML = '';
 
-        const general = balance.general || 0;
-
-        // Combine: each service shows its specific credits + general credits available
-        let total = general;
+        let total = 0;
         Object.entries(balance).forEach(([key, value]) => {
-          if (key === 'general') return;
-          const available = value + general;
           total += value;
           const label = LABELS[key] || key;
-          const extra = general > 0 && value === 0 ? ' style="background: var(--accent-subtle);"' : '';
-          grid.innerHTML += '<div class="credit-item"' + extra + '><div class="credit-count">' + available + '</div><div class="credit-label">' + label + '</div></div>';
+          const extra = value > 0 ? ' style="background: var(--accent-subtle);"' : '';
+          grid.innerHTML += '<div class="credit-item"' + extra + '><div class="credit-count">' + value + '</div><div class="credit-label">' + label + '</div></div>';
         });
 
         if (total === 0) {

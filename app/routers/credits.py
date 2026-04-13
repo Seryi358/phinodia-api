@@ -12,7 +12,6 @@ class BalanceResponse(BaseModel):
     video_30s: int = 0
     image: int = 0
     landing_page: int = 0
-    general: int = 0
 
 
 @router.get("/check", response_model=BalanceResponse)
