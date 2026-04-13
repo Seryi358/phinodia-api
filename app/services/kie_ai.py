@@ -34,7 +34,7 @@ class KieAIClient:
                 "model": model,
                 "generationType": "IMAGE_2_VIDEO",
                 "aspect_ratio": aspect_ratio,
-                "quality": "fast",
+                "quality": "high",
                 "enableTranslation": False,
             }
         else:
@@ -43,7 +43,7 @@ class KieAIClient:
                 "model": model,
                 "generationType": "TEXT_2_VIDEO",
                 "aspect_ratio": aspect_ratio,
-                "quality": "fast",
+                "quality": "high",
                 "enableTranslation": False,
             }
         async with httpx.AsyncClient(timeout=60) as client:
