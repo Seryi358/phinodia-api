@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Referidos — PhinodIA</title>
+  <meta name="description" content="Refiere amigos a PhinodIA y gana creditos gratis. Comparte tu enlace y recibe creditos cuando tus referidos compren.">
+  <meta name="robots" content="index, follow">
+  <meta property="og:title" content="Referidos — PhinodIA">
+  <meta property="og:description" content="Refiere amigos y gana creditos gratis en PhinodIA.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://n8n-phinodia-api.zb12wf.easypanel.host/referidos">
+  <meta property="og:locale" content="es_CO">
+  <link rel="canonical" href="https://n8n-phinodia-api.zb12wf.easypanel.host/referidos">
+  <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
+  <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776038838">
+  <style>
+    .ref-link-box{display:flex;gap:8px;align-items:center;margin-top:16px}
+    .ref-link-input{flex:1;padding:12px 16px;border:1px solid var(--border);border-radius:12px;font-size:14px;background:var(--surface);color:var(--text);font-family:monospace}
+    .ref-copy-btn{padding:12px 20px;border-radius:12px;border:none;background:var(--text);color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all var(--transition)}
+    .ref-copy-btn:hover{opacity:0.85}
+    .ref-copy-btn.copied{background:var(--success)}
+    .ref-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px}
+    .ref-stat{text-align:center;padding:20px 12px;background:var(--surface);border-radius:16px;border:1px solid var(--border)}
+    .ref-stat-number{font-size:32px;font-weight:700;color:var(--text);line-height:1}
+    .ref-stat-label{font-size:12px;color:var(--text-secondary);margin-top:6px;font-weight:500}
+    .ref-how{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:32px}
+    .ref-step{text-align:center;padding:24px 16px}
+    .ref-step-num{width:36px;height:36px;border-radius:50%;background:var(--text);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;margin-bottom:12px}
+    .ref-step h3{font-size:15px;margin-bottom:6px}
+    .ref-step p{font-size:13px;color:var(--text-secondary);line-height:1.5}
+    .ref-credits-list{margin-top:16px}
+    .ref-credit-item{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
+    .ref-credit-item:last-child{border-bottom:none}
+    .ref-credit-service{font-size:14px;font-weight:500}
+    .ref-credit-date{font-size:12px;color:var(--text-secondary)}
+    .ref-credit-amount{font-size:14px;font-weight:600;color:var(--success)}
+    .ref-empty{text-align:center;padding:24px;color:var(--text-secondary);font-size:14px}
+    @media(max-width:768px){
+      .ref-stats{grid-template-columns:1fr}
+      .ref-how{grid-template-columns:1fr}
+      .ref-link-box{flex-direction:column}
+      .ref-copy-btn{width:100%}
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <img src="https://ik.imagekit.io/nllhy6wch/Logo%20Google%20Workspace.png?updatedAt=1767905998676" alt="PhinodIA" height="22">
+      </a>
+      <div class="nav-links">
+        <a href="/videos">Videos</a>
+        <a href="/imagenes">Imagenes</a>
+        <a href="/landing-pages">Landing Pages</a>
+        <a href="/creditos">Mis Creditos</a>
+        <a href="/referidos" class="active">Referidos</a>
+        <a href="/precios" class="nav-cta">Precios</a>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">&#9776;</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="hero" style="padding-bottom: 24px;">
+      <p class="hero-badge">Programa de Referidos</p>
+      <h1>Refiere y gana creditos gratis.</h1>
+      <p>Comparte tu enlace con amigos. Cuando hagan su primera compra, tu recibes 1 credito gratis del mismo servicio.</p>
+    </section>
+
+    <!-- How it works -->
+    <div class="ref-how">
+      <div class="ref-step">
+        <div class="ref-step-num">1</div>
+        <h3>Comparte tu enlace</h3>
+        <p>Ingresa tu correo para obtener tu enlace unico de referido. Compartelo con quien quieras.</p>
+      </div>
+      <div class="ref-step">
+        <div class="ref-step-num">2</div>
+        <h3>Tu amigo compra</h3>
+        <p>Cuando tu referido llega a la pagina de precios y hace su primera compra, se activa tu recompensa.</p>
+      </div>
+      <div class="ref-step">
+        <div class="ref-step-num">3</div>
+        <h3>Recibe tu credito</h3>
+        <p>Recibes automaticamente 1 credito gratis del mismo tipo de servicio que compro tu referido.</p>
+      </div>
+    </div>
+
+    <!-- Get referral link -->
+    <div class="form-card" style="max-width:600px;margin:32px auto 0;">
+      <div class="card">
+        <div class="form-group" style="margin-bottom:0">
+          <label for="ref-email">Tu correo electronico</label>
+          <input type="email" id="ref-email" class="form-input" placeholder="tucorreo@ejemplo.com">
+        </div>
+        <button class="btn btn-primary btn-block" style="margin-top:16px" onclick="getRefLink()">Obtener mi enlace</button>
+      </div>
+
+      <div id="ref-result" class="hidden mt-24">
+        <h3 style="text-align:center;margin-bottom:4px;">Tu enlace de referido</h3>
+        <p style="text-align:center;font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Comparte este enlace para ganar creditos gratis</p>
+        <div class="ref-link-box">
+          <input type="text" id="ref-link" class="ref-link-input" readonly>
+          <button class="ref-copy-btn" id="ref-copy-btn" onclick="copyRefLink()">Copiar</button>
+        </div>
+
+        <div class="ref-stats" id="ref-stats">
+          <div class="ref-stat">
+            <div class="ref-stat-number" id="stat-total">0</div>
+            <div class="ref-stat-label">Referidos</div>
+          </div>
+          <div class="ref-stat">
+            <div class="ref-stat-number" id="stat-completed">0</div>
+            <div class="ref-stat-label">Compraron</div>
+          </div>
+          <div class="ref-stat">
+            <div class="ref-stat-number" id="stat-pending">0</div>
+            <div class="ref-stat-label">Pendientes</div>
+          </div>
+        </div>
+
+        <div id="ref-credits-section" class="hidden mt-24">
+          <h3 style="text-align:center;margin-bottom:4px;">Creditos ganados</h3>
+          <div class="form-card" style="padding:0;margin-top:12px;">
+            <div id="ref-credits-list" class="ref-credits-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <p>2026 PhinodIA. Todos los derechos reservados.</p>
+      <div class="footer-links">
+        <a href="https://phinodia.com/politica-de-privacidad/" target="_blank">Privacidad</a>
+        <a href="https://phinodia.com/condiciones-del-servicio/" target="_blank">Terminos</a>
+        <a href="https://phinodia.com/habeas-data/" target="_blank">Habeas Data</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/static/js/api.js?v=1776038838"></script>
+  <script>
+    const SERVICE_LABELS = {
+      video_8s: 'Video 8s',
+      video_15s: 'Video 15s',
+      video_22s: 'Video 22s',
+      video_30s: 'Video 30s',
+      image: 'Imagen',
+      landing_page: 'Landing Page',
+    };
+
+    async function getRefLink() {
+      const email = document.getElementById('ref-email').value.trim();
+      if (!email || !isValidEmail(email)) {
+        showToast('Ingresa un correo valido', 'error');
+        return;
+      }
+
+      try {
+        // Get referral code
+        const codeData = await apiGet('/referrals/code?email=' + encodeURIComponent(email));
+        document.getElementById('ref-link').value = codeData.referral_link;
+        document.getElementById('ref-result').classList.remove('hidden');
+
+        // Get stats
+        const stats = await apiGet('/referrals/stats?email=' + encodeURIComponent(email));
+        document.getElementById('stat-total').textContent = stats.total_referred;
+        document.getElementById('stat-completed').textContent = stats.completed;
+        document.getElementById('stat-pending').textContent = stats.pending;
+
+        // Show earned credits
+        if (stats.credits_earned && stats.credits_earned.length > 0) {
+          document.getElementById('ref-credits-section').classList.remove('hidden');
+          const list = document.getElementById('ref-credits-list');
+          list.innerHTML = '';
+          stats.credits_earned.forEach(function(c) {
+            const label = SERVICE_LABELS[c.service] || c.service;
+            const date = c.date ? new Date(c.date).toLocaleDateString('es-CO') : '';
+            list.innerHTML += '<div class="ref-credit-item"><div><div class="ref-credit-service">' + label + '</div><div class="ref-credit-date">' + date + '</div></div><div class="ref-credit-amount">+' + c.credits + ' credito</div></div>';
+          });
+        } else {
+          document.getElementById('ref-credits-section').classList.add('hidden');
+        }
+      } catch (err) {
+        showToast(err.message || 'Error al obtener el enlace', 'error');
+      }
+    }
+
+    function copyRefLink() {
+      const input = document.getElementById('ref-link');
+      const btn = document.getElementById('ref-copy-btn');
+      navigator.clipboard.writeText(input.value).then(function() {
+        btn.textContent = 'Copiado';
+        btn.classList.add('copied');
+        showToast('Enlace copiado al portapapeles', 'success');
+        setTimeout(function() {
+          btn.textContent = 'Copiar';
+          btn.classList.remove('copied');
+        }, 2000);
+      }).catch(function() {
+        // Fallback for older browsers
+        input.select();
+        document.execCommand('copy');
+        btn.textContent = 'Copiado';
+        btn.classList.add('copied');
+        showToast('Enlace copiado', 'success');
+        setTimeout(function() {
+          btn.textContent = 'Copiar';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

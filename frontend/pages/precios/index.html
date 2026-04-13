@@ -52,6 +52,7 @@
         <a href="/imagenes">Imagenes</a>
         <a href="/landing-pages">Landing Pages</a>
         <a href="/creditos">Mis Creditos</a>
+        <a href="/referidos">Referidos</a>
         <a href="/precios" class="nav-cta">Precios</a>
       </div>
       <button class="nav-toggle" aria-label="Menu">&#9776;</button>
@@ -258,6 +259,15 @@
       btn.classList.add('active');
     }
 
+    // Referral: capture ref code from URL and store in localStorage
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref');
+      if (ref) {
+        localStorage.setItem('phinodia_ref', ref.toUpperCase().trim());
+      }
+    })();
+
     function buyPlan(sku) {
       const email = document.getElementById('pricing-email').value.trim();
       if (!email || !isValidEmail(email)) {
@@ -265,6 +275,17 @@
         document.getElementById('pricing-email').focus();
         return;
       }
+
+      // Register referral if ref code exists in localStorage
+      const refCode = localStorage.getItem('phinodia_ref');
+      if (refCode) {
+        fetch(API + '/referrals/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ referred_email: email, referral_code: refCode }),
+        }).catch(function() {});  // Fire and forget
+      }
+
       openWompiCheckout(sku, email, window.location.origin + '/precios');
     }
 

@@ -38,7 +38,7 @@ async def add_cache_headers(request: Request, call_next):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
-from app.routers import generate, jobs, credits, payments, email, upload  # noqa: E402
+from app.routers import generate, jobs, credits, payments, email, upload, referrals  # noqa: E402
 
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
@@ -46,6 +46,7 @@ app.include_router(credits.router, prefix="/api/v1/credits", tags=["credits"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(email.router, prefix="/api/v1/email", tags=["email"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
+app.include_router(referrals.router, prefix="/api/v1/referrals", tags=["referrals"])
 
 
 @app.get("/health")

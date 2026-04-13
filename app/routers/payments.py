@@ -9,6 +9,7 @@ from app.database import db
 from app.services.credits import CreditService
 from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU
 from app.services.gmail import GmailSender, build_purchase_email
+from app.routers.referrals import process_referral_bonus
 
 router = APIRouter()
 settings = Settings()
@@ -112,6 +113,12 @@ async def wompi_webhook(event: dict):
         logger.info("Purchase confirmation email sent to %s", customer_email)
     except Exception as e:
         logger.warning("Failed to send purchase email to %s: %s", customer_email, e)
+
+    # Process referral bonus if this user was referred (first purchase only)
+    try:
+        await process_referral_bonus(customer_email, package["service"])
+    except Exception as e:
+        logger.warning("Failed to process referral bonus for %s: %s", customer_email, e)
 
     logger.info("Granted %d %s credits to %s (tx: %s)", package["credits"], package["service"], customer_email, reference)
     return {"status": "ok", "action": "credits_granted", "credits": package["credits"]}
