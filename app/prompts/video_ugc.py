@@ -52,10 +52,12 @@ Camera is handheld in selfie mode at arm's length, slightly shaky, imperfectly f
 
 All spoken lines are in Colombian-accented Spanish. Total word count under 40.
 
-**Creator:** "[Opening hook — relatable question or statement about the pain point]"
-**Creator:** "[Product name + what it does + key benefit — spoken naturally, not like an ad]"
-**Creator:** "[Personal recommendation with genuine emotion]"
-**Creator:** "[Short call to action — 1-3 words]"
+Creator says: "[Opening hook — relatable question or statement about the pain point]"
+Creator says: "[Product name + what it does + key benefit — spoken naturally, not like an ad]"
+Creator says: "[Personal recommendation with genuine emotion]"
+Creator says: "[Short call to action — 1-3 words]"
+
+(no subtitles)
 
 ---
 
