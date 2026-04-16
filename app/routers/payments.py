@@ -71,9 +71,14 @@ async def wompi_webhook(event: dict):
         logger.warning("Webhook missing customer_email for tx %s", tx_data.get("id"))
         return {"status": "ok", "action": "none"}
 
-    # Extract SKU from reference (format: PH-{sku}-{timestamp}-{hex})
+    # Extract SKU from reference (format: PH-{sku}-{timestamp}-{hex}) — we always
+    # generate this format in /payments/checkout. Reject if Wompi sends a reference
+    # we didn't issue.
     ref_parts = reference.split("-")
-    sku_from_ref = "-".join(ref_parts[1:-2]) if len(ref_parts) >= 4 else None
+    if len(ref_parts) < 4 or ref_parts[0] != "PH":
+        logger.warning("Webhook reference %r doesn't match PH-{sku}-{ts}-{hex}", reference)
+        return {"status": "ok", "action": "bad_reference"}
+    sku_from_ref = "-".join(ref_parts[1:-2])
 
     # Deduplicate: check if this transaction was already processed
     wompi_tx_id = str(tx_data.get("id", reference))
@@ -84,7 +89,7 @@ async def wompi_webhook(event: dict):
 
     package = resolve_package(amount, sku_from_ref)
     if not package:
-        logger.warning("Unknown package for amount %d in tx %s", amount, tx_data.get("id"))
+        logger.warning("Unknown package for amount %d sku %s in tx %s", amount, sku_from_ref, tx_data.get("id"))
         return {"status": "ok", "action": "unknown_package"}
 
     credit_svc = CreditService()
