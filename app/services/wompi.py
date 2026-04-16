@@ -32,8 +32,18 @@ _SERVICE_PRIORITY = ["video_8s", "video_15s", "video_22s", "video_30s", "image",
 
 
 def resolve_package(amount_cents: int, sku: str | None = None) -> dict | None:
+    """Resolve package by SKU AND amount. Both must match an entry in PACKAGES_BY_SKU.
+
+    Previous version trusted SKU from the Wompi reference without verifying amount
+    matched, which let a forged webhook (with valid signature) grant high-value
+    credits for a tiny payment.
+    """
     if sku and sku in PACKAGES_BY_SKU:
-        return PACKAGES_BY_SKU[sku]
+        pkg = PACKAGES_BY_SKU[sku]
+        if pkg["amount"] == amount_cents:
+            return pkg
+        return None  # SKU known but amount doesn't match — refuse
+    # Fallback: amount-only match (legacy path; SKU missing from reference)
     matches = [p for p in PACKAGES_BY_SKU.values() if p["amount"] == amount_cents]
     if len(matches) == 1:
         return matches[0]
