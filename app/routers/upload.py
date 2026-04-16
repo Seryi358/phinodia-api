@@ -8,7 +8,20 @@ settings = Settings()
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE = 10 * 1024 * 1024  # 10MB
+MIN_SIZE = 1024  # 1KB — real product photos are at least this big; rejects fake files
 UPLOAD_DIR = os.path.join("data", "uploads")
+
+
+def _detect_format(content: bytes) -> str | None:
+    """Return canonical extension from magic bytes, or None if unrecognized."""
+    if content.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    # WebP: RIFF????WEBP
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "webp"
+    return None
 
 
 @router.post("/image")
@@ -19,18 +32,16 @@ async def upload_image(file: UploadFile = File(...)):
     content = await file.read()
     if len(content) > MAX_SIZE:
         raise HTTPException(400, "La imagen no puede superar 10MB")
+    if len(content) < MIN_SIZE:
+        raise HTTPException(400, "La imagen es demasiado pequeña. Sube una foto del producto.")
 
-    # Validate actual file content (magic bytes)
-    MAGIC = {b"\xff\xd8\xff": "jpg", b"\x89PNG": "png", b"RIFF": "webp"}
-    valid = any(content[:len(m)] == m for m in MAGIC)
-    if not valid:
+    detected = _detect_format(content)
+    if not detected:
         raise HTTPException(400, "El archivo no es una imagen valida")
 
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
-    if ext not in ("jpg", "jpeg", "png", "webp"):
-        ext = "jpg"
-
-    filename = f"{uuid.uuid4().hex}.{ext}"
+    # Use the format detected from magic bytes, not the user-supplied extension.
+    # This avoids serving a JPEG with a .png filename (mime mismatch).
+    filename = f"{uuid.uuid4().hex}.{detected}"
     path = os.path.join(UPLOAD_DIR, filename)
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
