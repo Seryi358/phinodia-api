@@ -27,6 +27,20 @@ app.add_middleware(
 )
 
 
+# Reject oversized request bodies before parsing — prevents DoS via huge JSON
+# payloads. Upload route accepts up to 10MB (multipart); JSON bodies are tiny.
+@app.middleware("http")
+async def limit_request_body_size(request: Request, call_next):
+    path = request.url.path
+    is_upload = path == "/api/v1/upload/image"
+    max_bytes = 11 * 1024 * 1024 if is_upload else 100 * 1024
+    cl = request.headers.get("content-length")
+    if cl and cl.isdigit() and int(cl) > max_bytes:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Request body too large"}, status_code=413)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def add_cache_and_security_headers(request: Request, call_next):
     response: Response = await call_next(request)
