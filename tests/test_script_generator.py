@@ -90,7 +90,8 @@ async def test_generate_image_prompt():
         assert "cream jar" in prompt.lower() or "marble" in prompt.lower()
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
-        assert "iPhone" in messages[0]["content"]
+        # New image prompt uses Nano Banana 2 (not iPhone-specific)
+        assert "Nano Banana" in messages[0]["content"]
 
 
 @pytest.mark.asyncio
@@ -117,7 +118,8 @@ async def test_generate_landing_page():
         assert "<!DOCTYPE html>" in html
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
-        assert "AIDA" in messages[0]["content"]
+        # AIDA appears in user template, not system prompt for landing
+        assert "AIDA" in messages[1]["content"]
 
 
 @pytest.mark.asyncio
@@ -168,7 +170,8 @@ async def test_generate_buyer_persona():
         assert "Sofia" in persona
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
-        assert "casting director" in messages[0]["content"].lower()
+        # Persona prompt is in Spanish: "Director de Casting"
+        assert "director de casting" in messages[0]["content"].lower()
         assert "50ml glass jar" in messages[1]["content"]
 
 

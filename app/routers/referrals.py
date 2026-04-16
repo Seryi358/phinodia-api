@@ -9,16 +9,31 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+CODE_LEN = 8  # 16^8 = 4.3B codes; 6-char (16M) had ~3% collision at 1k users
+
+
 def generate_referral_code(email: str) -> str:
-    """Generate a deterministic 6-char referral code from an email."""
+    """Generate a deterministic 8-char referral code from an email."""
+    return hashlib.md5(email.lower().strip().encode()).hexdigest()[:CODE_LEN].upper()
+
+
+def _legacy_code_6(email: str) -> str:
+    """Old 6-char code — kept only to recognize pre-migration registrations."""
     return hashlib.md5(email.lower().strip().encode()).hexdigest()[:6].upper()
 
 
 async def find_referrer_email(referral_code: str) -> str | None:
-    """Find the referrer email for a given referral code by scanning users."""
+    """Find the referrer email for a given referral code by scanning users.
+
+    Accepts both new 8-char codes and legacy 6-char codes for backward
+    compatibility with referrals registered before the length increase.
+    """
+    code_upper = referral_code.upper()
     users = await db.select("users", {"select": "email"})
     for user in users:
-        if generate_referral_code(user["email"]) == referral_code.upper():
+        if generate_referral_code(user["email"]) == code_upper:
+            return user["email"]
+        if len(code_upper) == 6 and _legacy_code_6(user["email"]) == code_upper:
             return user["email"]
     return None
 

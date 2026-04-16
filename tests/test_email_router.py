@@ -1,8 +1,9 @@
 def test_build_delivery_email_video_8s():
     from app.services.gmail import build_delivery_email
     subject, html = build_delivery_email("Crema Glow", "video_8s", "https://cdn.kie.ai/video.mp4")
-    assert "Crema Glow" in subject
+    # Subject is service-type based, product appears in body
     assert "Video de 8 segundos" in subject
+    assert "Crema Glow" in html
     assert "https://cdn.kie.ai/video.mp4" in html
     assert "Ley 1581" in html
 

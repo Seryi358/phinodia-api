@@ -28,11 +28,12 @@ async def test_create_video_task():
         url = call_args.args[0] if call_args.args else call_args.kwargs.get("url", "")
         assert "/veo/generate" in url
         body = call_args.kwargs["json"]
-        assert body["model"] == "veo3_fast"
-        assert body["generationType"] == "FIRST_AND_LAST_FRAMES_2_VIDEO"
+        assert body["model"] == "veo3"  # Quality mode default
+        assert body["generationType"] == "IMAGE_2_VIDEO"
         assert body["aspect_ratio"] == "9:16"
         assert body["imageUrls"] == ["https://example.com/product.jpg"]
         assert body["enableTranslation"] is False
+        assert body["quality"] == "high"
 
 
 @pytest.mark.asyncio
