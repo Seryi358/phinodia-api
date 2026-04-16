@@ -66,7 +66,9 @@ El servicio expone el puerto 8000 con healthcheck en `/health`.
 | POST | /api/v1/payments/checkout | Create Wompi checkout |
 | POST | /api/v1/payments/webhook | Wompi payment webhook |
 | POST | /api/v1/upload/image | Upload product image |
-| POST | /api/v1/email/send | Send delivery email |
+| GET | /api/v1/referrals/code | Get referral code for email |
+| GET | /api/v1/referrals/stats | Get referral stats |
+| POST | /api/v1/referrals/register | Register a new referral |
 | GET | /health | Health check |
 
 ## Frontend Pages
