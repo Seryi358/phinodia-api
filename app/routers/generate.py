@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from app.config import Settings
 from app.database import db
 from app.services.kie_ai import KieAIClient
@@ -76,37 +76,37 @@ def _build_description(req) -> str:
 
 class VideoRequest(BaseModel):
     email: EmailStr
-    image_url: str
-    description: str
-    format: str
+    image_url: str = Field(..., max_length=2000)
+    description: str = Field(..., max_length=2000)
+    format: str = Field(..., max_length=20)
     duration: int
-    product_name: str
-    product_category: str = ""
-    pain_point: str = ""
-    creative_direction: str = ""
+    product_name: str = Field(..., max_length=200)
+    product_category: str = Field("", max_length=300)
+    pain_point: str = Field("", max_length=300)
+    creative_direction: str = Field("", max_length=500)
     data_consent: bool
 
 
 class ImageRequest(BaseModel):
     email: EmailStr
-    image_url: str
-    description: str
-    aspect_ratio: str = "1:1"
-    product_name: str
-    product_category: str = ""
-    creative_direction: str = ""
-    image_style: str = "product"
+    image_url: str = Field(..., max_length=2000)
+    description: str = Field(..., max_length=2000)
+    aspect_ratio: str = Field("1:1", max_length=10)
+    product_name: str = Field(..., max_length=200)
+    product_category: str = Field("", max_length=300)
+    creative_direction: str = Field("", max_length=500)
+    image_style: str = Field("product", max_length=20)
     data_consent: bool
 
 
 class LandingRequest(BaseModel):
     email: EmailStr
-    image_url: str
-    description: str
-    product_name: str
-    product_category: str = ""
-    target_audience: str = ""
-    style_preference: str = ""
+    image_url: str = Field(..., max_length=2000)
+    description: str = Field(..., max_length=2000)
+    product_name: str = Field(..., max_length=200)
+    product_category: str = Field("", max_length=300)
+    target_audience: str = Field("", max_length=300)
+    style_preference: str = Field("", max_length=200)
     data_consent: bool
 
 
