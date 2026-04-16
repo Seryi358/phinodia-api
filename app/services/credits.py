@@ -13,48 +13,86 @@ class CreditService:
         return user
 
     async def grant_credits(self, user_id: str, service_type: str, amount: int):
-        """Grant credits for a specific service."""
-        row = await db.select_one("credits", {
-            "user_id": f"eq.{user_id}",
-            "service_type": f"eq.{service_type}",
-        })
-        if row:
-            new_total = row["total"] + amount
-            await db.update("credits", {"id": f"eq.{row['id']}"}, {"total": new_total})
-        else:
-            await db.insert("credits", {
-                "user_id": user_id,
-                "service_type": service_type,
-                "total": amount,
-                "used": 0,
-            })
-
-    async def refund_credit(self, user_id: str, service_type: str | None = None):
-        """Refund one credit for a specific service."""
-        if service_type:
+        """Grant credits for a specific service. Race-safe via optimistic locking."""
+        for _ in range(3):  # retry on lost race
             row = await db.select_one("credits", {
                 "user_id": f"eq.{user_id}",
                 "service_type": f"eq.{service_type}",
             })
-            if row and row["used"] > 0:
-                await db.update("credits", {"id": f"eq.{row['id']}"}, {"used": row["used"] - 1})
+            if row:
+                updated = await db.update(
+                    "credits",
+                    {"id": f"eq.{row['id']}", "total": f"eq.{row['total']}"},
+                    {"total": row["total"] + amount},
+                )
+                if updated:
+                    return
+                # lost the race, re-read and retry
+                continue
+            try:
+                await db.insert("credits", {
+                    "user_id": user_id,
+                    "service_type": service_type,
+                    "total": amount,
+                    "used": 0,
+                })
                 return
-        # Last resort fallback
+            except Exception:
+                # Another request inserted the row between our select and insert.
+                # Re-read and apply as an update on next loop iteration.
+                continue
+
+    async def refund_credit(self, user_id: str, service_type: str | None = None):
+        """Refund one credit for a specific service. Race-safe via optimistic locking."""
+        if service_type:
+            for _ in range(3):
+                row = await db.select_one("credits", {
+                    "user_id": f"eq.{user_id}",
+                    "service_type": f"eq.{service_type}",
+                })
+                if not row or row["used"] <= 0:
+                    break
+                updated = await db.update(
+                    "credits",
+                    {"id": f"eq.{row['id']}", "used": f"eq.{row['used']}"},
+                    {"used": row["used"] - 1},
+                )
+                if updated:
+                    return
+        # Last resort fallback: any service with used > 0
         rows = await db.select("credits", {"user_id": f"eq.{user_id}"})
         for row in rows:
             if row["used"] > 0:
-                await db.update("credits", {"id": f"eq.{row['id']}"}, {"used": row["used"] - 1})
-                return
+                updated = await db.update(
+                    "credits",
+                    {"id": f"eq.{row['id']}", "used": f"eq.{row['used']}"},
+                    {"used": row["used"] - 1},
+                )
+                if updated:
+                    return
 
     async def deduct_credit(self, user_id: str, service_type: str) -> bool:
-        """Deduct one credit for a specific service. Only from credits table."""
-        row = await db.select_one("credits", {
-            "user_id": f"eq.{user_id}",
-            "service_type": f"eq.{service_type}",
-        })
-        if row and (row["total"] - row["used"]) > 0:
-            await db.update("credits", {"id": f"eq.{row['id']}"}, {"used": row["used"] + 1})
-            return True
+        """Deduct one credit for a specific service.
+
+        Uses optimistic locking to prevent double-spend under concurrent requests:
+        the UPDATE only matches rows where `used` is still what we read, so two
+        racing requests can't both succeed.
+        """
+        for _ in range(3):  # retry on lost race
+            row = await db.select_one("credits", {
+                "user_id": f"eq.{user_id}",
+                "service_type": f"eq.{service_type}",
+            })
+            if not row or (row["total"] - row["used"]) <= 0:
+                return False
+            updated = await db.update(
+                "credits",
+                {"id": f"eq.{row['id']}", "used": f"eq.{row['used']}"},
+                {"used": row["used"] + 1},
+            )
+            if updated:
+                return True
+            # else lost the race, re-read and retry
         return False
 
     async def get_balance(self, email: str) -> dict[str, int]:
