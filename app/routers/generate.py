@@ -87,10 +87,10 @@ def _validate_image_url(v: str) -> str:
 class VideoRequest(BaseModel):
     email: EmailStr
     image_url: str = Field(..., max_length=2000)
-    description: str = Field(..., max_length=2000)
+    description: str = Field(..., min_length=1, max_length=2000)
     format: str = Field(..., max_length=20)
     duration: int
-    product_name: str = Field(..., max_length=200)
+    product_name: str = Field(..., min_length=1, max_length=200)
     product_category: str = Field("", max_length=300)
     pain_point: str = Field("", max_length=300)
     creative_direction: str = Field("", max_length=500)
@@ -102,9 +102,9 @@ class VideoRequest(BaseModel):
 class ImageRequest(BaseModel):
     email: EmailStr
     image_url: str = Field(..., max_length=2000)
-    description: str = Field(..., max_length=2000)
+    description: str = Field(..., min_length=1, max_length=2000)
     aspect_ratio: str = Field("1:1", max_length=10)
-    product_name: str = Field(..., max_length=200)
+    product_name: str = Field(..., min_length=1, max_length=200)
     product_category: str = Field("", max_length=300)
     creative_direction: str = Field("", max_length=500)
     image_style: str = Field("product", max_length=20)
@@ -116,8 +116,8 @@ class ImageRequest(BaseModel):
 class LandingRequest(BaseModel):
     email: EmailStr
     image_url: str = Field(..., max_length=2000)
-    description: str = Field(..., max_length=2000)
-    product_name: str = Field(..., max_length=200)
+    description: str = Field(..., min_length=1, max_length=2000)
+    product_name: str = Field(..., min_length=1, max_length=200)
     product_category: str = Field("", max_length=300)
     target_audience: str = Field("", max_length=300)
     style_preference: str = Field("", max_length=200)
