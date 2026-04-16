@@ -110,23 +110,34 @@
       } catch (e) { return iso; }
     }
 
+    function fallbackLetter(rt) {
+      return rt === 'mp4' ? 'V' : rt === 'jpg' ? 'I' : 'L';
+    }
+
+    function imgWithFallback(src, alt, rt) {
+      const safeSrc = escapeHtml(src);
+      const letter = fallbackLetter(rt);
+      // onerror replaces broken image with a fallback letter (handles expired KIE URLs)
+      return `<img src="${safeSrc}" alt="${escapeHtml(alt)}" loading="lazy" onerror="this.outerHTML='&lt;div class=&quot;gen-media-fallback&quot;&gt;${letter}&lt;/div&gt;'">`;
+    }
+
     function renderMedia(job) {
-      // Image: show the result directly
+      // Image: show the result directly with fallback
       if (job.status === 'completed' && job.result_type === 'jpg' && job.result_url) {
-        return `<img src="${escapeHtml(job.result_url)}" alt="Imagen generada" loading="lazy">`;
+        return imgWithFallback(job.result_url, 'Imagen generada', 'jpg');
       }
-      // Video: use input image as poster (KIE CDN doesn't reliably serve video frames)
+      // Video: use input image as poster + play overlay
       if (job.result_type === 'mp4' && job.input_image_url) {
         const playOverlay = job.status === 'completed'
-          ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);color:#fff;font-size:42px;font-weight:300;">&#9656;</div>'
+          ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);color:#fff;font-size:42px;font-weight:300;pointer-events:none;">&#9654;</div>'
           : '';
-        return `<img src="${escapeHtml(job.input_image_url)}" alt="Video preview" loading="lazy">${playOverlay}`;
+        return imgWithFallback(job.input_image_url, 'Video preview', 'mp4') + playOverlay;
       }
       // Landing page or anything else: input image fallback
       if (job.input_image_url) {
-        return `<img src="${escapeHtml(job.input_image_url)}" alt="Insumo" loading="lazy">`;
+        return imgWithFallback(job.input_image_url, 'Insumo', job.result_type || 'html');
       }
-      return `<div class="gen-media-fallback">${job.result_type === 'mp4' ? 'V' : job.result_type === 'jpg' ? 'I' : 'L'}</div>`;
+      return `<div class="gen-media-fallback">${fallbackLetter(job.result_type)}</div>`;
     }
 
     function renderActions(job) {
