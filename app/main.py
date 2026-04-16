@@ -47,6 +47,40 @@ async def limit_request_body_size(request: Request, call_next):
     return await call_next(request)
 
 
+# Per-IP rate limit on email-lookup endpoints to slow down PII enumeration.
+# These endpoints intentionally have no auth (UX) but the data shouldn't be
+# scrapeable wholesale. 30 req/min/IP per endpoint is plenty for normal use.
+import time as _time
+from collections import defaultdict, deque
+_rate_buckets: dict[tuple[str, str], deque] = defaultdict(deque)
+_RATE_LIMITED_PATHS = ("/api/v1/credits/check", "/api/v1/jobs/by-email", "/api/v1/referrals/code", "/api/v1/referrals/stats")
+_RATE_LIMIT = 30   # requests
+_RATE_WINDOW = 60  # seconds
+
+
+@app.middleware("http")
+async def rate_limit_email_lookups(request: Request, call_next):
+    path = request.url.path
+    if any(path.startswith(p) for p in _RATE_LIMITED_PATHS):
+        client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
+        key = (client_ip, path)
+        bucket = _rate_buckets[key]
+        now = _time.monotonic()
+        # drop entries older than window
+        while bucket and now - bucket[0] > _RATE_WINDOW:
+            bucket.popleft()
+        if len(bucket) >= _RATE_LIMIT:
+            from fastapi.responses import JSONResponse
+            retry_in = int(_RATE_WINDOW - (now - bucket[0])) + 1
+            return JSONResponse(
+                {"detail": f"Demasiadas solicitudes. Intenta en {retry_in}s."},
+                status_code=429,
+                headers={"Retry-After": str(retry_in)},
+            )
+        bucket.append(now)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def add_cache_and_security_headers(request: Request, call_next):
     response: Response = await call_next(request)

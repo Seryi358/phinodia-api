@@ -16,4 +16,6 @@ RUN mkdir -p data/uploads
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 4 workers handle concurrent requests in parallel — single worker was
+# serializing /credits/check under load (p95 3s with 50 concurrent calls).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
