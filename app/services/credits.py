@@ -3,9 +3,15 @@ from app.database import db
 SERVICE_TYPES = ["video_8s", "video_15s", "video_22s", "video_30s", "image", "landing_page"]
 
 
+def _normalize_email(email: str) -> str:
+    """Lowercase and strip — emails are treated case-insensitively in practice."""
+    return (email or "").strip().lower()
+
+
 class CreditService:
 
     async def get_or_create_user(self, email: str) -> dict:
+        email = _normalize_email(email)
         user = await db.select_one("users", {"email": f"eq.{email}"})
         if user:
             return user
@@ -97,6 +103,7 @@ class CreditService:
 
     async def get_balance(self, email: str) -> dict[str, int]:
         """Get per-service credit balance."""
+        email = _normalize_email(email)
         user = await db.select_one("users", {"email": f"eq.{email}"})
         if not user:
             return {st: 0 for st in SERVICE_TYPES}

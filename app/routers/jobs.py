@@ -112,6 +112,7 @@ class JobSummary(BaseModel):
 @router.get("/by-email", response_model=list[JobSummary])
 async def list_jobs_by_email(email: EmailStr = Query(..., description="User email")):
     """List all jobs for a user, newest first. For result viewing on /mis-generaciones."""
+    email = email.strip().lower()
     user = await db.select_one("users", {"email": f"eq.{email}"})
     if not user:
         return []
