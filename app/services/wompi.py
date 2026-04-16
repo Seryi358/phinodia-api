@@ -32,27 +32,20 @@ _SERVICE_PRIORITY = ["video_8s", "video_15s", "video_22s", "video_30s", "image",
 
 
 def resolve_package(amount_cents: int, sku: str | None = None) -> dict | None:
-    """Resolve package by SKU AND amount. Both must match an entry in PACKAGES_BY_SKU.
+    """Resolve package strictly: SKU must be known AND amount must match.
 
-    Previous version trusted SKU from the Wompi reference without verifying amount
-    matched, which let a forged webhook (with valid signature) grant high-value
-    credits for a tiny payment.
+    Previous fallbacks (amount-only, or trusting SKU without checking amount)
+    let forged webhooks (with leaked events_secret) pick arbitrary credits for
+    tiny payments. We always issue references in PH-{sku}-{ts}-{hex} format and
+    the webhook router rejects malformed references, so this strict path is the
+    only one needed.
     """
-    if sku and sku in PACKAGES_BY_SKU:
-        pkg = PACKAGES_BY_SKU[sku]
-        if pkg["amount"] == amount_cents:
-            return pkg
-        return None  # SKU known but amount doesn't match — refuse
-    # Fallback: amount-only match (legacy path; SKU missing from reference)
-    matches = [p for p in PACKAGES_BY_SKU.values() if p["amount"] == amount_cents]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        for service in _SERVICE_PRIORITY:
-            for pkg in matches:
-                if pkg["service"] == service:
-                    return pkg
-    return None
+    if not sku or sku not in PACKAGES_BY_SKU:
+        return None
+    pkg = PACKAGES_BY_SKU[sku]
+    if pkg["amount"] != amount_cents:
+        return None
+    return pkg
 
 
 def _resolve_property(data: dict, path: str):
