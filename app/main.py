@@ -63,7 +63,7 @@ async def favicon():
     return FileResponse("frontend/static/images/favicon-32.png", media_type="image/png")
 
 
-@app.get("/robots.txt")
+@app.api_route("/robots.txt", methods=["GET", "HEAD"])
 async def robots():
     from fastapi.responses import PlainTextResponse
     body = (
@@ -73,12 +73,13 @@ async def robots():
         "Disallow: /uploads/\n"
         "Disallow: /creditos\n"
         "Disallow: /estado\n"
+        "Disallow: /mis-generaciones\n"
         "Sitemap: https://app.phinodia.com/sitemap.xml\n"
     )
     return PlainTextResponse(body, headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/sitemap.xml")
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"])
 async def sitemap():
     from fastapi.responses import Response
     pages = ["/", "/videos", "/imagenes", "/landing-pages", "/precios", "/referidos"]

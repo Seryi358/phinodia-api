@@ -53,6 +53,7 @@
           <div class="progress-bar"><div class="progress-fill" id="status-progress" style="width: 0%"></div></div>
           <span class="status-badge" id="status-badge"></span>
 
+          <div id="status-preview" class="hidden mt-24"></div>
           <div id="status-download" class="hidden mt-24">
             <a id="status-download-link" href="#" target="_blank" class="btn btn-primary btn-lg">Descargar</a>
           </div>
@@ -97,11 +98,38 @@
         if (status.status === 'completed') {
           badge.className = 'status-badge completed'; badge.textContent = 'Completado';
           title.textContent = 'Tu contenido esta listo.';
-          text.textContent = 'Tipo: ' + (status.result_type || 'archivo');
+          text.textContent = '';
           progress.style.width = '100%';
           if (status.result_url) {
-            document.getElementById('status-download').classList.remove('hidden');
-            document.getElementById('status-download-link').href = status.result_url;
+            const preview = document.getElementById('status-preview');
+            preview.classList.remove('hidden');
+            const dl = document.getElementById('status-download');
+            const link = document.getElementById('status-download-link');
+            if (status.result_type === 'jpg') {
+              preview.innerHTML = '<img src="' + status.result_url + '" alt="Resultado" style="max-width: 100%; border-radius: 12px;">';
+              link.href = status.result_url;
+              link.textContent = 'Descargar imagen';
+              dl.classList.remove('hidden');
+            } else if (status.result_type === 'mp4') {
+              preview.innerHTML = '<video src="' + status.result_url + '" controls preload="metadata" playsinline style="width: 100%; border-radius: 12px; background: #000;"></video>';
+              link.href = status.result_url;
+              link.textContent = 'Descargar video';
+              dl.classList.remove('hidden');
+            } else if (status.result_type === 'html') {
+              preview.innerHTML = '<iframe srcdoc="' + status.result_url.replace(/"/g, '&quot;') + '" style="width: 100%; height: 600px; border: 1px solid var(--border); border-radius: 12px; background: #fff;"></iframe>';
+              // For landing pages, offer download as HTML file
+              link.textContent = 'Descargar HTML';
+              link.href = '#';
+              link.onclick = function(ev) {
+                ev.preventDefault();
+                const blob = new Blob([status.result_url], { type: 'text/html' });
+                const u = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = u; a.download = 'landing-page.html'; a.click();
+                URL.revokeObjectURL(u);
+              };
+              dl.classList.remove('hidden');
+            }
           }
         } else if (status.status === 'failed') {
           badge.className = 'status-badge failed'; badge.textContent = 'Error';

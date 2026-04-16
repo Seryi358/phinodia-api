@@ -111,22 +111,22 @@
     }
 
     function renderMedia(job) {
-      if (job.status !== 'completed' || !job.result_url) {
-        const fallback = job.input_image_url
-          ? `<img src="${escapeHtml(job.input_image_url)}" alt="Insumo">`
-          : `<div class="gen-media-fallback">${job.result_type === 'mp4' ? 'V' : job.result_type === 'jpg' ? 'I' : 'L'}</div>`;
-        return fallback;
-      }
-      if (job.result_type === 'jpg') {
+      // Image: show the result directly
+      if (job.status === 'completed' && job.result_type === 'jpg' && job.result_url) {
         return `<img src="${escapeHtml(job.result_url)}" alt="Imagen generada" loading="lazy">`;
       }
-      if (job.result_type === 'mp4') {
-        return `<video src="${escapeHtml(job.result_url)}" muted preload="metadata" playsinline></video>`;
+      // Video: use input image as poster (KIE CDN doesn't reliably serve video frames)
+      if (job.result_type === 'mp4' && job.input_image_url) {
+        const playOverlay = job.status === 'completed'
+          ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);color:#fff;font-size:42px;font-weight:300;">&#9656;</div>'
+          : '';
+        return `<img src="${escapeHtml(job.input_image_url)}" alt="Video preview" loading="lazy">${playOverlay}`;
       }
-      // Landing page
-      return job.input_image_url
-        ? `<img src="${escapeHtml(job.input_image_url)}" alt="Insumo" loading="lazy">`
-        : `<div class="gen-media-fallback">L</div>`;
+      // Landing page or anything else: input image fallback
+      if (job.input_image_url) {
+        return `<img src="${escapeHtml(job.input_image_url)}" alt="Insumo" loading="lazy">`;
+      }
+      return `<div class="gen-media-fallback">${job.result_type === 'mp4' ? 'V' : job.result_type === 'jpg' ? 'I' : 'L'}</div>`;
     }
 
     function renderActions(job) {
