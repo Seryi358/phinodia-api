@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from app.services.credits import CreditService
 
 router = APIRouter()
@@ -15,7 +15,7 @@ class BalanceResponse(BaseModel):
 
 
 @router.get("/check", response_model=BalanceResponse)
-async def check_credits(email: str = Query(...)):
+async def check_credits(email: EmailStr = Query(...)):
     svc = CreditService()
     balance = await svc.get_balance(email)
     return BalanceResponse(**balance)

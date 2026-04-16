@@ -43,7 +43,7 @@ class RegisterReferralRequest(BaseModel):
 
 
 @router.get("/code", response_model=ReferralCodeResponse)
-async def get_referral_code(email: str = Query(..., description="User email")):
+async def get_referral_code(email: EmailStr = Query(..., description="User email")):
     """Get or generate referral code for a user."""
     code = generate_referral_code(email)
     link = f"https://app.phinodia.com/precios/?ref={code}"
@@ -51,7 +51,7 @@ async def get_referral_code(email: str = Query(..., description="User email")):
 
 
 @router.get("/stats", response_model=ReferralStatsResponse)
-async def get_referral_stats(email: str = Query(..., description="User email")):
+async def get_referral_stats(email: EmailStr = Query(..., description="User email")):
     """Get referral stats for a user."""
     code = generate_referral_code(email)
     link = f"https://app.phinodia.com/precios/?ref={code}"

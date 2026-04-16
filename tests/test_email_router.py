@@ -23,5 +23,5 @@ def test_build_delivery_email_image():
 
 def test_build_delivery_email_landing():
     from app.services.gmail import build_delivery_email
-    subject, html = build_delivery_email("Cafe Premium", "landing_page", "https://api.phinodia.com/download/abc")
+    subject, html = build_delivery_email("Cafe Premium", "landing_page", "https://app.phinodia.com/download/abc")
     assert "Landing Page" in subject

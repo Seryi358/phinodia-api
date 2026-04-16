@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # App
     cors_origins: list[str] = ["https://phinodia.com", "https://www.phinodia.com", "https://app.phinodia.com"]
-    api_base_url: str = "https://api.phinodia.com"
+    api_base_url: str = "https://app.phinodia.com"
 
     @property
     def wompi_base_url(self) -> str:

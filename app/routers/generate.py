@@ -8,10 +8,29 @@ from app.database import db
 from app.services.kie_ai import KieAIClient
 from app.services.script_generator import ScriptGenerator
 from app.services.credits import CreditService
+from app.services.gmail import GmailSender, build_delivery_email
 
 router = APIRouter()
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+
+def _send_delivery_email_safe(email: str, product_name: str, service_type: str, job_id: str, result_url: str):
+    """Send delivery email asynchronously. For landing pages, link to /estado/?job_id=..."""
+    try:
+        if service_type == "landing_page":
+            link = f"https://app.phinodia.com/estado/?job_id={job_id}"
+        else:
+            link = result_url
+        subject, html = build_delivery_email(product_name, service_type, link)
+        sender = GmailSender(
+            client_id=settings.gmail_client_id, client_secret=settings.gmail_client_secret,
+            refresh_token=settings.gmail_refresh_token, sender_email=settings.gmail_sender_email,
+        )
+        sender.send_email(to=email, subject=subject, html_body=html)
+        logger.info("Delivery email sent to %s for job %s", email, job_id)
+    except Exception as e:
+        logger.warning("Failed to send delivery email to %s for job %s: %s", email, job_id, e)
 
 # Hold references to background tasks to prevent GC collection
 _background_tasks: set = set()
@@ -233,6 +252,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             "status": "completed", "result_url": final_result_url, "result_type": "mp4",
             "completed_at": datetime.now(timezone.utc).isoformat(),
         })
+        await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, DURATION_TO_SERVICE.get(req.duration, "video_8s"), job_id, final_result_url)
 
     except Exception as e:
         logger.error("Video pipeline failed for job %s: %s", job_id, e)
@@ -298,6 +318,7 @@ async def _process_image(job_id: str, req: ImageRequest):
             "result_url": result_url, "result_type": "jpg",
             "completed_at": datetime.now(timezone.utc).isoformat(),
         })
+        await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "image", job_id, result_url)
 
     except Exception as e:
         logger.error("Image generation failed for job %s: %s", job_id, e)
@@ -366,6 +387,7 @@ async def _process_landing(job_id: str, req: LandingRequest):
                     "result_url": html, "result_type": "html",
                     "status": "completed", "completed_at": datetime.now(timezone.utc).isoformat(),
                 })
+                await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "landing_page", job_id, "")
                 return
             logger.warning("Landing page too short (%d chars) on attempt %d", len(html) if html else 0, attempt + 1)
         except Exception as e:
