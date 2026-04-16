@@ -18,6 +18,9 @@ class SupabaseClient:
     def __init__(self):
         self._client = httpx.AsyncClient(base_url=_REST_URL, headers=_HEADERS, timeout=15.0)
 
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
     async def select(self, table: str, params: dict | None = None) -> list[dict]:
         r = await self._client.get(f"/{table}", params=params or {})
         r.raise_for_status()

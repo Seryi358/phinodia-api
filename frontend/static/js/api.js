@@ -179,35 +179,63 @@ async function generateLanding(formData) {
 }
 
 // ── Job Status Polling ─────────────────────────
+// Tracks per-jobId active polls and ALSO exposes a global cancel for any prior
+// poll on the same page (so re-clicking "Consultar" doesn't stack loops).
+const _activePolls = new Map();   // jobId -> { cancelled: bool }
+let _lastPollHandle = null;
+
+function cancelAllPolls() {
+  for (const handle of _activePolls.values()) handle.cancelled = true;
+  _activePolls.clear();
+  _lastPollHandle = null;
+}
+
 async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
+  // Cancel any prior poll for this jobId AND any prior poll on the page —
+  // re-entering checkStatus() with a new id should kill the old loop.
+  cancelAllPolls();
+  const handle = { cancelled: false };
+  _activePolls.set(jobId, handle);
+  _lastPollHandle = handle;
+
   let networkErrors = 0;
   const maxNetworkErrors = 10;
+  const safeUpdate = (data) => {
+    if (handle.cancelled) return;
+    // Always supply a numeric progress so consumers don't render `width: undefined%`
+    if (data.progress === undefined || data.progress === null) data.progress = 0;
+    onUpdate(data);
+  };
   const poll = async () => {
+    if (handle.cancelled) return;
     try {
       const res = await fetch(`${API}/jobs/status/${jobId}`);
+      if (handle.cancelled) return;
       if (res.status === 404) {
-        onUpdate({ status: 'error', error_message: 'Trabajo no encontrado. Verifica el ID.' });
+        safeUpdate({ status: 'error', error_message: 'Trabajo no encontrado. Verifica el ID.', progress: 0 });
         return;
       }
       const data = await res.json();
       if (!res.ok) {
-        onUpdate({ status: 'error', error_message: data.detail || 'Error al consultar estado.' });
+        safeUpdate({ status: 'error', error_message: data.detail || 'Error al consultar estado.', progress: 0 });
         return;
       }
       networkErrors = 0;
-      onUpdate(data);
+      safeUpdate(data);
       if (data.status === 'completed' || data.status === 'failed') return;
       setTimeout(poll, intervalMs);
     } catch (err) {
+      if (handle.cancelled) return;
       networkErrors++;
       if (networkErrors >= maxNetworkErrors) {
-        onUpdate({ status: 'error', error_message: 'Se perdio la conexion. Recarga la pagina e intenta de nuevo.' });
+        safeUpdate({ status: 'error', error_message: 'Se perdio la conexion. Recarga la pagina e intenta de nuevo.', progress: 0 });
         return;
       }
       setTimeout(poll, intervalMs * 2);
     }
   };
   poll();
+  return handle;  // caller can do handle.cancelled = true to stop early
 }
 
 // ── Credits Balance ────────────────────────────

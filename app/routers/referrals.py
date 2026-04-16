@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr
 from app.database import db
 from app.services.credits import CreditService
@@ -27,15 +27,28 @@ async def find_referrer_email(referral_code: str) -> str | None:
 
     Accepts both new 8-char codes and legacy 6-char codes for backward
     compatibility with referrals registered before the length increase.
+
+    Paginated to handle DB growth past PostgREST's default 1000-row limit.
     """
     code_upper = referral_code.upper()
-    users = await db.select("users", {"select": "email"})
-    for user in users:
-        if generate_referral_code(user["email"]) == code_upper:
-            return user["email"]
-        if len(code_upper) == 6 and _legacy_code_6(user["email"]) == code_upper:
-            return user["email"]
-    return None
+    page_size = 1000
+    offset = 0
+    while True:
+        users = await db.select("users", {
+            "select": "email",
+            "limit": str(page_size),
+            "offset": str(offset),
+        })
+        if not users:
+            return None
+        for user in users:
+            if generate_referral_code(user["email"]) == code_upper:
+                return user["email"]
+            if len(code_upper) == 6 and _legacy_code_6(user["email"]) == code_upper:
+                return user["email"]
+        if len(users) < page_size:
+            return None
+        offset += page_size
 
 
 class ReferralCodeResponse(BaseModel):
@@ -128,9 +141,23 @@ async def get_referral_stats(email: EmailStr = Query(..., description="User emai
 
 
 @router.post("/register")
-async def register_referral(req: RegisterReferralRequest):
-    """Register a referral when someone signs up via a referral link."""
+async def register_referral(req: RegisterReferralRequest, request: Request):
+    """Register a referral when someone signs up via a referral link.
+
+    Anti-fraud: only accepts a registration when the request was made from a
+    browser that actually visited /precios?ref=<code> first (referer header
+    contains '?ref=<code>' or contains '/precios'). Otherwise an attacker who
+    knows their own code could pre-register arbitrary victim emails to harvest
+    bonus credits when the victim eventually buys.
+    """
     code = req.referral_code.upper().strip()
+    referer = request.headers.get("referer", "")
+
+    # Reject: must come from a browser that loaded a phinodia /precios page.
+    # We don't pin the exact ref code in the referer because the user may bounce
+    # through other pages — the precios origin is enough proof.
+    if "/precios" not in referer or "phinodia.com" not in referer:
+        raise HTTPException(400, "Solicitud invalida")
 
     # Validate referral code: find who it belongs to
     referrer_email = await find_referrer_email(code)

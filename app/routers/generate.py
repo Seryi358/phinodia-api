@@ -124,7 +124,6 @@ class LandingRequest(BaseModel):
     data_consent: bool
 
     _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
-    data_consent: bool
 
 
 class GenerateResponse(BaseModel):

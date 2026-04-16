@@ -11,6 +11,12 @@ settings = Settings()
 async def lifespan(app: FastAPI):
     os.makedirs("data/uploads", exist_ok=True)
     yield
+    # Close shared httpx pool on shutdown
+    from app.database import db
+    try:
+        await db.aclose()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -122,6 +128,16 @@ app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
 # Serve frontend static assets (CSS, JS)
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+
+
+# Catch-all for any /api/* GET that the routers didn't match -> proper 405.
+# Without this the frontend StaticFiles mount swallows it as 404, which is
+# semantically wrong (resource exists, method is wrong).
+@app.api_route("/api/{rest_of_path:path}", methods=["GET", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS"])
+async def _api_method_not_allowed(rest_of_path: str):
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"detail": "Method Not Allowed"}, status_code=405)
+
 
 # Serve frontend pages (LAST — catch-all for HTML pages)
 app.mount("/", StaticFiles(directory="frontend/pages", html=True), name="pages")

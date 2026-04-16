@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import time
@@ -107,17 +108,20 @@ async def wompi_webhook(event: dict):
 
     await credit_svc.grant_credits(user["id"], package["service"], package["credits"])
 
-    # Send purchase confirmation email
-    try:
-        subject, html = build_purchase_email(customer_email, package["service"], package["credits"], package["service"])
-        sender = GmailSender(
-            client_id=settings.gmail_client_id, client_secret=settings.gmail_client_secret,
-            refresh_token=settings.gmail_refresh_token, sender_email=settings.gmail_sender_email,
-        )
-        sender.send_email(to=customer_email, subject=subject, html_body=html)
-        logger.info("Purchase confirmation email sent to %s", customer_email)
-    except Exception as e:
-        logger.warning("Failed to send purchase email to %s: %s", customer_email, e)
+    # Send purchase confirmation email — Gmail SDK is sync; run in thread to avoid
+    # blocking the event loop while Wompi waits for our 200 OK.
+    def _send_purchase_email():
+        try:
+            subject, html = build_purchase_email(customer_email, package["service"], package["credits"], package["service"])
+            sender = GmailSender(
+                client_id=settings.gmail_client_id, client_secret=settings.gmail_client_secret,
+                refresh_token=settings.gmail_refresh_token, sender_email=settings.gmail_sender_email,
+            )
+            sender.send_email(to=customer_email, subject=subject, html_body=html)
+            logger.info("Purchase confirmation email sent to %s", customer_email)
+        except Exception as e:
+            logger.warning("Failed to send purchase email to %s: %s", customer_email, e)
+    await asyncio.to_thread(_send_purchase_email)
 
     # Process referral bonus if this user was referred (first purchase only)
     try:

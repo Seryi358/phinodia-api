@@ -15,7 +15,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776371000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776380000">
   <style>
     .ref-link-box{display:flex;gap:8px;align-items:center;margin-top:16px}
     .ref-link-input{flex:1;padding:12px 16px;border:1px solid var(--border);border-radius:12px;font-size:14px;background:var(--surface);color:var(--text);font-family:monospace}
@@ -146,7 +146,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776371000"></script>
+  <script src="/static/js/api.js?v=1776380000"></script>
   <script>
     const SERVICE_LABELS = {
       video_8s: 'Video 8s',
@@ -182,9 +182,26 @@
           const list = document.getElementById('ref-credits-list');
           list.innerHTML = '';
           stats.credits_earned.forEach(function(c) {
-            const label = SERVICE_LABELS[c.service] || c.service;
+            // Build via createElement so untrusted c.service / c.date can't inject HTML
+            const label = SERVICE_LABELS[c.service] || c.service || 'Servicio';
             const date = c.date ? new Date(c.date).toLocaleDateString('es-CO') : '';
-            list.innerHTML += '<div class="ref-credit-item"><div><div class="ref-credit-service">' + label + '</div><div class="ref-credit-date">' + date + '</div></div><div class="ref-credit-amount">+' + c.credits + ' credito</div></div>';
+            const item = document.createElement('div');
+            item.className = 'ref-credit-item';
+            const left = document.createElement('div');
+            const svc = document.createElement('div');
+            svc.className = 'ref-credit-service';
+            svc.textContent = label;
+            const dt = document.createElement('div');
+            dt.className = 'ref-credit-date';
+            dt.textContent = date;
+            left.appendChild(svc);
+            left.appendChild(dt);
+            const amt = document.createElement('div');
+            amt.className = 'ref-credit-amount';
+            amt.textContent = '+' + (Number(c.credits) || 0) + ' credito';
+            item.appendChild(left);
+            item.appendChild(amt);
+            list.appendChild(item);
           });
         } else {
           document.getElementById('ref-credits-section').classList.add('hidden');

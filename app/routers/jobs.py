@@ -29,21 +29,35 @@ async def get_job_status(job_id: str):
     if not job:
         raise HTTPException(404, "Job not found")
 
-    # Auto-fail stuck jobs (older than 30 minutes still in processing/generating)
+    # Auto-fail stuck jobs (older than 30 minutes still in processing/generating).
+    # Only refund if WE successfully transitioned the row from processing -> failed:
+    # the conditional UPDATE returns rows only on the first writer to win, so two
+    # concurrent /status polls (or _process_X already failing) won't double-refund.
     if job["status"] in ("generating", "processing") and job.get("created_at"):
         try:
             created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
             age_minutes = (datetime.now(timezone.utc) - created).total_seconds() / 60
             if age_minutes > 30:
-                await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                    "status": "failed",
-                    "error_message": "La generacion tomo demasiado tiempo. Tu credito fue restaurado.",
-                })
-                from app.services.credits import CreditService
-                credit_svc = CreditService()
-                await credit_svc.refund_credit(job["user_id"], job.get("service_type"))
-                job["status"] = "failed"
-                job["error_message"] = "La generacion tomo demasiado tiempo. Tu credito fue restaurado."
+                # CAS: only succeed if status is still processing/generating
+                updated = await db.update(
+                    "jobs",
+                    {"id": f"eq.{job_id}", "status": f"in.(processing,generating)"},
+                    {
+                        "status": "failed",
+                        "error_message": "La generacion tomo demasiado tiempo. Tu credito fue restaurado.",
+                    },
+                )
+                if updated:
+                    from app.services.credits import CreditService
+                    credit_svc = CreditService()
+                    await credit_svc.refund_credit(job["user_id"], job.get("service_type"))
+                    job["status"] = "failed"
+                    job["error_message"] = "La generacion tomo demasiado tiempo. Tu credito fue restaurado."
+                else:
+                    # Another writer already failed this job; reload to see current state
+                    refreshed = await db.select_one("jobs", {"id": f"eq.{job_id}"})
+                    if refreshed:
+                        job = refreshed
         except (ValueError, TypeError):
             pass
 
