@@ -65,13 +65,20 @@ def build_delivery_email(product_name: str, service_type: str, download_url: str
     }
     label = service_labels.get(service_type, "Contenido")
     subject = f"Tu {label} esta listo — PhinodIA"
+    cta_label = "Abrir landing page" if service_type == "landing_page" else "Descargar ahora"
+    # Only video/image URLs (KIE CDN) expire; landing pages link to /estado/?job_id which doesn't.
+    expiry_note = (
+        '<p style="margin: 32px 0 0; font-size: 12px; color: #86868b;">Tambien puedes verlo en cualquier momento en <a href="https://app.phinodia.com/mis-generaciones" style="color: #0066cc; text-decoration: none;">Mis Generaciones</a>.</p>'
+        if service_type == "landing_page"
+        else '<p style="margin: 32px 0 0; font-size: 12px; color: #86868b;">Descarga el archivo pronto — el enlace de descarga directa expira. Tambien puedes verlo en <a href="https://app.phinodia.com/mis-generaciones" style="color: #0066cc; text-decoration: none;">Mis Generaciones</a>.</p>'
+    )
     content = f"""
         <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; letter-spacing: -0.005em; color: #1d1d1f;">Tu {label} esta listo.</h1>
         <p style="margin: 0 0 32px; font-size: 17px; color: #86868b; line-height: 1.47;">Producto: {product_name}</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius: 980px; background: #1d1d1f;">
-            <a href="{download_url}" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 17px; font-weight: 400; text-decoration: none; letter-spacing: -0.022em;">Descargar ahora</a>
+            <a href="{download_url}" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 17px; font-weight: 400; text-decoration: none; letter-spacing: -0.022em;">{cta_label}</a>
         </td></tr></table>
-        <p style="margin: 32px 0 0; font-size: 12px; color: #86868b;">Este enlace expira en 24 horas.</p>"""
+        {expiry_note}"""
     return subject, _apple_email_base(content)
 
 
