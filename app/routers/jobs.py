@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, EmailStr
 from app.config import Settings
 from app.database import db
 from app.services.kie_ai import KieAIClient
@@ -94,3 +94,52 @@ def _infer_type(service_type: str) -> str:
     if service_type == "image":
         return "jpg"
     return "html"
+
+
+class JobSummary(BaseModel):
+    job_id: str
+    service_type: str
+    status: str
+    result_type: str | None = None
+    result_url: str | None = None
+    input_image_url: str | None = None
+    input_description: str | None = None
+    created_at: str | None = None
+    completed_at: str | None = None
+    error_message: str | None = None
+
+
+@router.get("/by-email", response_model=list[JobSummary])
+async def list_jobs_by_email(email: EmailStr = Query(..., description="User email")):
+    """List all jobs for a user, newest first. For result viewing on /mis-generaciones."""
+    user = await db.select_one("users", {"email": f"eq.{email}"})
+    if not user:
+        return []
+
+    jobs = await db.select("jobs", {
+        "user_id": f"eq.{user['id']}",
+        "order": "created_at.desc",
+        "limit": "100",
+    })
+
+    summaries = []
+    for job in jobs:
+        st = job.get("service_type", "")
+        rt = job.get("result_type") or _infer_type(st)
+        # For landing pages, return job_id link instead of HTML content blob
+        result_url = job.get("result_url")
+        if rt == "html" and result_url:
+            result_url = f"/estado/?job_id={job['id']}"
+        summaries.append(JobSummary(
+            job_id=job["id"],
+            service_type=st,
+            status=job.get("status", "unknown"),
+            result_type=rt,
+            result_url=result_url,
+            input_image_url=job.get("input_image_url"),
+            input_description=job.get("input_description"),
+            created_at=job.get("created_at"),
+            completed_at=job.get("completed_at"),
+            error_message=job.get("error_message"),
+        ))
+    return summaries

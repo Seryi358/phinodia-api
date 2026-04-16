@@ -31,6 +31,7 @@
         <a href="/videos" class="active">Videos</a>
         <a href="/imagenes">Imagenes</a>
         <a href="/landing-pages">Landing Pages</a>
+        <a href="/mis-generaciones">Mis Generaciones</a>
         <a href="/creditos">Mis Creditos</a>
         <a href="/referidos">Referidos</a>
         <a href="/precios" class="nav-cta">Precios</a>
@@ -126,10 +127,11 @@
       <div id="video-result" class="hidden mt-32">
         <div class="status-card">
           <h3 id="video-status-title">Generando tu video...</h3>
-          <p id="video-status-text" style="color: var(--text-secondary); margin: 8px 0 16px;">Esto puede tomar unos minutos. No cierres esta pagina.</p>
+          <p id="video-status-text" style="color: var(--text-secondary); margin: 8px 0 16px;">Esto puede tomar unos minutos. Te enviaremos un correo cuando este listo y podras verlo aqui o en <a href="/mis-generaciones">Mis Generaciones</a>.</p>
           <div class="progress-bar"><div class="progress-fill" id="video-progress" style="width: 0%"></div></div>
           <span class="status-badge processing" id="video-status-badge">Procesando</span>
           <div id="video-download" class="hidden mt-24">
+            <video id="video-result-preview" controls preload="metadata" playsinline style="width: 100%; border-radius: 12px; margin-bottom: 16px; background: #000;"></video>
             <a id="video-download-link" href="#" target="_blank" class="btn btn-primary btn-lg">Descargar video</a>
           </div>
         </div>
@@ -185,6 +187,7 @@
             if (status.result_url) {
               document.getElementById('video-download').classList.remove('hidden');
               document.getElementById('video-download-link').href = status.result_url;
+              document.getElementById('video-result-preview').src = status.result_url;
             }
           } else if (status.status === 'failed') {
             badge.className = 'status-badge failed';

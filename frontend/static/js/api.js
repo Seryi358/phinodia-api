@@ -114,8 +114,16 @@ async function apiGet(path) {
   return data;
 }
 
+// ── Persist email for /mis-generaciones auto-load ──
+function persistEmail(email) {
+  if (email && isValidEmail(email)) {
+    try { localStorage.setItem('phinodia_email', email); } catch (_) {}
+  }
+}
+
 // ── Generate Video ─────────────────────────────
 async function generateVideo(formData) {
+  persistEmail(formData.email);
   return apiPost('/generate/video', {
     email: formData.email,
     image_url: formData.image_url,
@@ -132,6 +140,7 @@ async function generateVideo(formData) {
 
 // ── Generate Image ─────────────────────────────
 async function generateImage(formData) {
+  persistEmail(formData.email);
   return apiPost('/generate/image', {
     email: formData.email,
     image_url: formData.image_url,
@@ -147,6 +156,7 @@ async function generateImage(formData) {
 
 // ── Generate Landing Page ──────────────────────
 async function generateLanding(formData) {
+  persistEmail(formData.email);
   return apiPost('/generate/landing', {
     email: formData.email,
     image_url: formData.image_url,
