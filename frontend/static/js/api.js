@@ -90,8 +90,10 @@ async function handleFileSelect(file, dropzone, preview, urlFieldId) {
   try {
     dropzone.style.opacity = '0.6';
     const res = await fetch(`${API}/upload/image`, { method: 'POST', body: formData });
-    if (!res.ok) throw new Error('Error al subir la imagen');
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.detail || 'Error al subir la imagen');
+    }
     const urlField = document.getElementById(urlFieldId);
     if (urlField) urlField.value = data.url;
     dropzone.style.opacity = '1';
