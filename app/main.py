@@ -28,9 +28,11 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def add_cache_headers(request: Request, call_next):
+async def add_cache_and_security_headers(request: Request, call_next):
     response: Response = await call_next(request)
     path = request.url.path
+
+    # Cache control
     if path.startswith("/static/css/") or path.startswith("/static/js/"):
         response.headers["Cache-Control"] = "public, max-age=3600"
     elif path.startswith("/static/images/"):
@@ -39,6 +41,16 @@ async def add_cache_headers(request: Request, call_next):
         response.headers["Cache-Control"] = "public, max-age=3600"
     elif path.endswith(".html") or path.endswith("/") or path == "/":
         response.headers["Cache-Control"] = "no-cache"
+
+    # Security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # SAMEORIGIN allows the landing page iframe preview on /estado/ and /mis-generaciones/
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # Permissions-Policy: disable APIs we don't use to limit fingerprinting
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
     return response
 
 from app.routers import generate, jobs, credits, payments, upload, referrals  # noqa: E402
