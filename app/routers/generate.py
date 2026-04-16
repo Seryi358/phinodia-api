@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.config import Settings
 from app.database import db
 from app.services.kie_ai import KieAIClient
@@ -74,6 +74,16 @@ def _build_description(req) -> str:
     return "\n".join(parts) if parts else req.description
 
 
+def _validate_image_url(v: str) -> str:
+    """image_url must be http/https — rejects javascript:, file://, empty etc."""
+    v = (v or "").strip()
+    if not v:
+        raise ValueError("image_url is required")
+    if not (v.startswith("http://") or v.startswith("https://")):
+        raise ValueError("image_url must start with http:// or https://")
+    return v
+
+
 class VideoRequest(BaseModel):
     email: EmailStr
     image_url: str = Field(..., max_length=2000)
@@ -85,6 +95,8 @@ class VideoRequest(BaseModel):
     pain_point: str = Field("", max_length=300)
     creative_direction: str = Field("", max_length=500)
     data_consent: bool
+
+    _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
 
 
 class ImageRequest(BaseModel):
@@ -98,6 +110,8 @@ class ImageRequest(BaseModel):
     image_style: str = Field("product", max_length=20)
     data_consent: bool
 
+    _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
+
 
 class LandingRequest(BaseModel):
     email: EmailStr
@@ -107,6 +121,9 @@ class LandingRequest(BaseModel):
     product_category: str = Field("", max_length=300)
     target_audience: str = Field("", max_length=300)
     style_preference: str = Field("", max_length=200)
+    data_consent: bool
+
+    _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
     data_consent: bool
 
 
