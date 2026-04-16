@@ -103,21 +103,36 @@
           if (status.result_url) {
             const preview = document.getElementById('status-preview');
             preview.classList.remove('hidden');
+            preview.innerHTML = '';
             const dl = document.getElementById('status-download');
             const link = document.getElementById('status-download-link');
             if (status.result_type === 'jpg') {
-              preview.innerHTML = '<img src="' + status.result_url + '" alt="Resultado" style="max-width: 100%; border-radius: 12px;">';
+              const img = document.createElement('img');
+              img.src = status.result_url;
+              img.alt = 'Resultado';
+              img.style.cssText = 'max-width: 100%; border-radius: 12px;';
+              preview.appendChild(img);
               link.href = status.result_url;
               link.textContent = 'Descargar imagen';
+              link.onclick = null;
               dl.classList.remove('hidden');
             } else if (status.result_type === 'mp4') {
-              preview.innerHTML = '<video src="' + status.result_url + '" controls preload="metadata" playsinline style="width: 100%; border-radius: 12px; background: #000;"></video>';
+              const video = document.createElement('video');
+              video.src = status.result_url;
+              video.controls = true;
+              video.preload = 'metadata';
+              video.playsInline = true;
+              video.style.cssText = 'width: 100%; border-radius: 12px; background: #000;';
+              preview.appendChild(video);
               link.href = status.result_url;
               link.textContent = 'Descargar video';
+              link.onclick = null;
               dl.classList.remove('hidden');
             } else if (status.result_type === 'html') {
-              preview.innerHTML = '<iframe srcdoc="' + status.result_url.replace(/"/g, '&quot;') + '" style="width: 100%; height: 600px; border: 1px solid var(--border); border-radius: 12px; background: #fff;"></iframe>';
-              // For landing pages, offer download as HTML file
+              const iframe = document.createElement('iframe');
+              iframe.srcdoc = status.result_url;  // setting via property is safe (no parsing)
+              iframe.style.cssText = 'width: 100%; height: 600px; border: 1px solid var(--border); border-radius: 12px; background: #fff;';
+              preview.appendChild(iframe);
               link.textContent = 'Descargar HTML';
               link.href = '#';
               link.onclick = function(ev) {

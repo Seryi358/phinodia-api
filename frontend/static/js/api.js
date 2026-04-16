@@ -24,7 +24,14 @@ function showToast(message, type = 'info') {
   const icons = { success: '\u2713', error: '\u2717', warning: '\u26A0', info: '\u2139' };
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.innerHTML = `<span>${icons[type] || ''}</span><span>${message}</span>`;
+  // Use textContent (not innerHTML) so error messages from the API can't
+  // inject HTML/event handlers (XSS protection).
+  const iconSpan = document.createElement('span');
+  iconSpan.textContent = icons[type] || '';
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = message;
+  toast.appendChild(iconSpan);
+  toast.appendChild(msgSpan);
   container.appendChild(toast);
   setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
 }
