@@ -327,11 +327,36 @@ _KNOWN_API_PREFIXES = (
 )
 
 
+# Per-prefix actual methods so the 405's `Allow` header matches reality.
+# Misleading clients (link-checkers, monitoring tools) with "POST, GET" on
+# GET-only routes wastes their probes and can break method discovery.
+_PREFIX_METHODS = {
+    "/api/v1/generate": "POST",
+    "/api/v1/jobs/status": "GET, HEAD",
+    "/api/v1/jobs/by-email": "GET",
+    "/api/v1/credits/check": "GET",
+    "/api/v1/payments/checkout": "POST",
+    "/api/v1/payments/webhook": "POST",
+    "/api/v1/upload/image": "POST",
+    "/api/v1/referrals/code": "GET",
+    "/api/v1/referrals/stats": "GET",
+    "/api/v1/referrals/register": "POST",
+}
+
+
 @app.api_route("/api/{rest_of_path:path}", methods=["GET", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS", "POST"])
 async def _api_unknown_or_method_not_allowed(rest_of_path: str, request: Request):
     full = "/api/" + rest_of_path
     if any(full.startswith(p) for p in _KNOWN_API_PREFIXES):
-        return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers={"Allow": "POST, GET"})
+        # Find the most-specific matching prefix for an accurate Allow header.
+        best = ""
+        allow = ""
+        for prefix, methods in _PREFIX_METHODS.items():
+            if full.startswith(prefix) and len(prefix) > len(best):
+                best = prefix
+                allow = methods
+        headers = {"Allow": allow} if allow else {}
+        return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers=headers)
     return JSONResponse({"detail": "Not Found"}, status_code=404)
 
 

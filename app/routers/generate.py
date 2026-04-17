@@ -600,6 +600,18 @@ async def _process_landing(job_id: str, req: LandingRequest):
                     await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "landing_page", job_id, "")
                 return
             logger.warning("Landing page invalid or too short (%d chars) on attempt %d", len(html) if html else 0, attempt + 1)
+        except asyncio.CancelledError:
+            # Lifespan-drain cancellation mid-attempt — checkpoint then re-raise
+            # so the credit isn't trapped on a "generating" row until auto-fail.
+            credit_svc = CreditService()
+            user = await credit_svc.get_or_create_user(req.email)
+            await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {"status": "failed", "error_message": "Generacion interrumpida. Tu credito fue restaurado."},
+            )
+            await credit_svc.refund_credit(user["id"], "landing_page")
+            raise
         except Exception as e:
             logger.warning("Landing generation attempt %d failed: %s", attempt + 1, e)
             if attempt < MAX_RETRIES - 1:
