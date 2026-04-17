@@ -352,6 +352,15 @@ _ROUTE_METHODS = {
 @app.api_route("/api/{rest_of_path:path}", methods=["GET", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS", "POST"])
 async def _api_unknown_or_method_not_allowed(rest_of_path: str, request: Request):
     full = "/api/" + rest_of_path
+    # Trailing-slash on a real route — redirect to canonical (no-slash) form.
+    # Starlette's redirect_slashes doesn't fire for us because our catch-all
+    # always matches /api/*; without this, copy-pasted /api/v1/credits/check/
+    # 404s instead of working.
+    if full.endswith("/") and full != "/api/" and (full.rstrip("/") in _ROUTE_METHODS):
+        from fastapi.responses import RedirectResponse
+        qs = request.url.query
+        target = full.rstrip("/") + (("?" + qs) if qs else "")
+        return RedirectResponse(target, status_code=307)
     # /jobs/status/<uuid> is special — only the exact UUID-bearing path is
     # a real route. Treat any /api/v1/jobs/status/<anything> as a 405 if the
     # method is wrong (the actual route would 422 on bad UUID, not 405).

@@ -97,7 +97,8 @@ async def wompi_webhook(event: dict):
             logger.error("Webhook environment mismatch: expected wompi_env=%s, got event.environment=%s — forcing Wompi retry", settings.wompi_environment, ev_env_raw)
             raise HTTPException(503, "wompi env mismatch — retry")
 
-    tx_data = event.get("data", {}).get("transaction", {})
+    # Use `or {}` not dict default — explicit null in payload would .get on None.
+    tx_data = (event.get("data") or {}).get("transaction") or {}
     status = tx_data.get("status")
     if status != "APPROVED":
         logger.info("Transaction %s status: %s — no credits granted", tx_data.get("id"), status)
