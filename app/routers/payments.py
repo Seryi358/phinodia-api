@@ -254,9 +254,13 @@ async def wompi_webhook(event: dict):
     # Fire-and-forget email so a slow Gmail OAuth refresh doesn't push the
     # webhook response past Wompi's ~30s timeout (which would trigger a
     # retry and double-send the email even though the credit grant is
-    # idempotent). The pipeline-side delivery emails in generate.py already
-    # run inside background tasks, so they don't have this blocking concern.
-    asyncio.create_task(asyncio.to_thread(_send_purchase_email))
+    # idempotent). Hold a strong ref in the same _background_tasks set the
+    # generate pipeline uses, otherwise asyncio's GC could collect the task
+    # before the email actually sends.
+    from app.routers.generate import _background_tasks
+    _email_task = asyncio.create_task(asyncio.to_thread(_send_purchase_email))
+    _background_tasks.add(_email_task)
+    _email_task.add_done_callback(_background_tasks.discard)
 
     logger.info("Granted %d %s credits (tx: %s)", package["credits"], package["service"], reference)
     return {"status": "ok", "action": "credits_granted", "credits": package["credits"]}
