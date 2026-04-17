@@ -96,6 +96,10 @@ async def _validation_handler(request: Request, exc: RequestValidationError):
             msgs.append(f"{label.capitalize()} no puede estar vacio")
         elif "string_too_long" in etype or "max_length" in etype:
             msgs.append(f"{label.capitalize()} es demasiado largo")
+        elif etype in ("json_invalid", "json_type") or "json" in etype:
+            msgs.append("Cuerpo invalido: se esperaba JSON valido")
+        elif "model_attributes_type" in etype or "dict_type" in etype or "model_type" in etype:
+            msgs.append("Cuerpo invalido: se esperaba un objeto JSON")
         else:
             msgs.append(msg or f"Valor no valido en {label}")
     detail = "; ".join(msgs) if msgs else "Datos invalidos"
@@ -148,6 +152,17 @@ _RATE_LIMIT = 30   # requests
 _RATE_WINDOW = 60  # seconds
 
 
+_RATE_BUCKET_MAX = 5000  # if dict exceeds this, sweep stale entries
+
+
+def _evict_stale_buckets(now: float) -> None:
+    """Drop buckets whose newest entry is older than the rate window. Called
+    periodically when the dict grows large to bound memory under attack."""
+    stale = [k for k, b in _rate_buckets.items() if not b or now - b[-1] > _RATE_WINDOW]
+    for k in stale:
+        _rate_buckets.pop(k, None)
+
+
 @app.middleware("http")
 async def rate_limit_email_lookups(request: Request, call_next):
     path = request.url.path
@@ -159,8 +174,13 @@ async def rate_limit_email_lookups(request: Request, call_next):
         # and exhaust both the limit and our memory.
         client_ip = (request.client.host if request.client else "unknown")
         key = (client_ip, path)
-        bucket = _rate_buckets[key]
         now = _time.monotonic()
+        # Periodic sweep of stale buckets to bound dict size under burst
+        # traffic / NAT churn — prior `if not bucket: pop` after append was
+        # dead code (bucket always non-empty after appending).
+        if len(_rate_buckets) > _RATE_BUCKET_MAX:
+            _evict_stale_buckets(now)
+        bucket = _rate_buckets[key]
         # drop entries older than window
         while bucket and now - bucket[0] > _RATE_WINDOW:
             bucket.popleft()
@@ -173,10 +193,6 @@ async def rate_limit_email_lookups(request: Request, call_next):
                 headers={"Retry-After": str(retry_in)},
             )
         bucket.append(now)
-        # Free buckets that emptied during cleanup so the dict can't grow
-        # unbounded over time (e.g. one IP per request from a NAT).
-        if not bucket:
-            _rate_buckets.pop(key, None)
     return await call_next(request)
 
 
@@ -259,7 +275,10 @@ async def robots():
 @app.api_route("/sitemap.xml", methods=["GET", "HEAD"])
 async def sitemap():
     from fastapi.responses import Response
-    pages = ["/", "/videos", "/imagenes", "/landing-pages", "/precios", "/referidos"]
+    # Trailing slashes match what FastAPI redirects to, so crawlers don't
+    # have to follow a 307 hop on every URL (Google "Page with redirect"
+    # warning in Search Console).
+    pages = ["/", "/videos/", "/imagenes/", "/landing-pages/", "/precios/", "/referidos/"]
     urls = "\n".join(
         f"  <url><loc>https://app.phinodia.com{p}</loc><changefreq>weekly</changefreq></url>"
         for p in pages

@@ -29,9 +29,10 @@ def _send_delivery_email_safe(email: str, product_name: str, service_type: str, 
             refresh_token=settings.gmail_refresh_token, sender_email=settings.gmail_sender_email,
         )
         sender.send_email(to=email, subject=subject, html_body=html)
-        logger.info("Delivery email sent to %s for job %s", email, job_id)
+        # Don't log the email address — Habeas Data (Ley 1581). job_id is enough.
+        logger.info("Delivery email sent for job %s", job_id)
     except Exception as e:
-        logger.warning("Failed to send delivery email to %s for job %s: %s", email, job_id, e)
+        logger.warning("Failed to send delivery email for job %s: %s", job_id, type(e).__name__)
 
 # Hold references to background tasks to prevent GC collection
 _background_tasks: set = set()
@@ -285,16 +286,24 @@ async def _process_video(job_id: str, req: VideoRequest):
                 await credit_svc.refund_credit(user["id"], service_type)
             return
 
-        # Save base video result URL — write it to result_url IMMEDIATELY so a
-        # mid-extension worker crash leaves the user with a recoverable 8s video
-        # instead of nothing (status polling reads result_url, kie_task_id may
-        # point at a failed extension by the time of the crash).
+        # Save base video result URL — write it IMMEDIATELY so a mid-extension
+        # worker crash leaves the user with a recoverable 8s video. CAS-guarded
+        # so an auto-fail that beat us doesn't end up with a "failed" row that
+        # also has a populated result_url (would expose a deliverable on a
+        # refunded job, gifting the user a free video).
         base_result_url = base_status["result_urls"][0] if base_status.get("result_urls") else ""
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {
-            "kie_task_id": task_id,
-            "result_url": base_result_url,
-            "result_type": "mp4",
-        })
+        saved = await db.update(
+            "jobs",
+            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+            {
+                "kie_task_id": task_id,
+                "result_url": base_result_url,
+                "result_type": "mp4",
+            },
+        )
+        if not saved:
+            logger.info("Video job %s already terminated; not saving partial result_url", job_id)
+            return
 
         # Step 6: Extend video for durations > 8s
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)

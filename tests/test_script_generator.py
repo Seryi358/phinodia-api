@@ -198,6 +198,8 @@ async def test_generate_extension_prompt():
         assert "applies" in ext_prompt.lower()
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
-        # System prompt should reference the time range
-        assert "0-8" in messages[0]["content"]
-        assert "extension #1" in messages[1]["content"].lower()
+        # User message (not system) carries time range + the user-controlled
+        # original prompt — system stays static so injected instructions in
+        # the original_prompt can't override our guidance.
+        assert "0-8" in messages[1]["content"]
+        assert "continuation #1" in messages[1]["content"].lower()

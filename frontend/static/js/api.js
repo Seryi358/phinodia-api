@@ -4,6 +4,17 @@
 
 const API = window.location.origin + '/api/v1';
 
+// ── URL Safety ────────────────────────────────
+// Reject anything that isn't an https URL or a same-origin /path. Used as
+// defense-in-depth before assigning attacker-influenceable strings to
+// <a>.href / <img>.src / <video>.src — protects against javascript:, data:,
+// file:, etc. URI schemes that browsers would otherwise execute.
+function isSafeMediaUrl(u) {
+  if (typeof u !== 'string') return false;
+  const t = u.trim();
+  return /^https:\/\//i.test(t) || t.startsWith('/');
+}
+
 // ── Email Validation ──────────────────────────
 // Reject leading/trailing dots in the local part, consecutive dots anywhere,
 // no-dot domains, and TLDs shorter than 2 chars. Matches what Pydantic's

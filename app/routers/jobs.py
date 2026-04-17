@@ -35,36 +35,61 @@ async def get_job_status(job_id: UUID):
     job_id = job_id_str  # rest of function uses .format / f-strings on this
 
     # Auto-fail stuck jobs (older than 30 minutes still in processing/generating).
-    # Only refund if WE successfully transitioned the row from processing -> failed:
-    # the conditional UPDATE returns rows only on the first writer to win, so two
-    # concurrent /status polls (or _process_X already failing) won't double-refund.
+    # CAS-guarded: only the first writer wins, so concurrent polls and the
+    # worker can't both refund. Critically: if the row already has a partial
+    # result_url (e.g. base 8s saved while extensions slow), mark it
+    # completed-with-warning instead of failing+refunding — otherwise the
+    # user gets the partial deliverable AND a refund (free product).
+    import logging
+    logger = logging.getLogger(__name__)
     if job["status"] in ("generating", "processing") and job.get("created_at"):
         try:
             created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
             age_minutes = (datetime.now(timezone.utc) - created).total_seconds() / 60
             if age_minutes > 30:
-                # CAS: only succeed if status is still processing/generating
-                updated = await db.update(
-                    "jobs",
-                    {"id": f"eq.{job_id}", "status": f"in.(processing,generating)"},
-                    {
-                        "status": "failed",
-                        "error_message": "La generacion tomo demasiado tiempo. Tu credito fue restaurado.",
-                    },
-                )
-                if updated:
-                    from app.services.credits import CreditService
-                    credit_svc = CreditService()
-                    await credit_svc.refund_credit(job["user_id"], job.get("service_type"))
-                    job["status"] = "failed"
-                    job["error_message"] = "La generacion tomo demasiado tiempo. Tu credito fue restaurado."
+                if job.get("result_url"):
+                    # Partial deliverable already saved — promote to completed
+                    # with a warning instead of refunding.
+                    promoted = await db.update(
+                        "jobs",
+                        {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                        {
+                            "status": "completed",
+                            "completed_at": datetime.now(timezone.utc).isoformat(),
+                            "error_message": "La generacion tomo mas de 30 minutos pero tu resultado parcial esta listo.",
+                        },
+                    )
+                    if promoted:
+                        logger.info("Auto-promoted long-running job %s to completed (partial result existed)", job_id)
+                        job["status"] = "completed"
+                        job["error_message"] = "La generacion tomo mas de 30 minutos pero tu resultado parcial esta listo."
                 else:
-                    # Another writer already failed this job; reload to see current state
-                    refreshed = await db.select_one("jobs", {"id": f"eq.{job_id}"})
-                    if refreshed:
-                        job = refreshed
-        except (ValueError, TypeError):
-            pass
+                    updated = await db.update(
+                        "jobs",
+                        {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                        {
+                            "status": "failed",
+                            "error_message": "La generacion tomo demasiado tiempo. Tu credito fue restaurado.",
+                        },
+                    )
+                    if updated:
+                        from app.services.credits import CreditService
+                        credit_svc = CreditService()
+                        service_type = job.get("service_type")
+                        if service_type:
+                            await credit_svc.refund_credit(job["user_id"], service_type)
+                        else:
+                            logger.error("Auto-failed job %s missing service_type — credit not refunded, manual review", job_id)
+                        logger.info("Auto-failed stuck job %s (age=%.1fmin)", job_id, age_minutes)
+                        job["status"] = "failed"
+                        job["error_message"] = "La generacion tomo demasiado tiempo. Tu credito fue restaurado."
+                    else:
+                        # Another writer already terminated this job; reload to see current state
+                        refreshed = await db.select_one("jobs", {"id": f"eq.{job_id}"})
+                        if refreshed:
+                            job = refreshed
+        except (ValueError, TypeError) as e:
+            logger.warning("Auto-fail timestamp parse failed for job %s: %r", job_id, job.get("created_at"))
 
     if job.get("kie_task_id") and job["status"] in ("generating", "processing"):
         kie = KieAIClient(api_key=settings.kie_api_key)
@@ -76,21 +101,39 @@ async def get_job_status(job_id: UUID):
         mapped_status = KIE_STATE_MAP.get(kie_status["state"], job["status"])
 
         if mapped_status == "completed" and kie_status["result_urls"]:
-            await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                "status": "completed",
-                "result_url": kie_status["result_urls"][0],
-                "result_type": _infer_type(job["service_type"]),
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-            })
+            # CAS-guarded: don't resurrect an auto-failed-and-refunded job.
+            await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {
+                    "status": "completed",
+                    "result_url": kie_status["result_urls"][0],
+                    "result_type": _infer_type(job["service_type"]),
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "error_message": None,
+                },
+            )
             job["status"] = "completed"
             job["result_url"] = kie_status["result_urls"][0]
             job["result_type"] = _infer_type(job["service_type"])
         elif mapped_status == "failed":
-            await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                "status": "failed", "error_message": "Generation failed at provider",
-            })
-            job["status"] = "failed"
-            job["error_message"] = "Generation failed at provider"
+            # KIE reported failure. CAS-guard so we don't clobber a worker's
+            # successful "completed" write that landed concurrently. Refund
+            # the credit since the worker won't (it'd CAS-fail too).
+            failed_now = await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {"status": "failed", "error_message": "El proveedor de IA fallo. Tu credito fue restaurado."},
+            )
+            if failed_now:
+                from app.services.credits import CreditService
+                credit_svc = CreditService()
+                service_type = job.get("service_type")
+                if service_type:
+                    await credit_svc.refund_credit(job["user_id"], service_type)
+                logger.info("KIE-fail terminal for job %s — credit refunded", job_id)
+                job["status"] = "failed"
+                job["error_message"] = "El proveedor de IA fallo. Tu credito fue restaurado."
 
         return JobStatusResponse(
             job_id=job["id"], status=job["status"],

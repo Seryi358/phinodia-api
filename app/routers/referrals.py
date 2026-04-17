@@ -210,7 +210,8 @@ async def register_referral(req: RegisterReferralRequest, request: Request):
         "status": "REFERRAL",
     })
 
-    logger.info("Referral registered: %s referred by code %s", req.referred_email, code)
+    # Don't log the referee email — Habeas Data. Code is enough for ops.
+    logger.info("Referral registered for code %s", code)
     return {"status": "ok", "message": "Referido registrado exitosamente"}
 
 
@@ -329,7 +330,6 @@ async def process_referral_bonus(customer_email: str, service_type: str):
         {"status": "REFERRAL_BONUS"},
     )
 
-    logger.info(
-        "Referral bonus: granted 1 %s credit to %s (referrer of %s)",
-        service_type, referrer_email, email,
-    )
+    # Don't log either email — would build a referrer→referee social graph
+    # in plain logs. bonus_tx_id encodes the linkage non-readably.
+    logger.info("Referral bonus granted: service=%s bonus_tx=%s", service_type, bonus_tx_id)

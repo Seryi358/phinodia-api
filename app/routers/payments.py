@@ -194,7 +194,8 @@ async def wompi_webhook(event: dict):
     try:
         await process_referral_bonus(customer_email, package["service"])
     except Exception as e:
-        logger.warning("Failed to process referral bonus for %s: %s", customer_email, e)
+        # Don't log the customer email — Habeas Data. tx id suffices for ops.
+        logger.warning("Failed to process referral bonus for tx %s: %s", wompi_tx_id, type(e).__name__)
 
     # CAS-guarded final flip: only overwrite the GRANTING we set ourselves.
     # Without the status filter, a manual-recovery operator who flipped the
