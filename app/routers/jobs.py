@@ -224,16 +224,31 @@ async def get_job_status(job_id: UUID, request: Request):
         return JobStatusResponse(
             job_id=job["id"], status=job["status"],
             progress=kie_status.get("progress", 0),
-            result_url=job.get("result_url"), result_type=job.get("result_type"),
+            result_url=_normalize_result(job.get("result_url"), job.get("result_type")),
+            result_type=job.get("result_type"),
             error_message=job.get("error_message"),
         )
 
     return JobStatusResponse(
         job_id=job["id"], status=job["status"],
         progress=100 if job["status"] == "completed" else 0,
-        result_url=job.get("result_url"), result_type=job.get("result_type"),
+        result_url=_normalize_result(job.get("result_url"), job.get("result_type")),
+        result_type=job.get("result_type"),
         error_message=job.get("error_message"),
     )
+
+
+# Strip the legacy internal EasyPanel hostname from URLs AND from any HTML
+# payload (landing pages embed the hero image's URL inside <style> background
+# rules, which is what was leaking the host into the rendered page).
+_INTERNAL_HOST_RE = __import__('re').compile(
+    r'https://(?:[a-z0-9-]+\.)?zb12wf\.easypanel\.host', __import__('re').I
+)
+def _normalize_result(value: str | None, result_type: str | None) -> str | None:
+    if not value:
+        return value
+    public = (settings.api_base_url or "https://app.phinodia.com").rstrip("/")
+    return _INTERNAL_HOST_RE.sub(public, value)
 
 
 def _infer_type(service_type: str) -> str:
@@ -279,18 +294,9 @@ async def list_jobs_by_email(
 
     summaries = []
     # Legacy rows hold the EasyPanel internal hostname in input_image_url
-    # because earlier versions of upload/image used `request.url.hostname`
-    # instead of api_base_url. Rewrite both fields on serialization so old
-    # /mis-generaciones thumbnails stop leaking infra to anyone (curl,
-    # mobile clients) — not just to the JS client which already patched it.
-    public_host = (settings.api_base_url or "https://app.phinodia.com").rstrip("/")
-    import re as _re
-    _internal = _re.compile(r'^https://(?:[a-z0-9-]+\.)?zb12wf\.easypanel\.host', _re.I)
-    def _normalize(u: str | None) -> str | None:
-        if not u:
-            return u
-        return _internal.sub(public_host, u, count=1)
-
+    # AND inside the landing-page HTML (background-image: url(...) inside
+    # <style>). Normalize on serialization so /mis-generaciones thumbnails,
+    # download links and rendered landings all use the public hostname.
     for job in jobs:
         st = job.get("service_type", "")
         rt = job.get("result_type") or _infer_type(st)
@@ -299,14 +305,14 @@ async def list_jobs_by_email(
         if rt == "html" and result_url:
             result_url = f"/estado/?job_id={job['id']}"
         else:
-            result_url = _normalize(result_url)
+            result_url = _normalize_result(result_url, rt)
         summaries.append(JobSummary(
             job_id=job["id"],
             service_type=st,
             status=job.get("status", "unknown"),
             result_type=rt,
             result_url=result_url,
-            input_image_url=_normalize(job.get("input_image_url")),
+            input_image_url=_normalize_result(job.get("input_image_url"), "url"),
             input_description=job.get("input_description"),
             created_at=job.get("created_at"),
             completed_at=job.get("completed_at"),

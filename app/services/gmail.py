@@ -61,9 +61,9 @@ def _apple_email_base(content: str) -> str:
     </td></tr>
     <!-- Footer -->
     <tr><td style="padding: 24px 0 0; text-align: center;">
-        <p style="margin: 0; font-size: 12px; color: #86868b; line-height: 1.5;">PhinodIA — Automatiza Sin Limites</p>
-        <p style="margin: 8px 0 0; font-size: 11px; color: #86868b; line-height: 1.5;">Conforme a la Ley 1581 de 2012, tus datos personales son tratados segun nuestra <a href="https://phinodia.com/politica-de-privacidad/" style="color: #0066cc; text-decoration: none;">Politica de Privacidad</a>.</p>
-        <p style="margin: 8px 0 0; font-size: 11px; color: #86868b;"><a href="https://phinodia.com/condiciones-del-servicio/" style="color: #86868b; text-decoration: none;">Terminos</a> &nbsp;|&nbsp; <a href="https://phinodia.com/habeas-data/" style="color: #86868b; text-decoration: none;">Habeas Data</a></p>
+        <p style="margin: 0; font-size: 12px; color: #86868b; line-height: 1.5;">PhinodIA — Automatiza Sin Límites</p>
+        <p style="margin: 8px 0 0; font-size: 11px; color: #86868b; line-height: 1.5;">Conforme a la Ley 1581 de 2012, tus datos personales son tratados según nuestra <a href="https://phinodia.com/politica-de-privacidad/" style="color: #0066cc; text-decoration: none;">Política de Privacidad</a>.</p>
+        <p style="margin: 8px 0 0; font-size: 11px; color: #86868b;"><a href="https://phinodia.com/condiciones-del-servicio/" style="color: #86868b; text-decoration: none;">Términos</a> &nbsp;|&nbsp; <a href="https://phinodia.com/habeas-data/" style="color: #86868b; text-decoration: none;">Habeas Data</a></p>
     </td></tr>
 </table>
 </td></tr>
@@ -79,13 +79,18 @@ def build_delivery_email(product_name: str, service_type: str, download_url: str
         "image": "Imagen de producto", "landing_page": "Landing Page",
     }
     label = service_labels.get(service_type, "Contenido")
-    subject = f"Tu {label} esta listo — PhinodIA"
+    # Spanish gender — "imagen" and "landing page" are feminine, the rest are masculine.
+    is_feminine = service_type in ("image", "landing_page")
+    listo = "lista" if is_feminine else "listo"
+    subject = f"Tu {label} está {listo} — PhinodIA"
     cta_label = "Abrir landing page" if service_type == "landing_page" else "Descargar ahora"
-    # Only video/image URLs (KIE CDN) expire; landing pages link to /estado/?job_id which doesn't.
+    # Result URLs are now mirrored to our own /uploads/results/ so neither
+    # videos/images nor landing pages have a hard expiry — keep the
+    # "tambien en Mis Generaciones" pointer but drop the alarmist tone.
     expiry_note = (
-        '<p style="margin: 32px 0 0; font-size: 12px; color: #86868b;">Tambien puedes verlo en cualquier momento en <a href="https://app.phinodia.com/mis-generaciones" style="color: #0066cc; text-decoration: none;">Mis Generaciones</a>.</p>'
-        if service_type == "landing_page"
-        else '<p style="margin: 32px 0 0; font-size: 12px; color: #86868b;">Descarga el archivo pronto — el enlace de descarga directa expira. Tambien puedes verlo en <a href="https://app.phinodia.com/mis-generaciones" style="color: #0066cc; text-decoration: none;">Mis Generaciones</a>.</p>'
+        '<p style="margin: 32px 0 0; font-size: 12px; color: #86868b;">'
+        'También puedes verlo cuando quieras en <a href="https://app.phinodia.com/mis-generaciones" style="color: #0066cc; text-decoration: none;">Mis Generaciones</a>.'
+        '</p>'
     )
     safe_product = html.escape(product_name or "")
     safe_link = _safe_url(download_url)
@@ -94,7 +99,7 @@ def build_delivery_email(product_name: str, service_type: str, download_url: str
         # trust — better to drop the CTA than to email a javascript: link.
         safe_link = "https://app.phinodia.com/mis-generaciones"
     content = f"""
-        <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; letter-spacing: -0.005em; color: #1d1d1f;">Tu {label} esta listo.</h1>
+        <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; letter-spacing: -0.005em; color: #1d1d1f;">Tu {label} está {listo}.</h1>
         <p style="margin: 0 0 32px; font-size: 17px; color: #86868b; line-height: 1.47;">Producto: {safe_product}</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius: 980px; background: #1d1d1f;">
             <a href="{safe_link}" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 17px; font-weight: 400; text-decoration: none; letter-spacing: -0.022em;">{cta_label}</a>
@@ -110,12 +115,12 @@ def build_purchase_email(email: str, plan_name: str, credits: int, service_type:
         "video_22s": "Videos de 22 segundos", "video_30s": "Videos de 30 segundos",
         "image": "Imagenes de producto", "landing_page": "Landing Pages",
     }
-    label = service_labels.get(service_type, "Creditos")
-    subject = f"Compra confirmada — {credits} creditos de {label}"
+    label = service_labels.get(service_type, "Créditos")
+    subject = f"Compra confirmada — {credits} créditos de {label}"
     app_url = "https://app.phinodia.com"
     content = f"""
         <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; letter-spacing: -0.005em; color: #1d1d1f;">Compra confirmada.</h1>
-        <p style="margin: 0 0 32px; font-size: 17px; color: #86868b; line-height: 1.47;">Tus creditos ya estan disponibles para usar.</p>
+        <p style="margin: 0 0 32px; font-size: 17px; color: #86868b; line-height: 1.47;">Tus créditos ya están disponibles para usar.</p>
 
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 32px;">
             <tr><td style="padding: 24px; background: #f5f5f7; border-radius: 12px;">
@@ -125,7 +130,7 @@ def build_purchase_email(email: str, plan_name: str, credits: int, service_type:
                         <td style="font-size: 14px; color: #1d1d1f; text-align: right; padding-bottom: 12px; font-weight: 600;">{label}</td>
                     </tr>
                     <tr>
-                        <td style="font-size: 14px; color: #86868b; padding-bottom: 12px;">Creditos agregados</td>
+                        <td style="font-size: 14px; color: #86868b; padding-bottom: 12px;">Créditos agregados</td>
                         <td style="font-size: 14px; color: #1d1d1f; text-align: right; padding-bottom: 12px; font-weight: 600;">{credits}</td>
                     </tr>
                     <tr>
