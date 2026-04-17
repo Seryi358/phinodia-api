@@ -156,6 +156,7 @@ _RATE_LIMITED_PATHS = (
     "/api/v1/upload/image",
     "/api/v1/payments/checkout",
     "/api/v1/contact",
+    "/api/v1/preview-emails",
 )
 _RATE_LIMIT = 30   # requests
 _RATE_WINDOW = 60  # seconds

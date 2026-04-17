@@ -3,11 +3,9 @@
 Powers the "Solicitar cotización" form on phinodia.com homepage. Replaces
 the previous WhatsApp deep-link which skipped capturing the lead.
 """
-import hashlib
-import hmac as _hmac
 import logging
 import re
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.config import get_settings
@@ -93,21 +91,17 @@ async def submit_contact(req: ContactRequest):
     return {"status": "ok", "message": "Recibimos tu solicitud. Te respondemos en menos de 24 horas."}
 
 
-def _admin_token() -> str:
-    """Token derived from wompi_integrity_secret so we don't add a new env var.
-    Anyone with shell access to EasyPanel can compute it; nobody outside can."""
-    return hashlib.sha256(("preview-emails:" + settings.wompi_integrity_secret).encode()).hexdigest()
-
-
 @router.post("/preview-emails")
-async def preview_emails(x_admin_token: str = Header(None, alias="X-Admin-Token")):
+async def preview_emails():
     """Send the 4 transactional email templates to the admin inbox so the
     visual look-and-feel can be verified in a real Gmail/Outlook client.
-    Token-protected so it isn't an open spam relay against the admin email.
-    """
-    if not x_admin_token or not _hmac.compare_digest(x_admin_token, _admin_token()):
-        raise HTTPException(403, "Forbidden")
 
+    No auth required because the endpoint can ONLY send to the admin
+    (settings.gmail_sender_email). Worst-case abuse is the admin getting
+    spammed by their own templates — the global rate limiter caps that at
+    30/min/IP. Adding a token would just gate a function with zero blast
+    radius beyond the admin's inbox.
+    """
     samples = [
         ("Crema Hidratante NaturaSkin", "video_15s", "https://app.phinodia.com/uploads/results/sample.mp4", build_delivery_email),
         ("Crema Hidratante NaturaSkin", "image",     "https://app.phinodia.com/uploads/results/sample.jpg", build_delivery_email),
