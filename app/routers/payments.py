@@ -227,7 +227,17 @@ async def wompi_webhook(event: dict):
         await process_referral_bonus(customer_email, package["service"])
     except Exception as e:
         # Don't log the customer email — Habeas Data. tx id suffices for ops.
-        logger.warning("Failed to process referral bonus for tx %s: %s", wompi_tx_id, type(e).__name__)
+        # Log at error level — this WOULD silently lose a referrer credit if
+        # we just shrug. Roll the GRANTING flip back to PENDING_GRANT so the
+        # next Wompi retry re-runs the referral bonus path. The PENDING_BONUS
+        # lock inside process_referral_bonus prevents double-credit.
+        logger.error("Failed to process referral bonus for tx %s: %s — rolling back for retry", wompi_tx_id, type(e).__name__)
+        await db.update(
+            "transactions",
+            {"wompi_transaction_id": f"eq.{wompi_tx_id}", "status": "eq.GRANTING"},
+            {"status": "PENDING_GRANT"},
+        )
+        return {"status": "ok", "action": "retry_referral"}
 
     # CAS-guarded final flip: only overwrite the GRANTING we set ourselves.
     # Without the status filter, a manual-recovery operator who flipped the
