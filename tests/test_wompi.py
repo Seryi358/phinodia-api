@@ -5,22 +5,14 @@ import pytest
 def test_verify_webhook_signature_valid():
     from app.services.wompi import verify_webhook_signature
     secret = "test_events_secret_123"
-    # Iter 6 expanded required signed properties to include customer_email +
-    # reference + currency so an attacker with leaked secret can't redirect
-    # credits to their own email or alter SKU/amount.
-    properties = [
-        "transaction.id", "transaction.status", "transaction.amount_in_cents",
-        "transaction.customer_email", "transaction.reference", "transaction.currency",
-    ]
-    concat = "123-abcAPPROVED3999000a@b.comPH-image_10-1700000000-abcd1234COP1700000000" + secret
+    # Wompi only signs id/status/amount_in_cents in production webhooks.
+    # Requiring more here would 403 every legit webhook.
+    properties = ["transaction.id", "transaction.status", "transaction.amount_in_cents"]
+    concat = "123-abcAPPROVED39990001700000000" + secret
     expected_checksum = hashlib.sha256(concat.encode()).hexdigest()
     event = {
         "event": "transaction.updated",
-        "data": {"transaction": {
-            "id": "123-abc", "status": "APPROVED", "amount_in_cents": 3999000,
-            "customer_email": "a@b.com", "reference": "PH-image_10-1700000000-abcd1234",
-            "currency": "COP",
-        }},
+        "data": {"transaction": {"id": "123-abc", "status": "APPROVED", "amount_in_cents": 3999000}},
         "signature": {"properties": properties, "checksum": expected_checksum},
         "timestamp": 1700000000,
     }
@@ -33,30 +25,12 @@ def test_verify_webhook_signature_invalid():
         "event": "transaction.updated",
         "data": {"transaction": {"id": "x", "status": "APPROVED", "amount_in_cents": 3999000}},
         "signature": {
-            "properties": [
-                "transaction.id", "transaction.status", "transaction.amount_in_cents",
-                "transaction.customer_email", "transaction.reference", "transaction.currency",
-            ],
+            "properties": ["transaction.id", "transaction.status", "transaction.amount_in_cents"],
             "checksum": "definitely_wrong",
         },
         "timestamp": 1700000000,
     }
     assert verify_webhook_signature(event, "test_secret") is False
-
-
-def test_verify_webhook_signature_rejects_missing_required_props():
-    """An attacker who only signs id/status/amount can't redirect credits."""
-    from app.services.wompi import verify_webhook_signature
-    event = {
-        "event": "transaction.updated",
-        "data": {"transaction": {"id": "x", "status": "APPROVED", "amount_in_cents": 1199000}},
-        "signature": {
-            "properties": ["transaction.id", "transaction.status", "transaction.amount_in_cents"],
-            "checksum": "anything",
-        },
-        "timestamp": 1700000000,
-    }
-    assert verify_webhook_signature(event, "test_secret_1234567890") is False
 
 
 def test_resolve_property_nested():
