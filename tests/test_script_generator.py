@@ -118,8 +118,10 @@ async def test_generate_landing_page():
         assert "<!DOCTYPE html>" in html
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
-        # AIDA appears in user template, not system prompt for landing
-        assert "AIDA" in messages[1]["content"]
+        # Buyer persona is the primary input the prompt structures around now;
+        # was "AIDA" before the v2 prompt rewrite.
+        assert "BUYER PERSONA" in messages[1]["content"]
+        assert "Crema Facial Glow" in messages[1]["content"]
 
 
 @pytest.mark.asyncio

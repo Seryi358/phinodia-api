@@ -167,4 +167,6 @@ Rules:
             buyer_persona=_esc(buyer_persona) or "Not available",
             extra_images="\n".join(_esc(u) for u in extra_image_urls) if extra_image_urls else "None",
         )
+        # 16K → 16K still enough; bump only the landing call. gpt-4o caps
+        # output at 16384 tokens so 16000 is the practical max.
         return await self._call_gpt(LANDING_SYSTEM, user_msg, max_tokens=16000)
