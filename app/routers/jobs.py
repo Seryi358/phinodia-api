@@ -76,10 +76,6 @@ async def get_job_status(job_id: UUID, request: Request):
                         logger.info("Auto-promoted long-running job %s to completed (partial result existed)", job_id)
                         job["status"] = "completed"
                         job["error_message"] = partial_msg
-                elif job.get("result_url") and multi_step:
-                    # Inside the 30-60min window for a multi-step video — let
-                    # the worker keep extending. Return current state.
-                    pass
                 else:
                     updated = await db.update(
                         "jobs",

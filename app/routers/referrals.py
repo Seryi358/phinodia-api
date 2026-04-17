@@ -303,6 +303,14 @@ async def process_referral_bonus(customer_email: str, service_type: str):
         if existing and existing.get("status") in ("REFERRAL_BONUS", "GRANTING_BONUS"):
             logger.info("Referral bonus in-progress or finalized for %s: %s", bonus_tx_id, e)
             return
+        if not existing:
+            # Genuine insert failure (Supabase 5xx, network blip), not a
+            # UNIQUE-collision race. Re-raise so the caller (payments
+            # webhook) can return 503 and Wompi retries — otherwise the
+            # referrer's bonus is silently lost forever (the next purchase
+            # webhook short-circuits on duplicate APPROVED).
+            logger.error("Referral bonus insert failed for %s with no recovery row: %s — re-raising", bonus_tx_id, e)
+            raise
 
     flipped = await db.update(
         "transactions",
