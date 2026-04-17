@@ -322,30 +322,27 @@ app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
 
-# Catch-all for /api/* paths the routers didn't match. Distinguish:
-# - known prefix + wrong method -> 405 with Allow header
-# - truly unknown path          -> 404 (don't leak prefix existence)
-_KNOWN_API_PREFIXES = (
-    "/api/v1/generate",
-    "/api/v1/jobs",
-    "/api/v1/credits",
-    "/api/v1/payments",
-    "/api/v1/upload",
-    "/api/v1/referrals",
-)
-
-
-# Per-prefix actual methods so the 405's `Allow` header matches reality.
-# Misleading clients (link-checkers, monitoring tools) with "POST, GET" on
-# GET-only routes wastes their probes and can break method discovery.
-_PREFIX_METHODS = {
-    "/api/v1/generate": "POST",
-    "/api/v1/jobs/status": "GET, HEAD",
-    "/api/v1/jobs/by-email": "GET",
+# Catch-all for /api/* paths the routers didn't match. Returns 405 with the
+# accurate Allow header only for paths that DO exist as routes; otherwise 404.
+# Map of EXACT route paths (matching FastAPI router registrations) to the
+# methods they accept. The 405 fallback only fires for an exact match here;
+# anything else returns 404 (don't leak prefix existence + don't waste
+# clients' probes on routes that don't exist).
+_ROUTE_METHODS = {
+    # generate
+    "/api/v1/generate/video": "POST",
+    "/api/v1/generate/image": "POST",
+    "/api/v1/generate/landing": "POST",
+    # jobs (status takes a UUID path arg — match by prefix in code below)
+    "/api/v1/jobs/by-email": "GET, HEAD",
+    # credits
     "/api/v1/credits/check": "GET",
+    # payments
     "/api/v1/payments/checkout": "POST",
     "/api/v1/payments/webhook": "POST",
+    # upload
     "/api/v1/upload/image": "POST",
+    # referrals
     "/api/v1/referrals/code": "GET",
     "/api/v1/referrals/stats": "GET",
     "/api/v1/referrals/register": "POST",
@@ -355,16 +352,14 @@ _PREFIX_METHODS = {
 @app.api_route("/api/{rest_of_path:path}", methods=["GET", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS", "POST"])
 async def _api_unknown_or_method_not_allowed(rest_of_path: str, request: Request):
     full = "/api/" + rest_of_path
-    if any(full.startswith(p) for p in _KNOWN_API_PREFIXES):
-        # Find the most-specific matching prefix for an accurate Allow header.
-        best = ""
-        allow = ""
-        for prefix, methods in _PREFIX_METHODS.items():
-            if full.startswith(prefix) and len(prefix) > len(best):
-                best = prefix
-                allow = methods
-        headers = {"Allow": allow} if allow else {}
-        return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers=headers)
+    # /jobs/status/<uuid> is special — only the exact UUID-bearing path is
+    # a real route. Treat any /api/v1/jobs/status/<anything> as a 405 if the
+    # method is wrong (the actual route would 422 on bad UUID, not 405).
+    if full.startswith("/api/v1/jobs/status/"):
+        return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers={"Allow": "GET, HEAD"})
+    allow = _ROUTE_METHODS.get(full)
+    if allow:
+        return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers={"Allow": allow})
     return JSONResponse({"detail": "Not Found"}, status_code=404)
 
 
