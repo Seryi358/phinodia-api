@@ -9,7 +9,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1777200000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1778000000">
 </head>
 <body>
 
@@ -73,7 +73,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1777200000"></script>
+  <script src="/static/js/api.js?v=1778000000"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     if (params.get('job_id')) {
@@ -140,7 +140,7 @@
             } else if (status.result_type === 'html') {
               const iframe = document.createElement('iframe');
               // Sandbox the landing-page preview: srcdoc inherits parent origin, so
-              // any JS in the OpenAI-generated HTML would otherwise run with our
+              // any JS in the AI-generated HTML would otherwise run with our
               // privileges. Omitting allow-same-origin denies fetch/storage access;
               // omitting allow-popups-to-escape-sandbox denies window.open break-out.
               iframe.setAttribute('sandbox', '');
