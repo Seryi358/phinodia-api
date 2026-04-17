@@ -5,8 +5,17 @@
 const API = window.location.origin + '/api/v1';
 
 // ── Email Validation ──────────────────────────
+// Reject leading/trailing dots in the local part, consecutive dots anywhere,
+// no-dot domains, and TLDs shorter than 2 chars. Matches what Pydantic's
+// EmailStr will accept on the server side.
 function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (typeof email !== 'string') return false;
+  const e = email.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) return false;
+  if (/\.\./.test(e)) return false;
+  const local = e.split('@')[0];
+  if (local.startsWith('.') || local.endsWith('.')) return false;
+  return true;
 }
 
 // ── Toast Notifications ────────────────────────
@@ -63,12 +72,17 @@ function initFileUpload(dropzoneId, previewId, urlFieldId) {
 }
 
 async function handleFileSelect(file, dropzone, preview, urlFieldId) {
-  if (!file.type.startsWith('image/')) {
-    showToast('Solo se permiten imagenes', 'error');
+  // Server enforces JPEG/PNG/WebP via magic bytes; mirror it client-side so
+  // SVG (with embedded JS) and HEIC fail before they even hit the network.
+  const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
+  if (!ALLOWED.has(file.type)) {
+    showToast('Solo se permiten JPEG, PNG o WebP', 'error');
     return;
   }
-  if (file.size > 10 * 1024 * 1024) {
-    showToast('La imagen no puede superar 10MB', 'error');
+  // Leave headroom for multipart overhead so the server's 10MB cap doesn't
+  // reject files the user thinks are within bounds.
+  if (file.size > 9.5 * 1024 * 1024) {
+    showToast('La imagen no puede superar 9.5MB', 'error');
     return;
   }
 
@@ -105,22 +119,56 @@ async function handleFileSelect(file, dropzone, preview, urlFieldId) {
 }
 
 // ── API Calls ──────────────────────────────────
+// Helper: parse JSON body, but never throw if the server returned HTML / empty
+// (5xx behind a CDN, network blip, etc) — the caller deserves a clean message.
+async function _safeJson(res) {
+  try { return await res.json(); } catch (_) { return {}; }
+}
+
 async function apiPost(path, body) {
-  const res = await fetch(`${API}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || 'Error en la solicitud');
+  let res;
+  try {
+    res = await fetch(`${API}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (_) {
+    throw new Error('Sin conexion. Verifica tu red e intenta de nuevo.');
+  }
+  const data = await _safeJson(res);
+  if (!res.ok) {
+    const err = new Error(data.detail || `Error ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
 async function apiGet(path) {
-  const res = await fetch(`${API}${path}`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || 'Error en la solicitud');
+  let res;
+  try {
+    res = await fetch(`${API}${path}`);
+  } catch (_) {
+    throw new Error('Sin conexion. Verifica tu red e intenta de nuevo.');
+  }
+  const data = await _safeJson(res);
+  if (!res.ok) {
+    const err = new Error(data.detail || `Error ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return data;
+}
+
+// Convenience: redirect to /precios on 402 from any generate flow.
+function handleGenerateError(err) {
+  if (err && err.status === 402) {
+    showToast('Sin creditos. Te llevamos a la tienda...', 'warning');
+    setTimeout(() => { window.location.href = '/precios'; }, 1500);
+    return true;
+  }
+  return false;
 }
 
 // ── Persist email for /mis-generaciones auto-load ──
@@ -215,13 +263,27 @@ async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
         safeUpdate({ status: 'error', error_message: 'Trabajo no encontrado. Verifica el ID.', progress: 0 });
         return;
       }
-      const data = await res.json();
+      const data = await _safeJson(res);
+      // 5xx is transient (Supabase blip, KIE provider hiccup) — retry instead
+      // of marking the whole job lost. The status row exists; the worker is
+      // still cooking the result.
+      if (res.status >= 500) {
+        networkErrors++;
+        if (networkErrors >= maxNetworkErrors) {
+          safeUpdate({ status: 'error', error_message: 'Servidor con problemas. Recarga la pagina.', progress: 0 });
+          return;
+        }
+        setTimeout(poll, intervalMs * 2);
+        return;
+      }
       if (!res.ok) {
         safeUpdate({ status: 'error', error_message: data.detail || 'Error al consultar estado.', progress: 0 });
         return;
       }
       networkErrors = 0;
-      safeUpdate(data);
+      // Wrap onUpdate so a buggy consumer callback (e.g. accessing a null DOM
+      // node) doesn't kill the loop and freeze the user's progress bar.
+      try { safeUpdate(data); } catch (e) { /* swallow consumer errors */ }
       if (data.status === 'completed' || data.status === 'failed') return;
       setTimeout(poll, intervalMs);
     } catch (err) {
@@ -237,6 +299,10 @@ async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
   poll();
   return handle;  // caller can do handle.cancelled = true to stop early
 }
+
+// Stop in-flight polls when the user navigates away — otherwise mobile Safari
+// keeps firing requests in the background tab until the tab is killed.
+window.addEventListener('pagehide', cancelAllPolls);
 
 // ── Credits Balance ────────────────────────────
 async function getCredits(email) {
@@ -293,9 +359,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const toggle = document.querySelector('.nav-toggle');
   const links = document.querySelector('.nav-links');
   if (toggle && links) {
-    toggle.addEventListener('click', () => links.classList.toggle('open'));
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', 'nav-links');
+    links.id = links.id || 'nav-links';
+    const setOpen = (open) => {
+      links.classList.toggle('open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOpen(!links.classList.contains('open'));
+    });
     links.querySelectorAll('a').forEach(a => {
-      a.addEventListener('click', () => links.classList.remove('open'));
+      a.addEventListener('click', () => setOpen(false));
+    });
+    // Tap anywhere outside the menu closes it (otherwise the user is trapped
+    // having to reach back up to the corner hamburger).
+    document.addEventListener('click', (e) => {
+      if (!links.classList.contains('open')) return;
+      if (toggle.contains(e.target) || links.contains(e.target)) return;
+      setOpen(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') setOpen(false);
     });
   }
 
@@ -315,9 +401,20 @@ function getFormData(formId) {
   if (!form) return {};
   const data = {};
   form.querySelectorAll('input, textarea, select').forEach(el => {
-    if (el.type === 'checkbox') data[el.name] = el.checked;
-    else if (el.type === 'file') return;
-    else data[el.name] = el.value;
+    if (!el.name) return;
+    if (el.type === 'file') return;
+    if (el.type === 'checkbox') {
+      data[el.name] = el.checked;
+      return;
+    }
+    if (el.type === 'radio') {
+      // Only take the value of the *checked* radio in the group; otherwise
+      // the last-iterated radio overwrites the checked one.
+      if (el.checked) data[el.name] = el.value;
+      else if (!(el.name in data)) data[el.name] = '';
+      return;
+    }
+    data[el.name] = el.value;
   });
   return data;
 }
@@ -326,13 +423,30 @@ function setLoading(btnId, loading) {
   const btn = document.getElementById(btnId);
   if (!btn) return;
   if (loading) {
+    // Re-entrant guard: if we're already loading, don't capture the spinner
+    // text as the "original" — that would freeze the button label as
+    // "Procesando..." forever after a retry.
+    if (!btn._isLoading) {
+      btn._originalText = btn.textContent;
+      btn._isLoading = true;
+    }
     btn.disabled = true;
-    btn._originalText = btn.textContent;
     btn.innerHTML = '<div class="spinner"></div> Procesando...';
   } else {
     btn.disabled = false;
     btn.textContent = btn._originalText || 'Generar';
+    btn._isLoading = false;
   }
+}
+
+// Reset a generation form back to its initial state so the user can retry
+// without a hard reload after a failure or completed generation.
+function resetGenerateForm(formId, resultId, submitBtnId) {
+  const form = document.getElementById(formId);
+  const result = document.getElementById(resultId);
+  if (form) form.classList.remove('hidden');
+  if (result) result.classList.add('hidden');
+  if (submitBtnId) setLoading(submitBtnId, false);
 }
 
 // ── Format Price ───────────────────────────────

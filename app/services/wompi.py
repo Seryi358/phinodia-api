@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 
 PACKAGES_BY_SKU = {
     # Videos 8s (Reel Express) — 3 planes
@@ -59,10 +60,24 @@ def _resolve_property(data: dict, path: str):
     return current
 
 
+# Signature MUST cover at least these fields, otherwise an attacker (with leaked
+# secret OR an empty `properties` list event) could forge events with arbitrary
+# transaction details.
+_REQUIRED_SIGNED_PROPS = frozenset({
+    "transaction.id",
+    "transaction.status",
+    "transaction.amount_in_cents",
+})
+
+
 def verify_webhook_signature(event: dict, events_secret: str) -> bool:
     signature = event.get("signature", {})
     properties = signature.get("properties", [])
     expected_checksum = signature.get("checksum", "")
+    if not isinstance(properties, list) or not _REQUIRED_SIGNED_PROPS.issubset(set(properties)):
+        return False
+    if not isinstance(expected_checksum, str) or not expected_checksum:
+        return False
     values = []
     for prop in properties:
         val = _resolve_property(event.get("data", {}), prop)
@@ -73,4 +88,5 @@ def verify_webhook_signature(event: dict, events_secret: str) -> bool:
     values.append(events_secret)
     concat = "".join(values)
     computed = hashlib.sha256(concat.encode()).hexdigest()
-    return computed == expected_checksum
+    # Constant-time compare avoids signature-byte timing leak.
+    return hmac.compare_digest(computed, expected_checksum)

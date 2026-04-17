@@ -52,6 +52,12 @@ async def create_checkout(req: CheckoutRequest):
     )
 
 
+# Reject webhooks with timestamp drift > REPLAY_WINDOW_SECONDS to mitigate
+# replay attacks and old-secret leakage. Wompi delivers within seconds; allow
+# 5 min for clock skew + retries.
+REPLAY_WINDOW_SECONDS = 300
+
+
 @router.post("/webhook")
 async def wompi_webhook(event: dict):
     if not verify_webhook_signature(event, settings.wompi_events_secret):
@@ -59,11 +65,29 @@ async def wompi_webhook(event: dict):
     if event.get("event") != "transaction.updated":
         return {"status": "ignored"}
 
+    # Replay protection: reject events older than the window. event["timestamp"]
+    # is a unix epoch (seconds) in Wompi's payload; missing/malformed → reject.
+    ev_ts = event.get("timestamp")
+    try:
+        ev_ts_int = int(ev_ts)
+    except (TypeError, ValueError):
+        logger.warning("Webhook missing/invalid timestamp")
+        return {"status": "ok", "action": "bad_timestamp"}
+    if abs(int(time.time()) - ev_ts_int) > REPLAY_WINDOW_SECONDS:
+        logger.warning("Webhook timestamp %s outside replay window", ev_ts_int)
+        return {"status": "ok", "action": "stale_timestamp"}
+
     tx_data = event.get("data", {}).get("transaction", {})
     status = tx_data.get("status")
     if status != "APPROVED":
         logger.info("Transaction %s status: %s — no credits granted", tx_data.get("id"), status)
         return {"status": "ok", "action": "none"}
+
+    # Currency must be COP — our packages are priced in COP cents and a rogue/
+    # mistaken USD payment would happen to match an unrelated COP price level.
+    if tx_data.get("currency") != "COP":
+        logger.warning("Webhook currency %r != COP for tx %s", tx_data.get("currency"), tx_data.get("id"))
+        return {"status": "ok", "action": "bad_currency"}
 
     amount = tx_data.get("amount_in_cents", 0)
     reference = tx_data.get("reference", "")
@@ -81,8 +105,12 @@ async def wompi_webhook(event: dict):
         return {"status": "ok", "action": "bad_reference"}
     sku_from_ref = "-".join(ref_parts[1:-2])
 
-    # Deduplicate: check if this transaction was already processed
-    wompi_tx_id = str(tx_data.get("id", reference))
+    # Wompi's tx id is mandatory — without it we have no idempotency key.
+    wompi_tx_id_raw = tx_data.get("id")
+    if not wompi_tx_id_raw:
+        logger.warning("Webhook missing transaction.id for ref %r", reference)
+        return {"status": "ok", "action": "missing_tx_id"}
+    wompi_tx_id = str(wompi_tx_id_raw)
     existing = await db.select_one("transactions", {"wompi_transaction_id": f"eq.{wompi_tx_id}"})
     if existing:
         logger.info("Duplicate webhook for tx %s — ignoring", wompi_tx_id)
@@ -96,17 +124,25 @@ async def wompi_webhook(event: dict):
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(customer_email)
 
-    # Record transaction in Supabase
+    # Order matters: insert the transaction row BEFORE granting credits. If grant
+    # fails we leave the row with status=PENDING_GRANT so a manual sweep can
+    # retry without double-granting (the dedupe above will block re-runs of this
+    # exact webhook). DB UNIQUE on wompi_transaction_id is the real serializer.
     await db.insert("transactions", {
         "user_id": user["id"],
         "plan_name": f"{package['service']}_{package['credits']}",
         "credits_added": package["credits"],
         "amount_cop": amount,
         "wompi_transaction_id": wompi_tx_id,
-        "status": status,
+        "status": "PENDING_GRANT",
     })
 
     await credit_svc.grant_credits(user["id"], package["service"], package["credits"])
+    await db.update(
+        "transactions",
+        {"wompi_transaction_id": f"eq.{wompi_tx_id}"},
+        {"status": status},
+    )
 
     # Send purchase confirmation email — Gmail SDK is sync; run in thread to avoid
     # blocking the event loop while Wompi waits for our 200 OK.

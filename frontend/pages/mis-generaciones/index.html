@@ -9,7 +9,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776381000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776470000">
   <style>
     .gen-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;margin-top:24px}
     .gen-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;transition:transform var(--transition),box-shadow var(--transition)}
@@ -87,7 +87,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776381000"></script>
+  <script src="/static/js/api.js?v=1776470000"></script>
   <script>
     const TYPE_LABELS = {
       video_8s: 'Video 8s', video_15s: 'Video 15s',
@@ -99,6 +99,17 @@
       if (!s) return '';
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
               .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // Allow only https:// URLs (CDN-served media) and same-origin /paths.
+    // Blocks javascript:, data:, file:, etc — necessary because escapeHtml
+    // does NOT neutralize URI schemes when interpolated into href/src attrs.
+    function safeUrl(u) {
+      if (typeof u !== 'string') return '';
+      const trimmed = u.trim();
+      if (/^https:\/\//i.test(trimmed)) return trimmed;
+      if (trimmed.startsWith('/')) return trimmed;
+      return '';
     }
 
     function fmtDate(iso) {
@@ -116,7 +127,9 @@
     }
 
     function imgWithFallback(src, alt, rt) {
-      const safeSrc = escapeHtml(src);
+      const cleanSrc = safeUrl(src);
+      if (!cleanSrc) return `<div class="gen-media-fallback">${fallbackLetter(rt)}</div>`;
+      const safeSrc = escapeHtml(cleanSrc);
       const letter = fallbackLetter(rt);
       // onerror replaces broken image with a fallback letter (handles expired KIE URLs)
       return `<img src="${safeSrc}" alt="${escapeHtml(alt)}" loading="lazy" onerror="this.outerHTML='&lt;div class=&quot;gen-media-fallback&quot;&gt;${letter}&lt;/div&gt;'">`;
@@ -145,12 +158,19 @@
       if (job.status !== 'completed') {
         return `<a class="gen-btn gen-btn-secondary" href="/estado/?job_id=${encodeURIComponent(job.job_id)}">Ver estado</a>`;
       }
+      const cleanResult = safeUrl(job.result_url);
       if (job.result_type === 'html') {
-        return `<a class="gen-btn gen-btn-primary" href="${escapeHtml(job.result_url)}">Abrir landing</a>`;
+        // Landings always link to /estado/?job_id=… even if the URL was tampered.
+        const fallback = `/estado/?job_id=${encodeURIComponent(job.job_id)}`;
+        const href = cleanResult || fallback;
+        return `<a class="gen-btn gen-btn-primary" href="${escapeHtml(href)}">Abrir landing</a>`;
+      }
+      if (!cleanResult) {
+        return `<a class="gen-btn gen-btn-secondary" href="/estado/?job_id=${encodeURIComponent(job.job_id)}">Ver detalles</a>`;
       }
       const label = job.result_type === 'mp4' ? 'Descargar video' : 'Descargar';
       return `
-        <a class="gen-btn gen-btn-primary" href="${escapeHtml(job.result_url)}" target="_blank" rel="noopener">${label}</a>
+        <a class="gen-btn gen-btn-primary" href="${escapeHtml(cleanResult)}" target="_blank" rel="noopener">${label}</a>
         <a class="gen-btn gen-btn-secondary" href="/estado/?job_id=${encodeURIComponent(job.job_id)}">Detalles</a>
       `;
     }
@@ -179,11 +199,11 @@
           showToast(data.detail || 'Error al consultar', 'error');
           return;
         }
-        const jobs = await res.json();
+        const jobs = (await res.json()) || [];
         const grid = document.getElementById('gen-grid');
         document.getElementById('gen-results').classList.remove('hidden');
 
-        if (!jobs.length) {
+        if (!Array.isArray(jobs) || !jobs.length) {
           grid.innerHTML = `
             <div class="gen-empty" style="grid-column: 1 / -1;">
               <p>Aun no has generado contenido con este correo.</p>

@@ -9,7 +9,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776381000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776470000">
 </head>
 <body>
 
@@ -43,7 +43,7 @@
           <label for="credits-email">Tu correo electronico</label>
           <input type="email" id="credits-email" class="form-input" placeholder="tucorreo@ejemplo.com">
         </div>
-        <button class="btn btn-primary btn-block" onclick="checkCredits()">Consultar creditos</button>
+        <button id="credits-submit" class="btn btn-primary btn-block" onclick="checkCredits()">Consultar creditos</button>
       </div>
 
       <div id="credits-result" class="hidden mt-24">
@@ -67,7 +67,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776381000"></script>
+  <script src="/static/js/api.js?v=1776470000"></script>
   <script>
     const LABELS = {
       video_8s: 'Videos 8s',
@@ -85,6 +85,9 @@
         return;
       }
 
+      // Disable the button while in-flight so impatient users don't race-fire
+      // 5 parallel requests and exhaust the 30/min/IP rate limit.
+      setLoading('credits-submit', true);
       try {
         const balance = await getCredits(email);
         const grid = document.getElementById('credits-grid');
@@ -105,6 +108,8 @@
         document.getElementById('credits-result').classList.remove('hidden');
       } catch (err) {
         showToast(err.message, 'error');
+      } finally {
+        setLoading('credits-submit', false);
       }
     }
   </script>

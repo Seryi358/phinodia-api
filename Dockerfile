@@ -11,8 +11,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ app/
 COPY frontend/ frontend/
 
-# Create data directories
-RUN mkdir -p data/uploads
+# Create data directories AND a non-root user so any future RCE in the upload/
+# image pipeline doesn't run as root inside the container.
+RUN mkdir -p data/uploads \
+    && useradd --uid 1000 --create-home --shell /usr/sbin/nologin app \
+    && chown -R app:app /app
+USER app
 
 EXPOSE 8000
 

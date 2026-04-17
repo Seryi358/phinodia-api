@@ -36,7 +36,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776381000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776470000">
   <script src="https://checkout.wompi.co/widget.js"></script>
   <style>
     .demo-section{max-width:800px;margin:0 auto 64px;text-align:center}
@@ -49,11 +49,6 @@
     .currency-bar{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:32px}
     .currency-btn{padding:6px 16px;border-radius:980px;font-size:12px;font-weight:500;border:1px solid var(--border);background:none;cursor:pointer;color:var(--text-secondary);transition:all var(--transition)}
     .currency-btn.active{background:var(--text);color:#fff;border-color:var(--text)}
-    .pricing-original{font-size:14px;color:var(--text-secondary);text-decoration:line-through;margin-bottom:4px}
-    .pricing-discount{display:inline-block;background:rgba(36,138,61,0.1);color:var(--success);font-size:11px;font-weight:600;padding:2px 8px;border-radius:980px;margin-bottom:8px}
-    .scarcity{font-size:11px;color:var(--warning);margin-top:12px;font-weight:500}
-    .scarcity-dot{display:inline-block;width:6px;height:6px;background:var(--warning);border-radius:50%;margin-right:4px;animation:pulse 2s infinite}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
     @media(max-width:768px){
       .demo-grid{grid-template-columns:1fr;gap:16px}
       .demo-arrow{transform:rotate(90deg)}
@@ -182,7 +177,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776381000"></script>
+  <script src="/static/js/api.js?v=1776470000"></script>
   <script>
     const RATE = 5000;
     let currency = 'COP';
@@ -220,8 +215,6 @@
       ],
     }
 
-    const SCARCITY = [7, 4, 12, 9, 5, 11, 8, 3, 6, 10];
-
     function fmt(amount) {
       if (currency === 'USD') {
         const usd = Math.round(amount / RATE);
@@ -240,28 +233,25 @@
     }
 
     function renderPlans() {
-      let si = 0;
+      // Removed fake "-50%" badge and per-card "scarcity" counter — both were
+      // not backed by real reference prices or inventory and risk falling foul
+      // of Colombia's Estatuto del Consumidor (Decreto 1369) on misleading
+      // advertising. Re-add only with real, verifiable data.
       for (const [gridId, plans] of Object.entries(PLANS)) {
         const grid = document.getElementById(gridId);
         if (!grid) continue;
         grid.innerHTML = '';
         for (const p of plans) {
-          const original = p.price * 2;
           const perUnit = fmtPer(p.price, p.credits);
-          const sc = SCARCITY[si % SCARCITY.length];
-          si++;
           const unitLabel = p.label === 'landing pages' ? 'landing' : (p.label === 'imagenes' ? 'imagen' : 'video');
           grid.innerHTML += `
             <div class="pricing-card${p.popular ? ' popular' : ''}">
               <div style="font-size:12px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${p.name || ''}</div>
               <div class="pricing-credits">${p.credits}</div>
               <div class="pricing-label">${p.label}</div>
-              <div class="pricing-discount">-50%</div>
-              <div class="pricing-original">${fmt(original)}</div>
               <div class="pricing-price">${fmt(p.price)}</div>
               <div class="pricing-per">${perUnit} por ${unitLabel}</div>
-              <button class="btn ${p.popular ? 'btn-primary' : 'btn-secondary'} btn-block btn-sm" onclick="buyPlan('${p.sku}')">Comprar</button>
-              <div class="scarcity"><span class="scarcity-dot"></span>Quedan ${sc} cupos a este precio</div>
+              <button class="btn ${p.popular ? 'btn-primary' : 'btn-secondary'} btn-block btn-sm" data-sku="${p.sku}" onclick="buyPlan('${p.sku}', this)">Comprar</button>
             </div>`;
         }
       }
@@ -290,7 +280,9 @@
       }
     })();
 
-    function buyPlan(sku) {
+    let _checkoutInFlight = false;
+
+    async function buyPlan(sku, btn) {
       const email = document.getElementById('pricing-email').value.trim();
       if (!email || !isValidEmail(email)) {
         showToast('Ingresa tu correo electronico primero', 'error');
@@ -298,30 +290,43 @@
         return;
       }
 
-      // Register referral if ref code exists in localStorage
-      const refCode = localStorage.getItem('phinodia_ref');
-      if (refCode) {
-        fetch(API + '/referrals/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ referred_email: email, referral_code: refCode }),
-        }).catch(function() {});  // Fire and forget
+      // Debounce: stop the user from spamming "Comprar" while the previous
+      // checkout request/widget is still being prepared (otherwise N modals
+      // stack and N orphan references hit the backend).
+      if (_checkoutInFlight) return;
+      _checkoutInFlight = true;
+      const buttons = document.querySelectorAll('button[data-sku]');
+      buttons.forEach(b => { b.disabled = true; });
+
+      try {
+        // Register referral if ref code exists in localStorage
+        const refCode = localStorage.getItem('phinodia_ref');
+        if (refCode) {
+          fetch(API + '/referrals/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ referred_email: email, referral_code: refCode }),
+          }).catch(function() {});  // Fire and forget
+        }
+
+        // Redirect to gracias page based on service type for Meta Pixel Purchase event
+        let graciasPage = 'https://phinodia.com/gracias-video/';
+        if (sku.startsWith('image')) graciasPage = 'https://phinodia.com/gracias-imagenes/';
+        if (sku.startsWith('landing')) graciasPage = 'https://phinodia.com/gracias-landing/';
+
+        // Find the plan price for the event value
+        let planPrice = 0;
+        for (const plans of Object.values(PLANS)) {
+          const found = plans.find(p => p.sku === sku);
+          if (found) { planPrice = found.price; break; }
+        }
+
+        const redirectUrl = graciasPage + '?plan=' + sku + '&value=' + planPrice;
+        await openWompiCheckout(sku, email, redirectUrl);
+      } finally {
+        _checkoutInFlight = false;
+        buttons.forEach(b => { b.disabled = false; });
       }
-
-      // Redirect to gracias page based on service type for Meta Pixel Purchase event
-      let graciasPage = 'https://phinodia.com/gracias-video/';
-      if (sku.startsWith('image')) graciasPage = 'https://phinodia.com/gracias-imagenes/';
-      if (sku.startsWith('landing')) graciasPage = 'https://phinodia.com/gracias-landing/';
-
-      // Find the plan price for the event value
-      let planPrice = 0;
-      for (const plans of Object.values(PLANS)) {
-        const found = plans.find(p => p.sku === sku);
-        if (found) { planPrice = found.price; break; }
-      }
-
-      const redirectUrl = graciasPage + '?plan=' + sku + '&value=' + planPrice;
-      openWompiCheckout(sku, email, redirectUrl);
     }
 
     renderPlans();

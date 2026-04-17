@@ -91,10 +91,13 @@ async def get_referral_stats(email: EmailStr = Query(..., description="User emai
         "order": "created_at.desc",
     })
 
-    # Filter to only those where the wompi_transaction_id contains this user's code
+    # Match either the new "ref|code|email" or the legacy "ref_code_email" format.
+    new_prefix = f"ref|{code}|"
+    legacy_prefix = f"ref_{code}_"
     my_referrals = [
         r for r in registrations
-        if r.get("wompi_transaction_id", "").startswith(f"ref_{code}_")
+        if r.get("wompi_transaction_id", "").startswith(new_prefix)
+        or r.get("wompi_transaction_id", "").startswith(legacy_prefix)
     ]
 
     # Fetch all bonus transactions for this referrer once
@@ -102,20 +105,35 @@ async def get_referral_stats(email: EmailStr = Query(..., description="User emai
         "plan_name": "like.referral_bonus_%",
         "status": "eq.REFERRAL_BONUS",
     })
+    new_bonus_prefix = f"refbonus|{code}|"
+    legacy_bonus_prefix = f"refbonus_{code}_"
     my_bonuses = [
         b for b in bonus_transactions
-        if b.get("wompi_transaction_id", "").startswith(f"refbonus_{code}_")
+        if b.get("wompi_transaction_id", "").startswith(new_bonus_prefix)
+        or b.get("wompi_transaction_id", "").startswith(legacy_bonus_prefix)
     ]
-    bonus_emails = {
-        b.get("wompi_transaction_id", "").split(f"refbonus_{code}_", 1)[-1]
-        for b in my_bonuses
-    }
+
+    def _bonus_email(tx_id: str) -> str:
+        if tx_id.startswith(new_bonus_prefix):
+            return tx_id[len(new_bonus_prefix):]
+        if tx_id.startswith(legacy_bonus_prefix):
+            return tx_id[len(legacy_bonus_prefix):]
+        return ""
+
+    def _referral_email(tx_id: str) -> str:
+        if tx_id.startswith(new_prefix):
+            return tx_id[len(new_prefix):]
+        if tx_id.startswith(legacy_prefix):
+            return tx_id[len(legacy_prefix):]
+        return ""
+
+    bonus_emails = {_bonus_email(b.get("wompi_transaction_id", "")) for b in my_bonuses}
 
     # Count pending vs completed
     pending = 0
     completed = 0
     for ref in my_referrals:
-        referred_email = ref.get("wompi_transaction_id", "").split(f"ref_{code}_", 1)[-1]
+        referred_email = _referral_email(ref.get("wompi_transaction_id", ""))
         if referred_email in bonus_emails:
             completed += 1
         else:
@@ -144,20 +162,12 @@ async def get_referral_stats(email: EmailStr = Query(..., description="User emai
 async def register_referral(req: RegisterReferralRequest, request: Request):
     """Register a referral when someone signs up via a referral link.
 
-    Anti-fraud: only accepts a registration when the request was made from a
-    browser that actually visited /precios?ref=<code> first (referer header
-    contains '?ref=<code>' or contains '/precios'). Otherwise an attacker who
-    knows their own code could pre-register arbitrary victim emails to harvest
-    bonus credits when the victim eventually buys.
+    The Referer header is attacker-controlled, so we don't gate on it. Real
+    anti-fraud is enforced downstream: the referrer only earns a credit when
+    the referred email's webhook-verified purchase fires (process_referral_bonus).
+    Pre-binding random emails here without a real purchase grants nothing.
     """
     code = req.referral_code.upper().strip()
-    referer = request.headers.get("referer", "")
-
-    # Reject: must come from a browser that loaded a phinodia /precios page.
-    # We don't pin the exact ref code in the referer because the user may bounce
-    # through other pages — the precios origin is enough proof.
-    if "/precios" not in referer or "phinodia.com" not in referer:
-        raise HTTPException(400, "Solicitud invalida")
 
     # Validate referral code: find who it belongs to
     referrer_email = await find_referrer_email(code)
@@ -168,13 +178,16 @@ async def register_referral(req: RegisterReferralRequest, request: Request):
     if req.referred_email.lower().strip() == referrer_email.lower().strip():
         raise HTTPException(400, "No puedes referirte a ti mismo")
 
-    # Check if this user was already referred
+    # Check if this user was already referred. Use a non-overlapping separator
+    # ("|") so emails containing "_" can't suffix-match unrelated registrations.
+    referred = req.referred_email.lower().strip()
     existing = await db.select("transactions", {
         "plan_name": "eq.referral_registration",
         "status": "eq.REFERRAL",
     })
     already_referred = any(
-        r.get("wompi_transaction_id", "").endswith(f"_{req.referred_email.lower().strip()}")
+        r.get("wompi_transaction_id", "").endswith(f"|{referred}")
+        or r.get("wompi_transaction_id", "").endswith(f"_{referred}")  # legacy rows
         for r in existing
     )
     if already_referred:
@@ -184,13 +197,16 @@ async def register_referral(req: RegisterReferralRequest, request: Request):
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(req.referred_email.lower().strip())
 
-    # Record the referral as a transaction with special plan_name
+    # Record the referral as a transaction with special plan_name. The "|" is
+    # used as a separator that cannot appear in either a code (hex) or an
+    # email (RFC 5322 forbids it in the addr-spec without quoting), so parsing
+    # back the (code, email) pair is unambiguous.
     await db.insert("transactions", {
         "user_id": user["id"],
         "plan_name": "referral_registration",
         "credits_added": 0,
         "amount_cop": 0,
-        "wompi_transaction_id": f"ref_{code}_{req.referred_email.lower().strip()}",
+        "wompi_transaction_id": f"ref|{code}|{referred}",
         "status": "REFERRAL",
     })
 
@@ -206,7 +222,9 @@ async def process_referral_bonus(customer_email: str, service_type: str):
     """
     email = customer_email.lower().strip()
 
-    # Check if this user was referred (has a referral_registration transaction)
+    # Check if this user was referred (has a referral_registration transaction).
+    # Match new "ref|code|email" or legacy "ref_code_email"; the new format
+    # avoids suffix collisions for emails that share trailing characters.
     registrations = await db.select("transactions", {
         "plan_name": "eq.referral_registration",
         "status": "eq.REFERRAL",
@@ -214,19 +232,25 @@ async def process_referral_bonus(customer_email: str, service_type: str):
     referral = None
     for r in registrations:
         tx_id = r.get("wompi_transaction_id", "")
-        if tx_id.endswith(f"_{email}"):
+        if tx_id.endswith(f"|{email}") or tx_id.endswith(f"_{email}"):
             referral = r
             break
 
     if not referral:
         return  # User was not referred
 
-    # Extract referrer code from the transaction ID (format: ref_{code}_{email})
+    # Extract referrer code from the transaction ID (handle both formats)
     tx_id = referral.get("wompi_transaction_id", "")
-    parts = tx_id.split("_")
-    if len(parts) < 3:
-        return
-    referrer_code = parts[1]
+    if tx_id.startswith("ref|"):
+        parts = tx_id.split("|")
+        if len(parts) < 3:
+            return
+        referrer_code = parts[1]
+    else:
+        parts = tx_id.split("_")
+        if len(parts) < 3:
+            return
+        referrer_code = parts[1]
 
     # Check if bonus was already granted for this referral
     existing_bonuses = await db.select("transactions", {
@@ -234,7 +258,10 @@ async def process_referral_bonus(customer_email: str, service_type: str):
         "status": "eq.REFERRAL_BONUS",
     })
     already_granted = any(
-        b.get("wompi_transaction_id", "").startswith(f"refbonus_{referrer_code}_{email}")
+        b.get("wompi_transaction_id", "") in (
+            f"refbonus|{referrer_code}|{email}",
+            f"refbonus_{referrer_code}_{email}",
+        )
         for b in existing_bonuses
     )
     if already_granted:
@@ -246,20 +273,28 @@ async def process_referral_bonus(customer_email: str, service_type: str):
         logger.warning("Could not find referrer for code %s", referrer_code)
         return
 
-    # Grant 1 credit of the same service type to the referrer
+    # Grant 1 credit of the same service type to the referrer. Insert the bonus
+    # row BEFORE granting so a concurrent webhook racing on the same referee
+    # collides on the eventual UNIQUE(wompi_transaction_id) constraint and the
+    # second writer's grant_credits never runs.
     credit_svc = CreditService()
     referrer_user = await credit_svc.get_or_create_user(referrer_email)
+    bonus_tx_id = f"refbonus|{referrer_code}|{email}"
+    try:
+        await db.insert("transactions", {
+            "user_id": referrer_user["id"],
+            "plan_name": f"referral_bonus_{service_type}",
+            "credits_added": 1,
+            "amount_cop": 0,
+            "wompi_transaction_id": bonus_tx_id,
+            "status": "REFERRAL_BONUS",
+        })
+    except Exception as e:
+        # Likely UNIQUE-constraint collision from a concurrent webhook — bail out
+        # so we don't grant a duplicate credit.
+        logger.info("Referral bonus insert collision for %s: %s", bonus_tx_id, e)
+        return
     await credit_svc.grant_credits(referrer_user["id"], service_type, 1)
-
-    # Record the bonus transaction
-    await db.insert("transactions", {
-        "user_id": referrer_user["id"],
-        "plan_name": f"referral_bonus_{service_type}",
-        "credits_added": 1,
-        "amount_cop": 0,
-        "wompi_transaction_id": f"refbonus_{referrer_code}_{email}",
-        "status": "REFERRAL_BONUS",
-    })
 
     logger.info(
         "Referral bonus: granted 1 %s credit to %s (referrer of %s)",

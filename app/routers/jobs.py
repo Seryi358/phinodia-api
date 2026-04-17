@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, EmailStr
 from app.config import Settings
@@ -24,10 +25,14 @@ class JobStatusResponse(BaseModel):
 
 
 @router.get("/status/{job_id}", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
-    job = await db.select_one("jobs", {"id": f"eq.{job_id}"})
+async def get_job_status(job_id: UUID):
+    # UUID coercion stops PostgREST filter injection via commas/dots/etc — the
+    # path-param annotation makes FastAPI 422 on anything malformed.
+    job_id_str = str(job_id)
+    job = await db.select_one("jobs", {"id": f"eq.{job_id_str}"})
     if not job:
         raise HTTPException(404, "Job not found")
+    job_id = job_id_str  # rest of function uses .format / f-strings on this
 
     # Auto-fail stuck jobs (older than 30 minutes still in processing/generating).
     # Only refund if WE successfully transitioned the row from processing -> failed:

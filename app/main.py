@@ -35,15 +35,26 @@ app.add_middleware(
 
 # Reject oversized request bodies before parsing — prevents DoS via huge JSON
 # payloads. Upload route accepts up to 10MB (multipart); JSON bodies are tiny.
+# Also rejects requests that omit Content-Length (e.g. Transfer-Encoding: chunked)
+# on upload paths so attackers can't stream a multi-GB body past the cap.
 @app.middleware("http")
 async def limit_request_body_size(request: Request, call_next):
     path = request.url.path
     is_upload = path == "/api/v1/upload/image"
     max_bytes = 11 * 1024 * 1024 if is_upload else 100 * 1024
     cl = request.headers.get("content-length")
-    if cl and cl.isdigit() and int(cl) > max_bytes:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"detail": "Request body too large"}, status_code=413)
+    method = request.method.upper()
+    body_methods = {"POST", "PUT", "PATCH"}
+    if method in body_methods:
+        if cl is None or not cl.isdigit():
+            # Refuse chunked / missing CL on body methods — upstream proxy
+            # should always supply CL. Without it the cap can't be enforced
+            # before the body is buffered.
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Content-Length required"}, status_code=411)
+        if int(cl) > max_bytes:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
     return await call_next(request)
 
 
@@ -53,7 +64,16 @@ async def limit_request_body_size(request: Request, call_next):
 import time as _time
 from collections import defaultdict, deque
 _rate_buckets: dict[tuple[str, str], deque] = defaultdict(deque)
-_RATE_LIMITED_PATHS = ("/api/v1/credits/check", "/api/v1/jobs/by-email", "/api/v1/referrals/code", "/api/v1/referrals/stats")
+_RATE_LIMITED_PATHS = (
+    "/api/v1/credits/check",
+    "/api/v1/jobs/by-email",
+    "/api/v1/jobs/status",
+    "/api/v1/referrals/code",
+    "/api/v1/referrals/stats",
+    "/api/v1/referrals/register",
+    "/api/v1/upload/image",
+    "/api/v1/payments/checkout",
+)
 _RATE_LIMIT = 30   # requests
 _RATE_WINDOW = 60  # seconds
 

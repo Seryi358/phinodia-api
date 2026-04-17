@@ -9,7 +9,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776381000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776470000">
 </head>
 <body>
 
@@ -73,7 +73,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776381000"></script>
+  <script src="/static/js/api.js?v=1776470000"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     if (params.get('job_id')) {
@@ -107,6 +107,7 @@
             const dl = document.getElementById('status-download');
             const link = document.getElementById('status-download-link');
             if (status.result_type === 'jpg') {
+              if (!isSafeMediaUrl(status.result_url)) return;
               const img = document.createElement('img');
               img.src = status.result_url;
               img.alt = 'Resultado';
@@ -117,6 +118,7 @@
               link.onclick = null;
               dl.classList.remove('hidden');
             } else if (status.result_type === 'mp4') {
+              if (!isSafeMediaUrl(status.result_url)) return;
               const video = document.createElement('video');
               video.src = status.result_url;
               video.controls = true;
@@ -132,8 +134,9 @@
               const iframe = document.createElement('iframe');
               // Sandbox the landing-page preview: srcdoc inherits parent origin, so
               // any JS in the OpenAI-generated HTML would otherwise run with our
-              // privileges. Omitting allow-same-origin denies fetch/storage access.
-              iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
+              // privileges. Omitting allow-same-origin denies fetch/storage access;
+              // omitting allow-popups-to-escape-sandbox denies window.open break-out.
+              iframe.setAttribute('sandbox', '');
               iframe.srcdoc = status.result_url;
               iframe.style.cssText = 'width: 100%; height: 600px; border: 1px solid var(--border); border-radius: 12px; background: #fff;';
               preview.appendChild(iframe);
@@ -153,17 +156,26 @@
         } else if (status.status === 'failed') {
           badge.className = 'status-badge failed'; badge.textContent = 'Error';
           title.textContent = 'Hubo un error';
-          text.textContent = status.error_message || 'Intenta de nuevo.';
+          // Cap message length so a 10MB error_message can't blow up the layout.
+          text.textContent = (status.error_message || 'Intenta de nuevo.').slice(0, 500);
         } else if (status.status === 'error') {
           badge.className = 'status-badge failed'; badge.textContent = 'No encontrado';
           title.textContent = 'Trabajo no encontrado';
-          text.textContent = 'Verifica el ID e intenta de nuevo.';
+          text.textContent = (status.error_message || 'Verifica el ID e intenta de nuevo.').slice(0, 500);
         } else {
           badge.className = 'status-badge processing'; badge.textContent = 'Procesando';
           title.textContent = 'Generando tu contenido...';
           text.textContent = 'Esto puede tomar unos minutos.';
         }
       });
+    }
+
+    // Reject anything that isn't an https:// URL — defends against poisoned
+    // result_url fields containing javascript:/data:/file: that would otherwise
+    // execute or leak local resources when assigned to an <a href> or fetched.
+    function isSafeMediaUrl(u) {
+      if (typeof u !== 'string') return false;
+      return /^https:\/\//i.test(u) || u.startsWith('/');
     }
   </script>
 </body>

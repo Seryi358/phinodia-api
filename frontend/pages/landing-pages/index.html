@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776381000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776470000">
 </head>
 <body>
 
@@ -128,7 +128,7 @@
           <div class="progress-bar"><div class="progress-fill" id="landing-progress" style="width: 0%"></div></div>
           <span class="status-badge processing" id="landing-status-badge">Procesando</span>
           <div id="landing-download" class="hidden mt-24">
-            <iframe id="landing-iframe" sandbox="allow-popups allow-popups-to-escape-sandbox" style="width: 100%; height: 500px; border: 1px solid var(--border); border-radius: 12px; background: white; margin-bottom: 16px;"></iframe>
+            <iframe id="landing-iframe" sandbox="" style="width: 100%; height: 500px; border: 1px solid var(--border); border-radius: 12px; background: white; margin-bottom: 16px;"></iframe>
             <div style="display: flex; gap: 12px; justify-content: center;">
               <button class="btn btn-primary" onclick="downloadLandingHTML()">Descargar HTML</button>
               <button class="btn btn-secondary" onclick="openLandingPreview()">Abrir en nueva ventana</button>
@@ -150,7 +150,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776381000"></script>
+  <script src="/static/js/api.js?v=1776470000"></script>
   <script>
     let landingHTML = '';
     initFileUpload('landing-dropzone', 'landing-preview', 'landing-image-url');
@@ -185,14 +185,17 @@
               document.getElementById('landing-iframe').srcdoc = landingHTML;
               document.getElementById('landing-download').classList.remove('hidden');
             }
-          } else if (status.status === 'failed') {
+          } else if (status.status === 'failed' || status.status === 'error') {
             badge.className = 'status-badge failed'; badge.textContent = 'Error';
             title.textContent = 'Hubo un error';
-            text.textContent = status.error_message || 'Intenta de nuevo.';
+            text.textContent = (status.error_message || 'Intenta de nuevo.').slice(0, 500);
+            // Re-show the form so the user can retry without a hard reload.
+            setTimeout(() => resetGenerateForm('landing-form', 'landing-result', 'landing-submit'), 2000);
           }
         });
       } catch (err) {
         setLoading('landing-submit', false);
+        if (handleGenerateError(err)) return;
         showToast(err.message, 'error');
       }
     }
@@ -206,11 +209,17 @@
       URL.revokeObjectURL(url);
     }
 
+    // Open the preview on a blob: origin so any inline <script> from the model
+    // output cannot read app.phinodia.com cookies/storage. Document.write into
+    // a same-origin about:blank window would have given the model full XSS.
     function openLandingPreview() {
       if (!landingHTML) return;
-      const win = window.open('', '_blank');
-      win.document.write(landingHTML);
-      win.document.close();
+      const blob = new Blob([landingHTML], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener');
+      // Don't revoke immediately — Firefox/Safari abort the load if the URL is
+      // freed before the new tab's navigation is committed. ~30s is plenty.
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
     }
   </script>
 </body>

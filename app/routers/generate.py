@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.config import Settings
@@ -75,12 +76,27 @@ def _build_description(req) -> str:
 
 
 def _validate_image_url(v: str) -> str:
-    """image_url must be http/https — rejects javascript:, file://, empty etc."""
+    """image_url must reference an upload from our /uploads/ directory.
+
+    Locking down to our own host prevents (a) bypassing upload's size/magic-byte
+    checks, (b) SSRF/cost-amplification by pointing KIE AI at attacker URLs, and
+    (c) unbounded-cost downloads of arbitrary external files.
+    """
     v = (v or "").strip()
     if not v:
         raise ValueError("image_url is required")
     if not (v.startswith("http://") or v.startswith("https://")):
         raise ValueError("image_url must start with http:// or https://")
+    # Accept either the absolute api_base_url + /uploads/ OR a future relative
+    # path (defense-in-depth — also normalize trailing slash).
+    base = (settings.api_base_url or "").rstrip("/")
+    allowed_prefix = f"{base}/uploads/"
+    if not v.startswith(allowed_prefix):
+        raise ValueError("image_url must come from PhinodIA uploads")
+    # Disallow path-traversal hops AFTER the /uploads/ segment.
+    tail = v[len(allowed_prefix):]
+    if "/" in tail or ".." in tail or "\\" in tail:
+        raise ValueError("image_url has invalid path")
     return v
 
 
@@ -88,8 +104,10 @@ class VideoRequest(BaseModel):
     email: EmailStr
     image_url: str = Field(..., max_length=2000)
     description: str = Field(..., min_length=1, max_length=2000)
-    format: str = Field(..., max_length=20)
-    duration: int
+    # Locked to UI choices — prevents tier-hopping (charging 8s credits while
+    # claiming 22s) and silent format defaults via tampered hidden inputs.
+    format: Literal["portrait", "landscape"]
+    duration: Literal[8, 15, 22, 30]
     product_name: str = Field(..., min_length=1, max_length=200)
     product_category: str = Field("", max_length=300)
     pain_point: str = Field("", max_length=300)
@@ -103,11 +121,11 @@ class ImageRequest(BaseModel):
     email: EmailStr
     image_url: str = Field(..., max_length=2000)
     description: str = Field(..., min_length=1, max_length=2000)
-    aspect_ratio: str = Field("1:1", max_length=10)
+    aspect_ratio: Literal["1:1", "9:16", "16:9", "4:5"] = "1:1"
     product_name: str = Field(..., min_length=1, max_length=200)
     product_category: str = Field("", max_length=300)
     creative_direction: str = Field("", max_length=500)
-    image_style: str = Field("product", max_length=20)
+    image_style: Literal["product", "ugc"] = "product"
     data_consent: bool
 
     _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))

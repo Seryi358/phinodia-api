@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776381000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776470000">
 </head>
 <body>
 
@@ -161,7 +161,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776381000"></script>
+  <script src="/static/js/api.js?v=1776470000"></script>
   <script>
     initFileUpload('video-dropzone', 'video-preview', 'video-image-url');
     initOptionPicker('duration-picker', 'video-duration');
@@ -200,11 +200,13 @@
               document.getElementById('video-download-link').href = status.result_url;
               document.getElementById('video-result-preview').src = status.result_url;
             }
-          } else if (status.status === 'failed') {
+          } else if (status.status === 'failed' || status.status === 'error') {
             badge.className = 'status-badge failed';
             badge.textContent = 'Error';
             title.textContent = 'Hubo un error';
-            text.textContent = status.error_message || 'Intenta de nuevo o contactanos.';
+            text.textContent = (status.error_message || 'Intenta de nuevo o contactanos.').slice(0, 500);
+            // Re-show the form so the user can retry without a hard reload.
+            setTimeout(() => resetGenerateForm('video-form', 'video-result', 'video-submit'), 2000);
           } else {
             badge.className = 'status-badge processing';
             badge.textContent = 'Generando...';
@@ -212,6 +214,7 @@
         });
       } catch (err) {
         setLoading('video-submit', false);
+        if (handleGenerateError(err)) return;
         showToast(err.message, 'error');
       }
     }
