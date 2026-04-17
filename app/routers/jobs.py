@@ -227,9 +227,14 @@ class JobSummary(BaseModel):
     error_message: str | None = None
 
 
-@router.get("/by-email", response_model=list[JobSummary])
-async def list_jobs_by_email(email: EmailStr = Query(..., description="User email")):
-    """List all jobs for a user, newest first. For result viewing on /mis-generaciones."""
+@router.api_route("/by-email", response_model=list[JobSummary], methods=["GET", "HEAD"])
+async def list_jobs_by_email(
+    email: EmailStr = Query(..., description="User email"),
+    limit: int = Query(100, ge=1, le=200, description="Max jobs returned (1-200)"),
+    offset: int = Query(0, ge=0, le=10000, description="Skip first N jobs"),
+):
+    """List jobs for a user, newest first. Paginated so power users with
+    >100 generations can scroll back through history."""
     email = email.strip().lower()
     user = await db.select_one("users", {"email": f"eq.{email}"})
     if not user:
@@ -238,7 +243,8 @@ async def list_jobs_by_email(email: EmailStr = Query(..., description="User emai
     jobs = await db.select("jobs", {
         "user_id": f"eq.{user['id']}",
         "order": "created_at.desc",
-        "limit": "100",
+        "limit": str(limit),
+        "offset": str(offset),
     })
 
     summaries = []
