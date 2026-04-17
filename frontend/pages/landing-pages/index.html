@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1779000000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1779500000">
 </head>
 <body>
 
@@ -152,7 +152,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1779000000"></script>
+  <script src="/static/js/api.js?v=1779500000"></script>
   <script>
     let landingHTML = '';
     initFileUpload('landing-dropzone', 'landing-preview', 'landing-image-url');
@@ -172,7 +172,7 @@
       // Clear any stale result from a prior submission so a download triggered
       // before the new poll completes can't ship the previous landing.
       landingHTML = '';
-      document.getElementById('landing-iframe').srcdoc = '';
+      document.getElementById('landing-iframe').src = 'about:blank';
       document.getElementById('landing-download').classList.add('hidden');
 
       setLoading('landing-submit', true);
@@ -192,9 +192,11 @@
             document.getElementById('landing-progress').style.width = '100%';
             if (status.result_url) {
               landingHTML = status.result_url;
-              title.textContent = 'Tu landing page esta lista.';
-              text.textContent = 'Previsualizala abajo y descarga el HTML.';
-              document.getElementById('landing-iframe').srcdoc = landingHTML;
+              title.textContent = 'Tu landing page está lista.';
+              text.textContent = 'Previsualízala abajo y descarga el HTML.';
+              // Load via dedicated endpoint — srcdoc inherited the parent
+              // CSP and broke the AI-generated CSS background-image URLs.
+              document.getElementById('landing-iframe').src = `${API}/jobs/landing/${encodeURIComponent(result.job_id)}`;
               document.getElementById('landing-download').classList.remove('hidden');
             } else {
               // Defensive: completed but no result body. Treat as error.
@@ -211,7 +213,7 @@
             // Clear landingHTML and hide download so a stale download from a
             // previous successful run can't be triggered after a failure.
             landingHTML = '';
-            document.getElementById('landing-iframe').srcdoc = '';
+            document.getElementById('landing-iframe').src = 'about:blank';
             document.getElementById('landing-download').classList.add('hidden');
             setTimeout(() => resetGenerateForm('landing-form', 'landing-result', 'landing-submit'), 2000);
           }

@@ -272,7 +272,7 @@ async def add_cache_and_security_headers(request: Request, call_next):
             "img-src 'self' data: https://ik.imagekit.io https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://phinodia.com https://app.phinodia.com; "
             "media-src 'self' https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://app.phinodia.com; "
             "connect-src 'self' https://app.phinodia.com https://checkout.wompi.co https://*.wompi.co; "
-            "frame-src 'self' https://checkout.wompi.co; "
+            "frame-src 'self' data: blob: https://checkout.wompi.co; "
             "frame-ancestors 'self'; "
             "object-src 'none'; "
             "base-uri 'self'; "

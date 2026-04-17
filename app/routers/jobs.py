@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, EmailStr
 from app.config import get_settings
 from app.database import db
@@ -249,6 +250,38 @@ def _normalize_result(value: str | None, result_type: str | None) -> str | None:
         return value
     public = (settings.api_base_url or "https://app.phinodia.com").rstrip("/")
     return _INTERNAL_HOST_RE.sub(public, value)
+
+
+@router.get("/landing/{job_id}", response_class=HTMLResponse)
+async def get_landing_html(job_id: UUID):
+    """Serve a completed landing-page job's HTML directly so the /estado
+    iframe can load it via `src=` (works under our parent CSP — `srcdoc`
+    inherited the parent CSP's `default-src 'self'` which broke the inline
+    background-image URLs and rendered the page blank).
+
+    The Content-Security-Policy on the response sandboxes the AI-generated
+    HTML so any future template that ships JS can't access the parent.
+    """
+    job = await db.select_one("jobs", {"id": f"eq.{job_id}"})
+    if not job or job.get("result_type") != "html" or not job.get("result_url"):
+        raise HTTPException(404, "Landing not found")
+    html = _normalize_result(job["result_url"], "html") or ""
+    # Strict CSP for the AI-generated content. `frame-ancestors 'self'`
+    # only allows our /estado iframe to embed it; nobody else can iframe
+    # it to phish. Drop `default-src 'none'` so inline styles/images work.
+    headers = {
+        "Content-Security-Policy": (
+            "default-src 'self'; "
+            "img-src 'self' data: https://app.phinodia.com https://phinodia.com https://ik.imagekit.io; "
+            "style-src 'self' 'unsafe-inline'; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
+            "script-src 'none'; "
+            "frame-ancestors 'self'; "
+            "form-action 'none'"
+        ),
+        "X-Content-Type-Options": "nosniff",
+    }
+    return Response(content=html, media_type="text/html", headers=headers)
 
 
 def _infer_type(service_type: str) -> str:
