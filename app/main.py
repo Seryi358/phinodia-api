@@ -272,6 +272,15 @@ async def health():
     return {"status": "ok"}
 
 
+# Root of the webapp redirects to the marketing site so there's only one
+# canonical home page. The webapp's /videos, /imagenes, /precios etc. still
+# serve normally from the pages mount below.
+@app.api_route("/", methods=["GET", "HEAD"])
+async def root_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("https://phinodia.com/", status_code=301)
+
+
 # Serve favicon.ico at root (browsers request this automatically)
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon():
@@ -301,7 +310,7 @@ async def sitemap():
     # Trailing slashes match what FastAPI redirects to, so crawlers don't
     # have to follow a 307 hop on every URL (Google "Page with redirect"
     # warning in Search Console).
-    pages = ["/", "/videos/", "/imagenes/", "/landing-pages/", "/precios/", "/referidos/"]
+    pages = ["/videos/", "/imagenes/", "/landing-pages/", "/precios/", "/referidos/"]
     urls = "\n".join(
         f"  <url><loc>https://app.phinodia.com{p}</loc><changefreq>weekly</changefreq></url>"
         for p in pages
