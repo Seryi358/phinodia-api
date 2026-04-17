@@ -14,7 +14,7 @@ class BalanceResponse(BaseModel):
     landing_page: int = 0
 
 
-@router.get("/check", response_model=BalanceResponse)
+@router.api_route("/check", methods=["GET", "HEAD"], response_model=BalanceResponse)
 async def check_credits(email: EmailStr = Query(...)):
     svc = CreditService()
     balance = await svc.get_balance(email)

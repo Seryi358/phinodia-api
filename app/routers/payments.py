@@ -183,6 +183,12 @@ async def wompi_webhook(event: dict):
         except Exception:
             # UNIQUE-collision race with a concurrent webhook — re-read.
             existing = await db.select_one("transactions", {"wompi_transaction_id": f"eq.{wompi_tx_id}"})
+            if not existing:
+                # Genuine insert failure (Supabase 5xx, network blip), not
+                # a UNIQUE-collision race. Force Wompi retry — returning 200
+                # would silently lose the payment with no row to recover from.
+                logger.error("Webhook insert failed for tx %s with no recovery row — forcing retry", wompi_tx_id)
+                raise HTTPException(503, "transaction insert failed — retry")
 
     # CAS: only the writer that wins this PENDING_GRANT→GRANTING flip may
     # grant credits. Everyone else (concurrent retry, post-grant retry,

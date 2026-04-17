@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr
 from app.config import Settings
 from app.database import db
@@ -27,7 +27,7 @@ class JobStatusResponse(BaseModel):
 
 
 @router.api_route("/status/{job_id}", methods=["GET", "HEAD"], response_model=JobStatusResponse)
-async def get_job_status(job_id: UUID):
+async def get_job_status(job_id: UUID, request: Request):
     # UUID coercion stops PostgREST filter injection via commas/dots/etc — the
     # path-param annotation makes FastAPI 422 on anything malformed.
     job_id_str = str(job_id)
@@ -35,6 +35,10 @@ async def get_job_status(job_id: UUID):
     if not job:
         raise HTTPException(404, "Job not found")
     job_id = job_id_str  # rest of function uses .format / f-strings on this
+    # HEAD must be safe/idempotent (RFC 9110 §9.2.1). Don't run the auto-fail
+    # or KIE-poll branches on HEAD — they mutate DB + refund credits and
+    # would fire on every link-checker / monitoring probe.
+    head_only = request.method == "HEAD"
 
     # Auto-fail stuck jobs (older than 30 minutes still in processing/generating).
     # CAS-guarded: only the first writer wins, so concurrent polls and the
@@ -42,34 +46,36 @@ async def get_job_status(job_id: UUID):
     # result_url (e.g. base 8s saved while extensions slow), mark it
     # completed-with-warning instead of failing+refunding — otherwise the
     # user gets the partial deliverable AND a refund (free product).
-    if job["status"] in ("generating", "processing") and job.get("created_at"):
+    if not head_only and job["status"] in ("generating", "processing") and job.get("created_at"):
         try:
             created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
             age_minutes = (datetime.now(timezone.utc) - created).total_seconds() / 60
-            if age_minutes > 30:
-                # Multi-step video pipelines (15s/22s/30s = base + extensions)
-                # legitimately exceed 30 min when KIE is backed up. Don't
-                # promote them to "completed-with-partial" until 60 min — give
-                # the worker more time to finish the full chain.
-                multi_step = job.get("service_type") in ("video_15s", "video_22s", "video_30s")
-                promote_threshold = 60 if multi_step else 30
-                if job.get("result_url") and age_minutes > promote_threshold:
+            # Multi-step videos (15s/22s/30s = base + extensions) legitimately
+            # take 30-60min when KIE is backed up. Use 60min as both the outer
+            # gate AND the promote/refund threshold — refunding at 30min while
+            # the worker is still extending would drop the deliverable entirely
+            # (the worker's later CAS save would miss against status=failed).
+            multi_step = job.get("service_type") in ("video_15s", "video_22s", "video_30s")
+            threshold = 60 if multi_step else 30
+            if age_minutes > threshold:
+                if job.get("result_url"):
                     # Partial deliverable already saved AND worker has had
                     # ample time to finish — promote to completed-with-warning
                     # instead of refunding.
+                    partial_msg = "La generacion tomo mas tiempo del esperado pero tu resultado parcial esta listo."
                     promoted = await db.update(
                         "jobs",
                         {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
                         {
                             "status": "completed",
                             "completed_at": datetime.now(timezone.utc).isoformat(),
-                            "error_message": "La generacion tomo mas de 30 minutos pero tu resultado parcial esta listo.",
+                            "error_message": partial_msg,
                         },
                     )
                     if promoted:
                         logger.info("Auto-promoted long-running job %s to completed (partial result existed)", job_id)
                         job["status"] = "completed"
-                        job["error_message"] = "La generacion tomo mas tiempo del esperado pero tu resultado parcial esta listo."
+                        job["error_message"] = partial_msg
                 elif job.get("result_url") and multi_step:
                     # Inside the 30-60min window for a multi-step video — let
                     # the worker keep extending. Return current state.
@@ -143,7 +149,7 @@ async def get_job_status(job_id: UUID):
     # would see the base task as "success", CAS-complete the job, and silently
     # truncate a paid 30s video to 8s — the worker's later extension writes
     # would all CAS-miss against the now-completed status.
-    if job.get("kie_task_id") and job["status"] in ("generating", "processing") and not job.get("result_url"):
+    if not head_only and job.get("kie_task_id") and job["status"] in ("generating", "processing") and not job.get("result_url"):
         kie = KieAIClient(api_key=settings.kie_api_key)
         # KIE upstream can be slow/flaky; don't 500 the user — fall back to
         # whatever DB row we have. The worker will keep its own progress.

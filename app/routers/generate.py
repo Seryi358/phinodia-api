@@ -603,14 +603,17 @@ async def _process_landing(job_id: str, req: LandingRequest):
         except asyncio.CancelledError:
             # Lifespan-drain cancellation mid-attempt — checkpoint then re-raise
             # so the credit isn't trapped on a "generating" row until auto-fail.
+            # CAS-guard so we don't double-refund a job already terminated by
+            # /jobs/status auto-fail.
             credit_svc = CreditService()
             user = await credit_svc.get_or_create_user(req.email)
-            await db.update(
+            failed_now = await db.update(
                 "jobs",
                 {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
                 {"status": "failed", "error_message": "Generacion interrumpida. Tu credito fue restaurado."},
             )
-            await credit_svc.refund_credit(user["id"], "landing_page")
+            if failed_now:
+                await credit_svc.refund_credit(user["id"], "landing_page")
             raise
         except Exception as e:
             logger.warning("Landing generation attempt %d failed: %s", attempt + 1, e)

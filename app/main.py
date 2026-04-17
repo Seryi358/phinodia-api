@@ -336,15 +336,15 @@ _ROUTE_METHODS = {
     # jobs (status takes a UUID path arg — match by prefix in code below)
     "/api/v1/jobs/by-email": "GET, HEAD",
     # credits
-    "/api/v1/credits/check": "GET",
+    "/api/v1/credits/check": "GET, HEAD",
     # payments
     "/api/v1/payments/checkout": "POST",
     "/api/v1/payments/webhook": "POST",
     # upload
     "/api/v1/upload/image": "POST",
     # referrals
-    "/api/v1/referrals/code": "GET",
-    "/api/v1/referrals/stats": "GET",
+    "/api/v1/referrals/code": "GET, HEAD",
+    "/api/v1/referrals/stats": "GET, HEAD",
     "/api/v1/referrals/register": "POST",
 }
 

@@ -75,7 +75,7 @@ class RegisterReferralRequest(BaseModel):
     referral_code: str
 
 
-@router.get("/code", response_model=ReferralCodeResponse)
+@router.api_route("/code", methods=["GET", "HEAD"], response_model=ReferralCodeResponse)
 async def get_referral_code(email: EmailStr = Query(..., description="User email")):
     """Get or generate referral code for a user."""
     code = generate_referral_code(email)
@@ -83,7 +83,7 @@ async def get_referral_code(email: EmailStr = Query(..., description="User email
     return ReferralCodeResponse(referral_code=code, referral_link=link)
 
 
-@router.get("/stats", response_model=ReferralStatsResponse)
+@router.api_route("/stats", methods=["GET", "HEAD"], response_model=ReferralStatsResponse)
 async def get_referral_stats(email: EmailStr = Query(..., description="User email")):
     """Get referral stats for a user."""
     code = generate_referral_code(email)

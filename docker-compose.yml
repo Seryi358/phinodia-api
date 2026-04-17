@@ -10,6 +10,9 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    # Drain budget = 25s wait + 10s cancel-checkpoint = 35s. Add slack so
+    # Docker doesn't SIGKILL mid-refund and lose users' credits on deploy.
+    stop_grace_period: 45s
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
