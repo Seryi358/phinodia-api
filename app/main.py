@@ -229,8 +229,15 @@ async def add_cache_and_security_headers(request: Request, call_next):
     # Lock down JSON / upload routes so a future bug that injects HTML in a
     # 4xx body can't fetch attacker scripts. HTML pages keep the wider policy
     # the inline scripts/styles need.
-    if path.startswith("/api/") or path.startswith("/uploads/"):
+    # CSP on JSON / upload routes — include the bare `/api` path so a 404
+    # served from /api itself (no trailing slash) gets the same lockdown.
+    if path == "/api" or path.startswith("/api/") or path.startswith("/uploads/"):
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        # Also ensure 4xx/5xx API responses (e.g. 422 from path-param
+        # validation) carry no-store so a CDN/proxy can't poison the cache
+        # with attacker-shaped error bodies.
+        if response.status_code >= 400 and "Cache-Control" not in response.headers:
+            response.headers["Cache-Control"] = "no-store"
 
     return response
 

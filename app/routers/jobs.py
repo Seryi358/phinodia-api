@@ -26,7 +26,7 @@ class JobStatusResponse(BaseModel):
     error_message: str | None = None
 
 
-@router.get("/status/{job_id}", response_model=JobStatusResponse)
+@router.api_route("/status/{job_id}", methods=["GET", "HEAD"], response_model=JobStatusResponse)
 async def get_job_status(job_id: UUID):
     # UUID coercion stops PostgREST filter injection via commas/dots/etc — the
     # path-param annotation makes FastAPI 422 on anything malformed.
