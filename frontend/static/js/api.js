@@ -23,6 +23,11 @@ function initToasts() {
   if (!document.querySelector('.toast-container')) {
     const c = document.createElement('div');
     c.className = 'toast-container';
+    // role=status with aria-live=polite so screen readers announce form
+    // validation messages that are otherwise visual-only.
+    c.setAttribute('role', 'status');
+    c.setAttribute('aria-live', 'polite');
+    c.setAttribute('aria-atomic', 'true');
     document.body.appendChild(c);
   }
 }

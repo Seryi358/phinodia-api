@@ -252,7 +252,9 @@ async def process_referral_bonus(customer_email: str, service_type: str):
             return
         referrer_code = parts[1]
 
-    # Check if bonus was already granted for this referral
+    # Check if bonus was already FINALIZED (not PENDING_BONUS) for this referral.
+    # PENDING_BONUS rows mean a previous attempt inserted but grant_credits never
+    # finished — we want this run to retry, not bail.
     existing_bonuses = await db.select("transactions", {
         "plan_name": "like.referral_bonus_%",
         "status": "eq.REFERRAL_BONUS",
@@ -273,10 +275,10 @@ async def process_referral_bonus(customer_email: str, service_type: str):
         logger.warning("Could not find referrer for code %s", referrer_code)
         return
 
-    # Grant 1 credit of the same service type to the referrer. Insert the bonus
-    # row BEFORE granting so a concurrent webhook racing on the same referee
-    # collides on the eventual UNIQUE(wompi_transaction_id) constraint and the
-    # second writer's grant_credits never runs.
+    # Insert PENDING_BONUS row first so concurrent webhooks collide on the
+    # UNIQUE(wompi_transaction_id) constraint and only one grant runs. If the
+    # grant raises CreditContention we leave the row PENDING_BONUS for the
+    # next webhook redelivery to retry — a manual sweep can also pick it up.
     credit_svc = CreditService()
     referrer_user = await credit_svc.get_or_create_user(referrer_email)
     bonus_tx_id = f"refbonus|{referrer_code}|{email}"
@@ -287,14 +289,27 @@ async def process_referral_bonus(customer_email: str, service_type: str):
             "credits_added": 1,
             "amount_cop": 0,
             "wompi_transaction_id": bonus_tx_id,
-            "status": "REFERRAL_BONUS",
+            "status": "PENDING_BONUS",
         })
     except Exception as e:
-        # Likely UNIQUE-constraint collision from a concurrent webhook — bail out
-        # so we don't grant a duplicate credit.
-        logger.info("Referral bonus insert collision for %s: %s", bonus_tx_id, e)
+        # UNIQUE-constraint collision from a concurrent webhook OR a previous
+        # PENDING_BONUS we should retry. Re-read; only bail if it's already
+        # finalized as REFERRAL_BONUS.
+        existing = await db.select_one("transactions", {"wompi_transaction_id": f"eq.{bonus_tx_id}"})
+        if existing and existing.get("status") == "REFERRAL_BONUS":
+            logger.info("Referral bonus already finalized for %s: %s", bonus_tx_id, e)
+            return
+    from app.services.credits import CreditContention
+    try:
+        await credit_svc.grant_credits(referrer_user["id"], service_type, 1)
+    except CreditContention:
+        logger.error("Referral bonus grant contention for %s — leaving PENDING_BONUS", bonus_tx_id)
         return
-    await credit_svc.grant_credits(referrer_user["id"], service_type, 1)
+    await db.update(
+        "transactions",
+        {"wompi_transaction_id": f"eq.{bonus_tx_id}"},
+        {"status": "REFERRAL_BONUS"},
+    )
 
     logger.info(
         "Referral bonus: granted 1 %s credit to %s (referrer of %s)",

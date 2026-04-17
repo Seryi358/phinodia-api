@@ -1,3 +1,4 @@
+import httpx
 from openai import AsyncOpenAI
 from app.prompts.video_ugc import SYSTEM_PROMPT as VIDEO_SYSTEM, USER_TEMPLATE as VIDEO_USER
 from app.prompts.image_product import (
@@ -13,7 +14,13 @@ ASPECT_RATIOS = {"portrait": "9:16", "landscape": "16:9"}
 
 class ScriptGenerator:
     def __init__(self, api_key: str):
-        self.client = AsyncOpenAI(api_key=api_key)
+        # Hard timeout per OpenAI call so a hung stream can't pin a worker
+        # forever (stuck-job auto-fail at 30min wouldn't fire because no
+        # exception is raised by the underlying network read).
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            timeout=httpx.Timeout(120.0, connect=10.0),
+        )
 
     async def _call_gpt(self, system: str, user: str, max_tokens: int = 2000) -> str:
         response = await self.client.chat.completions.create(

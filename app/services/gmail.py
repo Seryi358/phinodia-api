@@ -1,8 +1,22 @@
 import base64
+import html
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+
+
+def _safe_url(u: str) -> str:
+    """Reject anything that isn't an https URL or our own /estado path so a
+    poisoned KIE result_url can't render a phishing link in the email body."""
+    if not isinstance(u, str):
+        return ""
+    u = u.strip()
+    if u.startswith("https://") or u.startswith("https://app.phinodia.com/"):
+        return html.escape(u, quote=True)
+    if u.startswith("/"):
+        return html.escape(u, quote=True)
+    return ""
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
@@ -72,11 +86,17 @@ def build_delivery_email(product_name: str, service_type: str, download_url: str
         if service_type == "landing_page"
         else '<p style="margin: 32px 0 0; font-size: 12px; color: #86868b;">Descarga el archivo pronto — el enlace de descarga directa expira. Tambien puedes verlo en <a href="https://app.phinodia.com/mis-generaciones" style="color: #0066cc; text-decoration: none;">Mis Generaciones</a>.</p>'
     )
+    safe_product = html.escape(product_name or "")
+    safe_link = _safe_url(download_url)
+    if not safe_link:
+        # Fall back to /mis-generaciones if KIE handed us something we don't
+        # trust — better to drop the CTA than to email a javascript: link.
+        safe_link = "https://app.phinodia.com/mis-generaciones"
     content = f"""
         <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; letter-spacing: -0.005em; color: #1d1d1f;">Tu {label} esta listo.</h1>
-        <p style="margin: 0 0 32px; font-size: 17px; color: #86868b; line-height: 1.47;">Producto: {product_name}</p>
+        <p style="margin: 0 0 32px; font-size: 17px; color: #86868b; line-height: 1.47;">Producto: {safe_product}</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius: 980px; background: #1d1d1f;">
-            <a href="{download_url}" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 17px; font-weight: 400; text-decoration: none; letter-spacing: -0.022em;">{cta_label}</a>
+            <a href="{safe_link}" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 17px; font-weight: 400; text-decoration: none; letter-spacing: -0.022em;">{cta_label}</a>
         </td></tr></table>
         {expiry_note}"""
     return subject, _apple_email_base(content)
@@ -109,7 +129,7 @@ def build_purchase_email(email: str, plan_name: str, credits: int, service_type:
                     </tr>
                     <tr>
                         <td style="font-size: 14px; color: #86868b;">Cuenta</td>
-                        <td style="font-size: 14px; color: #1d1d1f; text-align: right;">{email}</td>
+                        <td style="font-size: 14px; color: #1d1d1f; text-align: right;">{html.escape(email or "")}</td>
                     </tr>
                 </table>
             </td></tr>

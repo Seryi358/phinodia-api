@@ -32,8 +32,13 @@ class SupabaseClient:
         try:
             rows = await self.select(table, p)
             return rows[0] if rows else None
-        except httpx.HTTPStatusError:
-            return None
+        except httpx.HTTPStatusError as e:
+            # Only swallow 404 (table missing) — propagate auth failures (401/403)
+            # and server errors (5xx) so callers don't silently treat a Supabase
+            # outage as "no row exists" and proceed to insert/grant.
+            if e.response.status_code == 404:
+                return None
+            raise
 
     async def insert(self, table: str, data: dict) -> dict:
         r = await self._client.post(f"/{table}", json=data)

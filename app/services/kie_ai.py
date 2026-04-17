@@ -1,7 +1,25 @@
 import json
+import logging
+from urllib.parse import urlparse
 import httpx
 
+logger = logging.getLogger(__name__)
+
 KIE_BASE_URL = "https://api.kie.ai/api/v1"
+
+
+def _safe_result_url(u: str | None) -> str:
+    """Reject anything that isn't an https URL — KIE response data lands in
+    delivery emails and the `result_url` DB column, so a `javascript:` or
+    `file:` URL would be a stored phishing link sent from our domain.
+    """
+    if not u or not isinstance(u, str):
+        return ""
+    parsed = urlparse(u)
+    if parsed.scheme != "https" or not parsed.netloc:
+        logger.warning("KIE returned non-https result_url %r — dropped", u[:120])
+        return ""
+    return u
 
 
 class KieAIClient:
@@ -93,6 +111,7 @@ class KieAIClient:
             response = data.get("response") or {}
             result_urls = response.get("resultUrls") or []
             video_url = result_urls[0] if result_urls else ""
+        video_url = _safe_result_url(video_url)
 
         return {
             "state": state,
@@ -149,15 +168,19 @@ class KieAIClient:
                 headers=self.headers,
             )
             self._check_status(resp)
-            data = resp.json()["data"]
+            # KIE's gateway sometimes returns 200 with {"code":500,"msg":"err"} —
+            # `.get("data") or {}` turns that into a graceful "still generating"
+            # instead of a KeyError that aborts the worker.
+            data = (resp.json() or {}).get("data") or {}
 
-        result_urls = []
+        raw_urls = []
         if data.get("resultJson"):
             try:
                 parsed = json.loads(data["resultJson"])
-                result_urls = parsed.get("resultUrls", [])
+                raw_urls = parsed.get("resultUrls", []) or []
             except (json.JSONDecodeError, KeyError):
                 pass
+        result_urls = [u for u in (_safe_result_url(x) for x in raw_urls) if u]
 
         return {
             "state": data.get("state", "unknown"),

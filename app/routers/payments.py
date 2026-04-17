@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from app.config import Settings
 from app.database import db
-from app.services.credits import CreditService
+from app.services.credits import CreditService, CreditContention
 from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU
 from app.services.gmail import GmailSender, build_purchase_email
 from app.routers.referrals import process_referral_bonus
@@ -65,14 +65,17 @@ async def wompi_webhook(event: dict):
     if event.get("event") != "transaction.updated":
         return {"status": "ignored"}
 
-    # Replay protection: reject events older than the window. event["timestamp"]
-    # is a unix epoch (seconds) in Wompi's payload; missing/malformed → reject.
+    # Replay protection: reject events older than the window. Wompi documents
+    # `timestamp` as seconds-epoch but some panel/redelivery tools emit ms;
+    # detect and normalize so we don't silently 200-OK every event.
     ev_ts = event.get("timestamp")
     try:
         ev_ts_int = int(ev_ts)
     except (TypeError, ValueError):
         logger.warning("Webhook missing/invalid timestamp")
         return {"status": "ok", "action": "bad_timestamp"}
+    if ev_ts_int > 10_000_000_000:  # > year 2286 in seconds → must be ms epoch
+        ev_ts_int //= 1000
     if abs(int(time.time()) - ev_ts_int) > REPLAY_WINDOW_SECONDS:
         logger.warning("Webhook timestamp %s outside replay window", ev_ts_int)
         return {"status": "ok", "action": "stale_timestamp"}
@@ -112,7 +115,11 @@ async def wompi_webhook(event: dict):
         return {"status": "ok", "action": "missing_tx_id"}
     wompi_tx_id = str(wompi_tx_id_raw)
     existing = await db.select_one("transactions", {"wompi_transaction_id": f"eq.{wompi_tx_id}"})
-    if existing:
+    # Only treat fully-completed APPROVED rows as duplicates. A PENDING_GRANT
+    # row means a previous attempt inserted but grant_credits failed — Wompi
+    # retries are the natural recovery path and MUST be allowed to complete the
+    # grant or the customer permanently loses their credits.
+    if existing and existing.get("status") == "APPROVED":
         logger.info("Duplicate webhook for tx %s — ignoring", wompi_tx_id)
         return {"status": "ok", "action": "duplicate"}
 
@@ -124,20 +131,29 @@ async def wompi_webhook(event: dict):
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(customer_email)
 
-    # Order matters: insert the transaction row BEFORE granting credits. If grant
-    # fails we leave the row with status=PENDING_GRANT so a manual sweep can
-    # retry without double-granting (the dedupe above will block re-runs of this
-    # exact webhook). DB UNIQUE on wompi_transaction_id is the real serializer.
-    await db.insert("transactions", {
-        "user_id": user["id"],
-        "plan_name": f"{package['service']}_{package['credits']}",
-        "credits_added": package["credits"],
-        "amount_cop": amount,
-        "wompi_transaction_id": wompi_tx_id,
-        "status": "PENDING_GRANT",
-    })
+    # Order matters: insert the transaction row BEFORE granting credits so we
+    # have an audit trail. If grant fails the row sits as PENDING_GRANT and the
+    # next Wompi retry re-enters this branch (the duplicate check above only
+    # bails on APPROVED). grant_credits is additive/idempotent on (user, service)
+    # so a retry that already succeeded won't double-credit because the second
+    # branch will mark APPROVED and the third retry will short-circuit.
+    if not existing:
+        await db.insert("transactions", {
+            "user_id": user["id"],
+            "plan_name": f"{package['service']}_{package['credits']}",
+            "credits_added": package["credits"],
+            "amount_cop": amount,
+            "wompi_transaction_id": wompi_tx_id,
+            "status": "PENDING_GRANT",
+        })
 
-    await credit_svc.grant_credits(user["id"], package["service"], package["credits"])
+    try:
+        await credit_svc.grant_credits(user["id"], package["service"], package["credits"])
+    except CreditContention:
+        # Leave the row at PENDING_GRANT so Wompi's next retry re-enters this
+        # branch and tries again instead of marking it APPROVED with no credits.
+        logger.error("grant_credits contention for tx %s — leaving PENDING_GRANT for retry", wompi_tx_id)
+        return {"status": "ok", "action": "retry_grant"}
     await db.update(
         "transactions",
         {"wompi_transaction_id": f"eq.{wompi_tx_id}"},

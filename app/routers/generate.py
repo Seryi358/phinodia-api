@@ -75,6 +75,16 @@ def _build_description(req) -> str:
     return "\n".join(parts) if parts else req.description
 
 
+def _strip_required(v: str) -> str:
+    """Reject whitespace-only required text fields. min_length=1 alone passes
+    "   " which then sends a useless prompt to OpenAI and burns a credit on
+    a guaranteed-bad generation."""
+    v = (v or "").strip()
+    if not v:
+        raise ValueError("Cannot be empty or whitespace-only")
+    return v
+
+
 def _validate_image_url(v: str) -> str:
     """image_url must reference an upload from our /uploads/ directory.
 
@@ -115,6 +125,7 @@ class VideoRequest(BaseModel):
     data_consent: bool
 
     _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
+    _v_strip = field_validator("description", "product_name")(lambda cls, v: _strip_required(v))
 
 
 class ImageRequest(BaseModel):
@@ -129,6 +140,7 @@ class ImageRequest(BaseModel):
     data_consent: bool
 
     _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
+    _v_strip = field_validator("description", "product_name")(lambda cls, v: _strip_required(v))
 
 
 class LandingRequest(BaseModel):
@@ -142,6 +154,7 @@ class LandingRequest(BaseModel):
     data_consent: bool
 
     _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
+    _v_strip = field_validator("description", "product_name")(lambda cls, v: _strip_required(v))
 
 
 class GenerateResponse(BaseModel):
@@ -415,15 +428,29 @@ async def _process_landing(job_id: str, req: LandingRequest):
                 product_analysis=product_analysis, buyer_persona=buyer_persona,
                 extra_image_urls=extra_image_urls,
             )
-            if html and len(html) > 500:
-                await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                    "generated_prompt": f"[Landing page HTML — {len(html)} chars]",
-                    "result_url": html, "result_type": "html",
-                    "status": "completed", "completed_at": datetime.now(timezone.utc).isoformat(),
-                })
-                await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "landing_page", job_id, "")
+            # Validate that GPT actually returned HTML, not a refusal text. A
+            # 600-char "I cannot generate that" refusal would otherwise be
+            # delivered as the user's "landing page".
+            stripped = (html or "").lstrip().lower()
+            looks_like_html = stripped.startswith("<!doctype html") or stripped.startswith("<html")
+            if html and len(html) > 500 and looks_like_html:
+                # CAS: only mark completed if the row is still in a non-terminal
+                # state. The /jobs/status auto-fail at 30min could have already
+                # transitioned this job to "failed" and refunded — overwriting
+                # to "completed" here would gift a free credit.
+                updated = await db.update(
+                    "jobs",
+                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                    {
+                        "generated_prompt": f"[Landing page HTML — {len(html)} chars]",
+                        "result_url": html, "result_type": "html",
+                        "status": "completed", "completed_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                if updated:
+                    await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "landing_page", job_id, "")
                 return
-            logger.warning("Landing page too short (%d chars) on attempt %d", len(html) if html else 0, attempt + 1)
+            logger.warning("Landing page invalid or too short (%d chars) on attempt %d", len(html) if html else 0, attempt + 1)
         except Exception as e:
             logger.warning("Landing generation attempt %d failed: %s", attempt + 1, e)
             if attempt < MAX_RETRIES - 1:

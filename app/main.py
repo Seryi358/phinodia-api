@@ -35,26 +35,27 @@ app.add_middleware(
 
 # Reject oversized request bodies before parsing — prevents DoS via huge JSON
 # payloads. Upload route accepts up to 10MB (multipart); JSON bodies are tiny.
-# Also rejects requests that omit Content-Length (e.g. Transfer-Encoding: chunked)
-# on upload paths so attackers can't stream a multi-GB body past the cap.
+# We require Content-Length only on the upload endpoint (where streaming a
+# multi-GB body past the cap is the actual risk). Webhooks and small JSON
+# endpoints can come through proxies that re-emit chunked transfer; the body
+# is still bounded by JSON parser limits and the per-route logic.
 @app.middleware("http")
 async def limit_request_body_size(request: Request, call_next):
     path = request.url.path
     is_upload = path == "/api/v1/upload/image"
-    max_bytes = 11 * 1024 * 1024 if is_upload else 100 * 1024
-    cl = request.headers.get("content-length")
     method = request.method.upper()
-    body_methods = {"POST", "PUT", "PATCH"}
-    if method in body_methods:
+    cl = request.headers.get("content-length")
+    if is_upload and method == "POST":
         if cl is None or not cl.isdigit():
-            # Refuse chunked / missing CL on body methods — upstream proxy
-            # should always supply CL. Without it the cap can't be enforced
-            # before the body is buffered.
             from fastapi.responses import JSONResponse
             return JSONResponse({"detail": "Content-Length required"}, status_code=411)
-        if int(cl) > max_bytes:
+        if int(cl) > 11 * 1024 * 1024:
             from fastapi.responses import JSONResponse
             return JSONResponse({"detail": "Request body too large"}, status_code=413)
+    elif cl and cl.isdigit() and int(cl) > 100 * 1024:
+        # Soft cap on non-upload bodies when CL is present.
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Request body too large"}, status_code=413)
     return await call_next(request)
 
 
@@ -82,7 +83,12 @@ _RATE_WINDOW = 60  # seconds
 async def rate_limit_email_lookups(request: Request, call_next):
     path = request.url.path
     if any(path.startswith(p) for p in _RATE_LIMITED_PATHS):
-        client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
+        # Prefer the connecting peer over the (spoofable) XFF header. The
+        # rate limit is best-effort — a real attacker behind a botnet will
+        # rotate IPs anyway, but at least one machine spamming with rotating
+        # X-Forwarded-For values can no longer pretend to be 4M distinct hops
+        # and exhaust both the limit and our memory.
+        client_ip = (request.client.host if request.client else "unknown")
         key = (client_ip, path)
         bucket = _rate_buckets[key]
         now = _time.monotonic()
@@ -98,6 +104,10 @@ async def rate_limit_email_lookups(request: Request, call_next):
                 headers={"Retry-After": str(retry_in)},
             )
         bucket.append(now)
+        # Free buckets that emptied during cleanup so the dict can't grow
+        # unbounded over time (e.g. one IP per request from a NAT).
+        if not bucket:
+            _rate_buckets.pop(key, None)
     return await call_next(request)
 
 
@@ -112,7 +122,13 @@ async def add_cache_and_security_headers(request: Request, call_next):
     elif path.startswith("/static/images/"):
         response.headers["Cache-Control"] = "public, max-age=86400"
     elif path.startswith("/uploads/"):
-        response.headers["Cache-Control"] = "public, max-age=3600"
+        # Cache real images, but never cache 404s — uploads use predictable
+        # uuid filenames and a CDN/proxy negative-caching a 404 BEFORE the
+        # upload finishes would serve stale "not found" to legitimate users.
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=3600"
+        else:
+            response.headers["Cache-Control"] = "no-store"
     elif path.endswith(".html") or path.endswith("/") or path == "/":
         response.headers["Cache-Control"] = "no-cache"
 
@@ -124,6 +140,11 @@ async def add_cache_and_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     # Permissions-Policy: disable APIs we don't use to limit fingerprinting
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    # Lock down JSON / upload routes so a future bug that injects HTML in a
+    # 4xx body can't fetch attacker scripts. HTML pages keep the wider policy
+    # the inline scripts/styles need.
+    if path.startswith("/api/") or path.startswith("/uploads/"):
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
 
     return response
 

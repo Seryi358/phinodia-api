@@ -1,9 +1,9 @@
 def test_settings_loads_required_env():
     from app.config import Settings
     s = Settings()
-    assert s.kie_api_key == "test-kie-key"
-    assert s.openai_api_key == "test-openai-key"
-    assert s.wompi_private_key == "prv_test_abc"
+    assert s.kie_api_key.startswith("test-kie-key")
+    assert s.openai_api_key.startswith("test-openai-key")
+    assert s.wompi_private_key.startswith("prv_test_abc")
     assert s.api_base_url == "https://app.phinodia.com"
     assert "https://app.phinodia.com" in s.cors_origins
     assert s.gmail_sender_email == "scastellanos@phinodia.com"

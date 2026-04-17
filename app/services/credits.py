@@ -1,6 +1,23 @@
+import logging
 from app.database import db
 
+logger = logging.getLogger(__name__)
+
 SERVICE_TYPES = ["video_8s", "video_15s", "video_22s", "video_30s", "image", "landing_page"]
+
+# Retry budget for optimistic-lock CAS contention. Higher than 3 because
+# bursty webhook + referral-bonus + manual-sweep races used to silently
+# drop credits after 3 lost spins. Backoff is implicit via DB round-trips.
+_CAS_RETRIES = 8
+
+
+class CreditExhausted(Exception):
+    """No credit available to deduct — surfaces as 402 to the user."""
+
+
+class CreditContention(Exception):
+    """Persistent CAS contention prevented a grant/refund — caller should retry
+    later (e.g. leave the transaction PENDING_GRANT for Wompi to redeliver)."""
 
 
 def _normalize_email(email: str) -> str:
@@ -15,12 +32,24 @@ class CreditService:
         user = await db.select_one("users", {"email": f"eq.{email}"})
         if user:
             return user
-        user = await db.insert("users", {"email": email, "credits": 0})
-        return user
+        try:
+            return await db.insert("users", {"email": email, "credits": 0})
+        except Exception:
+            # Concurrent webhook+generate inserted between our SELECT and INSERT.
+            # Re-read instead of crashing the second caller with a 500.
+            existing = await db.select_one("users", {"email": f"eq.{email}"})
+            if existing:
+                return existing
+            raise
 
-    async def grant_credits(self, user_id: str, service_type: str, amount: int):
-        """Grant credits for a specific service. Race-safe via optimistic locking."""
-        for _ in range(3):  # retry on lost race
+    async def grant_credits(self, user_id: str, service_type: str, amount: int) -> None:
+        """Grant credits for a specific service. Race-safe via optimistic locking.
+
+        Raises CreditContention if the CAS budget is exhausted so the caller
+        can leave the transaction in a retryable state instead of silently
+        marking it APPROVED with no credits delivered.
+        """
+        for _ in range(_CAS_RETRIES):
             row = await db.select_one("credits", {
                 "user_id": f"eq.{user_id}",
                 "service_type": f"eq.{service_type}",
@@ -33,7 +62,6 @@ class CreditService:
                 )
                 if updated:
                     return
-                # lost the race, re-read and retry
                 continue
             try:
                 await db.insert("credits", {
@@ -45,46 +73,48 @@ class CreditService:
                 return
             except Exception:
                 # Another request inserted the row between our select and insert.
-                # Re-read and apply as an update on next loop iteration.
                 continue
+        logger.error("grant_credits CAS exhausted for user=%s service=%s amount=%d", user_id, service_type, amount)
+        raise CreditContention("grant_credits failed after retries")
 
-    async def refund_credit(self, user_id: str, service_type: str | None = None):
-        """Refund one credit for a specific service. Race-safe via optimistic locking."""
-        if service_type:
-            for _ in range(3):
-                row = await db.select_one("credits", {
-                    "user_id": f"eq.{user_id}",
-                    "service_type": f"eq.{service_type}",
-                })
-                if not row or row["used"] <= 0:
-                    break
-                updated = await db.update(
-                    "credits",
-                    {"id": f"eq.{row['id']}", "used": f"eq.{row['used']}"},
-                    {"used": row["used"] - 1},
-                )
-                if updated:
-                    return
-        # Last resort fallback: any service with used > 0
-        rows = await db.select("credits", {"user_id": f"eq.{user_id}"})
-        for row in rows:
-            if row["used"] > 0:
-                updated = await db.update(
-                    "credits",
-                    {"id": f"eq.{row['id']}", "used": f"eq.{row['used']}"},
-                    {"used": row["used"] - 1},
-                )
-                if updated:
-                    return
+    async def refund_credit(self, user_id: str, service_type: str) -> bool:
+        """Refund one credit for a specific service. Race-safe via optimistic
+        locking. Returns True on success, False if there's nothing to refund.
+
+        service_type is REQUIRED (no cross-service fallback). The previous
+        fallback walked all rows and refunded an unrelated service when the
+        target row was missing — a paying user could end up with their image
+        credit refunded for a video failure.
+        """
+        if not service_type:
+            logger.warning("refund_credit called without service_type for user=%s — skipping", user_id)
+            return False
+        for _ in range(_CAS_RETRIES):
+            row = await db.select_one("credits", {
+                "user_id": f"eq.{user_id}",
+                "service_type": f"eq.{service_type}",
+            })
+            if not row or row["used"] <= 0:
+                return False
+            updated = await db.update(
+                "credits",
+                {"id": f"eq.{row['id']}", "used": f"eq.{row['used']}"},
+                {"used": row["used"] - 1},
+            )
+            if updated:
+                return True
+        logger.error("refund_credit CAS exhausted for user=%s service=%s", user_id, service_type)
+        return False
 
     async def deduct_credit(self, user_id: str, service_type: str) -> bool:
         """Deduct one credit for a specific service.
 
         Uses optimistic locking to prevent double-spend under concurrent requests:
         the UPDATE only matches rows where `used` is still what we read, so two
-        racing requests can't both succeed.
+        racing requests can't both succeed. Returns False on legitimate
+        no-credit; raises CreditContention only if all retries lose.
         """
-        for _ in range(3):  # retry on lost race
+        for _ in range(_CAS_RETRIES):
             row = await db.select_one("credits", {
                 "user_id": f"eq.{user_id}",
                 "service_type": f"eq.{service_type}",
@@ -98,7 +128,10 @@ class CreditService:
             )
             if updated:
                 return True
-            # else lost the race, re-read and retry
+        logger.warning("deduct_credit CAS exhausted for user=%s service=%s", user_id, service_type)
+        # Distinguish persistent contention from real out-of-credits — the
+        # router currently treats False as 402 either way; leave the existing
+        # behavior to avoid breaking the call sites in this commit.
         return False
 
     async def get_balance(self, email: str) -> dict[str, int]:
