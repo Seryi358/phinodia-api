@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
@@ -8,6 +9,7 @@ from app.services.kie_ai import KieAIClient
 
 router = APIRouter()
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 KIE_STATE_MAP = {
     "waiting": "processing", "queuing": "processing", "generating": "processing",
@@ -40,8 +42,6 @@ async def get_job_status(job_id: UUID):
     # result_url (e.g. base 8s saved while extensions slow), mark it
     # completed-with-warning instead of failing+refunding — otherwise the
     # user gets the partial deliverable AND a refund (free product).
-    import logging
-    logger = logging.getLogger(__name__)
     if job["status"] in ("generating", "processing") and job.get("created_at"):
         try:
             created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
@@ -91,12 +91,29 @@ async def get_job_status(job_id: UUID):
         except (ValueError, TypeError) as e:
             logger.warning("Auto-fail timestamp parse failed for job %s: %r", job_id, job.get("created_at"))
 
-    if job.get("kie_task_id") and job["status"] in ("generating", "processing"):
+    # Don't auto-poll-and-complete if a partial result_url is already saved.
+    # For multi-step pipelines (video extensions), the worker stores the base
+    # URL + base task_id mid-chain, then continues extending. A poll here
+    # would see the base task as "success", CAS-complete the job, and silently
+    # truncate a paid 30s video to 8s — the worker's later extension writes
+    # would all CAS-miss against the now-completed status.
+    if job.get("kie_task_id") and job["status"] in ("generating", "processing") and not job.get("result_url"):
         kie = KieAIClient(api_key=settings.kie_api_key)
-        if job["service_type"].startswith("video_"):
-            kie_status = await kie.get_video_status(job["kie_task_id"])
-        else:
-            kie_status = await kie.get_task_status(job["kie_task_id"])
+        # KIE upstream can be slow/flaky; don't 500 the user — fall back to
+        # whatever DB row we have. The worker will keep its own progress.
+        try:
+            if job["service_type"].startswith("video_"):
+                kie_status = await kie.get_video_status(job["kie_task_id"])
+            else:
+                kie_status = await kie.get_task_status(job["kie_task_id"])
+        except Exception as e:
+            logger.warning("KIE status poll failed for job %s: %s", job_id, type(e).__name__)
+            return JobStatusResponse(
+                job_id=job["id"], status=job["status"],
+                progress=100 if job["status"] == "completed" else 0,
+                result_url=job.get("result_url"), result_type=job.get("result_type"),
+                error_message=job.get("error_message"),
+            )
 
         mapped_status = KIE_STATE_MAP.get(kie_status["state"], job["status"])
 

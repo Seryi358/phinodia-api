@@ -59,11 +59,15 @@ class Settings(BaseSettings):
             raise ValueError("secret/key must be set and >= 16 chars")
         return v
 
-    @field_validator("supabase_url")
+    @field_validator("supabase_url", "api_base_url")
     @classmethod
     def _https_only(cls, v: str) -> str:
+        # Strip whitespace defensively — a stray trailing newline in .env
+        # would otherwise corrupt the api_base_url prefix and break every
+        # upload validation at request time (silent prod breakage).
+        v = (v or "").strip()
         if not v.startswith("https://"):
-            raise ValueError("supabase_url must be https://")
+            raise ValueError("URL must be https://")
         return v
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

@@ -62,11 +62,16 @@ def _resolve_property(data: dict, path: str):
 
 # Signature MUST cover at least these fields, otherwise an attacker (with leaked
 # secret OR an empty `properties` list event) could forge events with arbitrary
-# transaction details.
+# transaction details. Including customer_email + reference + currency means
+# even with a leaked secret the attacker can't redirect credits to their own
+# email or alter the SKU/amount we resolve from the reference string.
 _REQUIRED_SIGNED_PROPS = frozenset({
     "transaction.id",
     "transaction.status",
     "transaction.amount_in_cents",
+    "transaction.customer_email",
+    "transaction.reference",
+    "transaction.currency",
 })
 
 

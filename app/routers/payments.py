@@ -80,6 +80,15 @@ async def wompi_webhook(event: dict):
         logger.warning("Webhook timestamp %s outside replay window", ev_ts_int)
         return {"status": "ok", "action": "stale_timestamp"}
 
+    # Cross-check Wompi environment to prevent sandbox events from granting
+    # production credits if secrets are ever shared/swapped between deploys.
+    # Wompi puts a top-level `environment` field on every event payload.
+    expected_env = "prod" if settings.wompi_environment == "production" else "test"
+    ev_env = (event.get("environment") or "").lower()
+    if ev_env and ev_env != expected_env:
+        logger.warning("Webhook environment mismatch: expected %s, got %s", expected_env, ev_env)
+        return {"status": "ok", "action": "wrong_environment"}
+
     tx_data = event.get("data", {}).get("transaction", {})
     status = tx_data.get("status")
     if status != "APPROVED":
@@ -92,9 +101,11 @@ async def wompi_webhook(event: dict):
         logger.warning("Webhook currency %r != COP for tx %s", tx_data.get("currency"), tx_data.get("id"))
         return {"status": "ok", "action": "bad_currency"}
 
-    amount = tx_data.get("amount_in_cents", 0)
-    reference = tx_data.get("reference", "")
-    customer_email = tx_data.get("customer_email", "")
+    # `or 0` instead of default — Wompi can send explicit null in some events,
+    # which would skip resolve_package's strict equality check.
+    amount = tx_data.get("amount_in_cents") or 0
+    reference = tx_data.get("reference") or ""
+    customer_email = tx_data.get("customer_email") or ""
     if not customer_email:
         logger.warning("Webhook missing customer_email for tx %s", tx_data.get("id"))
         return {"status": "ok", "action": "none"}

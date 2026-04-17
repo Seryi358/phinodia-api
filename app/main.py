@@ -294,13 +294,25 @@ app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
 
-# Catch-all for any /api/* GET that the routers didn't match -> proper 405.
-# Without this the frontend StaticFiles mount swallows it as 404, which is
-# semantically wrong (resource exists, method is wrong).
-@app.api_route("/api/{rest_of_path:path}", methods=["GET", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS"])
-async def _api_method_not_allowed(rest_of_path: str):
-    from fastapi.responses import JSONResponse
-    return JSONResponse({"detail": "Method Not Allowed"}, status_code=405)
+# Catch-all for /api/* paths the routers didn't match. Distinguish:
+# - known prefix + wrong method -> 405 with Allow header
+# - truly unknown path          -> 404 (don't leak prefix existence)
+_KNOWN_API_PREFIXES = (
+    "/api/v1/generate",
+    "/api/v1/jobs",
+    "/api/v1/credits",
+    "/api/v1/payments",
+    "/api/v1/upload",
+    "/api/v1/referrals",
+)
+
+
+@app.api_route("/api/{rest_of_path:path}", methods=["GET", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS", "POST"])
+async def _api_unknown_or_method_not_allowed(rest_of_path: str, request: Request):
+    full = "/api/" + rest_of_path
+    if any(full.startswith(p) for p in _KNOWN_API_PREFIXES):
+        return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers={"Allow": "POST, GET"})
+    return JSONResponse({"detail": "Not Found"}, status_code=404)
 
 
 # Serve frontend pages (LAST — catch-all for HTML pages)

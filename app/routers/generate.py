@@ -318,7 +318,12 @@ async def _process_video(job_id: str, req: VideoRequest):
                 current_task_id = await kie.extend_video(task_id=current_task_id, prompt=ext_prompt)
                 await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": current_task_id})
                 ext_status = await _poll_until_done(kie, current_task_id, is_video=True)
-                if ext_status["state"] != "success":
+                # Treat success-with-empty-result_urls as a soft failure too.
+                # KIE occasionally returns state=success with no URLs on extend;
+                # silently keeping the previous URL would ship an 8s video for a
+                # 30s purchase with no warning to the user.
+                ext_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else None
+                if ext_status["state"] != "success" or not ext_url:
                     # CAS-guarded partial success. Don't overwrite an already-
                     # failed-and-refunded row (would gift the user a free video
                     # plus refund). Also clear stale error_message from the
@@ -333,7 +338,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                         },
                     )
                     return
-                final_result_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else final_result_url
+                final_result_url = ext_url
                 seconds_so_far += 7
             except Exception as e:
                 logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
@@ -352,7 +357,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         # CAS-guarded so an auto-failed-and-refunded row can't be resurrected
         # to "completed" (which would leave the user with both a video and a
         # refund). Clear error_message in case auto-fail had set one.
-        await db.update(
+        completed_now = await db.update(
             "jobs",
             {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
             {
@@ -361,7 +366,11 @@ async def _process_video(job_id: str, req: VideoRequest):
                 "error_message": None,
             },
         )
-        await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, DURATION_TO_SERVICE.get(req.duration, "video_8s"), job_id, final_result_url)
+        # Only send the delivery email if WE actually flipped to completed.
+        # Otherwise the auto-fail or another path already terminated the job
+        # and may have already messaged the user (or refunded).
+        if completed_now:
+            await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, DURATION_TO_SERVICE.get(req.duration, "video_8s"), job_id, final_result_url)
 
     except Exception as e:
         logger.exception("Video pipeline failed for job %s: %s", job_id, e)
@@ -454,7 +463,7 @@ async def _process_image(job_id: str, req: ImageRequest):
 
         result_url = status["result_urls"][0] if status.get("result_urls") else ""
         # CAS-guarded: don't resurrect an auto-failed-and-refunded job.
-        await db.update(
+        completed_now = await db.update(
             "jobs",
             {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
             {
@@ -464,7 +473,10 @@ async def _process_image(job_id: str, req: ImageRequest):
                 "error_message": None,
             },
         )
-        await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "image", job_id, result_url)
+        # Email only if we actually completed (gate prevents emailing a user
+        # whose job was auto-failed-and-refunded by /jobs/status).
+        if completed_now:
+            await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "image", job_id, result_url)
 
     except Exception as e:
         logger.exception("Image generation failed for job %s: %s", job_id, e)
