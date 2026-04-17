@@ -200,8 +200,14 @@ async def rate_limit_email_lookups(request: Request, call_next):
 
 @app.middleware("http")
 async def add_cache_and_security_headers(request: Request, call_next):
-    response: Response = await call_next(request)
     path = request.url.path
+    # Reject dotfiles BEFORE StaticFiles serves them, but build the response
+    # ourselves so the security-headers block below still fires.
+    if (path.startswith("/uploads/") or path.startswith("/static/")) and \
+            any(seg.startswith(".") for seg in path.split("/") if seg):
+        response: Response = JSONResponse({"detail": "Not Found"}, status_code=404)
+    else:
+        response = await call_next(request)
 
     # Cache control. Apply long max-age ONLY to successful responses so a 404
     # for a typoed asset (or a /uploads/ file requested before upload finishes)
@@ -296,15 +302,9 @@ async def sitemap():
     return Response(body, media_type="application/xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
-# Reject dotfiles before they reach StaticFiles — prevents accidental serving
-# of .gitkeep, .DS_Store, .env, .bak files from data/uploads or frontend/static.
-@app.middleware("http")
-async def block_dotfile_static(request: Request, call_next):
-    p = request.url.path
-    if p.startswith("/uploads/") or p.startswith("/static/"):
-        if any(seg.startswith(".") for seg in p.split("/") if seg):
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
-    return await call_next(request)
+# Note: dotfile filter moved into add_cache_and_security_headers below so 404
+# responses carry the same header envelope as everything else (was returning
+# bare 404 without HSTS/CSP/no-store, defeating the point of the middleware).
 
 
 # Serve uploaded files

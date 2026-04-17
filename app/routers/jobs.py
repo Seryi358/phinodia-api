@@ -102,18 +102,33 @@ async def get_job_status(job_id: UUID):
         except (ValueError, TypeError):
             # Force-fail jobs whose created_at is malformed — otherwise they
             # stay "processing" forever and the credit is never refunded.
+            # CAS-guard so we don't double-refund a row a worker just finished
+            # OR refund a row that already has a partial result_url (would
+            # gift the user both refund and product).
             logger.error("Auto-fail timestamp parse failed for job %s: %r — forcing failed", job_id, job.get("created_at"))
-            await db.update(
-                "jobs",
-                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                {"status": "failed", "error_message": "Error de timestamp interno. Tu credito fue restaurado."},
-            )
             from app.services.credits import CreditService
             credit_svc = CreditService()
             service_type = job.get("service_type")
-            if service_type:
-                await credit_svc.refund_credit(job["user_id"], service_type)
-            job["status"] = "failed"
+            if job.get("result_url"):
+                # Partial deliverable exists — promote instead of fail+refund.
+                promoted = await db.update(
+                    "jobs",
+                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                    {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat(),
+                     "error_message": "Tu resultado parcial esta listo."},
+                )
+                if promoted:
+                    job["status"] = "completed"
+            else:
+                forced = await db.update(
+                    "jobs",
+                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                    {"status": "failed", "error_message": "Error interno. Tu credito fue restaurado."},
+                )
+                if forced and service_type:
+                    await credit_svc.refund_credit(job["user_id"], service_type)
+                if forced:
+                    job["status"] = "failed"
 
     # Don't auto-poll-and-complete if a partial result_url is already saved.
     # For multi-step pipelines (video extensions), the worker stores the base
