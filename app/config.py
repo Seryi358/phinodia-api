@@ -40,10 +40,13 @@ class Settings(BaseSettings):
     # Reject empty/short secrets at startup so a misconfigured deploy can't
     # silently accept forged Wompi webhooks (HMAC of empty-string-secret is
     # trivial to compute) or leak the Supabase service key over plain HTTP.
+    # wompi_public_key is included so a missing env doesn't silently break
+    # checkout (frontend would render a malformed widget with no diagnostic).
     @field_validator(
         "wompi_events_secret",
         "wompi_integrity_secret",
         "wompi_private_key",
+        "wompi_public_key",
         "supabase_service_key",
         "openai_api_key",
         "kie_api_key",

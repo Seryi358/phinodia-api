@@ -307,21 +307,25 @@ async def process_referral_bonus(customer_email: str, service_type: str):
         logger.info("Referral bonus for %s already past PENDING_BONUS — skipping", bonus_tx_id)
         return
 
-    from app.services.credits import CreditContention
     try:
         await credit_svc.grant_credits(referrer_user["id"], service_type, 1)
-    except CreditContention:
-        # Roll the lock back so the next retry can attempt the grant.
+    except Exception as e:
+        # Catch ALL exceptions (not just CreditContention) — a Supabase 5xx
+        # bubbling out would leave the row stuck at GRANTING_BONUS and any
+        # later retry's check at the top of this function would bail because
+        # `existing.status in (REFERRAL_BONUS, GRANTING_BONUS)`. Rollback to
+        # PENDING_BONUS lets the natural retry path complete the grant.
         await db.update(
             "transactions",
             {"wompi_transaction_id": f"eq.{bonus_tx_id}", "status": "eq.GRANTING_BONUS"},
             {"status": "PENDING_BONUS"},
         )
-        logger.error("Referral bonus grant contention for %s — rolled back", bonus_tx_id)
+        logger.exception("Referral bonus grant failed for %s — rolled back: %s", bonus_tx_id, e)
         return
+    # CAS-guarded final flip — same rationale as payments webhook.
     await db.update(
         "transactions",
-        {"wompi_transaction_id": f"eq.{bonus_tx_id}"},
+        {"wompi_transaction_id": f"eq.{bonus_tx_id}", "status": "eq.GRANTING_BONUS"},
         {"status": "REFERRAL_BONUS"},
     )
 

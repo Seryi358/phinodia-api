@@ -39,13 +39,13 @@ def _detect_format(content: bytes) -> str | None:
 @router.post("/image")
 async def upload_image(file: UploadFile = File(...)):
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(400, "Solo se permiten imágenes JPEG, PNG y WebP")
+        raise HTTPException(400, "Solo se permiten imagenes JPEG, PNG y WebP")
 
     content = await file.read()
     if len(content) > MAX_SIZE:
         raise HTTPException(400, "La imagen no puede superar 10MB")
     if len(content) < MIN_SIZE:
-        raise HTTPException(400, "La imagen es demasiado pequeña. Sube una foto del producto.")
+        raise HTTPException(400, "La imagen es demasiado pequena. Sube una foto del producto.")
 
     detected = _detect_format(content)
     if not detected:
@@ -83,7 +83,7 @@ async def upload_image(file: UploadFile = File(...)):
     # Re-encoded bytes can outsize the original (e.g. JPEG q=92 from a q=20
     # source). Enforce the cap on the FINAL on-disk bytes, not just the upload.
     if len(clean_bytes) > MAX_SIZE:
-        raise HTTPException(400, "La imagen procesada supera el tamaño permitido")
+        raise HTTPException(400, "La imagen procesada supera el tamano permitido")
 
     # Use the format detected from magic bytes, not the user-supplied extension.
     # This avoids serving a JPEG with a .png filename (mime mismatch).

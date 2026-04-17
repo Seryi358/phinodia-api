@@ -1,7 +1,9 @@
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.config import Settings
 settings = Settings()
@@ -50,6 +52,54 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Spanish-localize FastAPI's 422 validation errors so toast messages don't
+# show "Field required" / "Value error, ..." in English to es-CO users.
+_FIELD_LABELS = {
+    "image_url": "imagen",
+    "product_name": "nombre del producto",
+    "description": "descripcion",
+    "email": "correo electronico",
+    "duration": "duracion",
+    "format": "formato",
+    "aspect_ratio": "formato",
+    "data_consent": "tratamiento de datos",
+    "sku": "paquete",
+    "referred_email": "correo referido",
+    "referral_code": "codigo de referido",
+    "file": "archivo",
+    "job_id": "ID del trabajo",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_handler(request: Request, exc: RequestValidationError):
+    msgs = []
+    for err in exc.errors():
+        loc = err.get("loc") or []
+        field = loc[-1] if loc else ""
+        label = _FIELD_LABELS.get(str(field), str(field))
+        etype = err.get("type", "")
+        msg = err.get("msg", "")
+        if etype == "missing":
+            msgs.append(f"Falta el campo: {label}")
+        elif etype == "value_error" and msg.startswith("Value error, "):
+            msgs.append(msg.removeprefix("Value error, "))
+        elif "email" in etype:
+            msgs.append("Correo electronico no valido")
+        elif etype == "uuid_parsing":
+            msgs.append("ID no valido")
+        elif "literal" in etype:
+            msgs.append(f"Valor no permitido en {label}")
+        elif "string_too_short" in etype or "min_length" in etype:
+            msgs.append(f"{label.capitalize()} no puede estar vacio")
+        elif "string_too_long" in etype or "max_length" in etype:
+            msgs.append(f"{label.capitalize()} es demasiado largo")
+        else:
+            msgs.append(msg or f"Valor no valido en {label}")
+    detail = "; ".join(msgs) if msgs else "Datos invalidos"
+    return JSONResponse({"detail": detail}, status_code=422)
 
 
 # Reject oversized request bodies before parsing — prevents DoS via huge JSON
@@ -137,13 +187,10 @@ async def add_cache_and_security_headers(request: Request, call_next):
 
     # Cache control. Apply long max-age ONLY to successful responses so a 404
     # for a typoed asset (or a /uploads/ file requested before upload finishes)
-    # doesn't get negative-cached for hours by browsers/CDNs.
-    is_static = (
-        path.startswith("/static/css/")
-        or path.startswith("/static/js/")
-        or path.startswith("/static/images/")
-        or path.startswith("/uploads/")
-    )
+    # doesn't get negative-cached for hours by browsers/CDNs. Use broad
+    # /static/ and /uploads/ prefixes so a typo like /static/foo.css (which
+    # doesn't match /static/css/) still gets the no-store treatment on 404.
+    is_static = path.startswith("/static/") or path.startswith("/uploads/")
     if is_static:
         if response.status_code == 200:
             if path.startswith("/static/images/"):

@@ -122,6 +122,12 @@ async def wompi_webhook(event: dict):
     if existing and existing.get("status") == "APPROVED":
         logger.info("Duplicate webhook for tx %s — ignoring", wompi_tx_id)
         return {"status": "ok", "action": "duplicate"}
+    # Explicit branch for the lock state so a stuck row gets ERROR-level alerts
+    # (not buried in info logs across many Wompi retries) and so concurrent
+    # retries don't all do redundant SELECT/UPDATE work.
+    if existing and existing.get("status") == "GRANTING":
+        logger.error("Tx %s stuck in GRANTING — needs manual review", wompi_tx_id)
+        return {"status": "ok", "action": "stuck_granting"}
 
     package = resolve_package(amount, sku_from_ref)
     if not package:
@@ -166,18 +172,36 @@ async def wompi_webhook(event: dict):
 
     try:
         await credit_svc.grant_credits(user["id"], package["service"], package["credits"])
-    except CreditContention:
-        # Roll the CAS back so the next webhook retry can attempt the grant.
+    except Exception as e:
+        # Catch ALL exceptions (not just CreditContention) so a Supabase
+        # 5xx between SELECT and UPDATE doesn't bubble up — that would
+        # leave the row stuck at GRANTING and Wompi's retries would all
+        # short-circuit on the explicit GRANTING branch above. Rolling
+        # back to PENDING_GRANT lets the next retry re-attempt.
         await db.update(
             "transactions",
             {"wompi_transaction_id": f"eq.{wompi_tx_id}", "status": "eq.GRANTING"},
             {"status": "PENDING_GRANT"},
         )
-        logger.error("grant_credits contention for tx %s — rolled back to PENDING_GRANT", wompi_tx_id)
+        logger.exception("grant_credits failed for tx %s — rolled back to PENDING_GRANT: %s", wompi_tx_id, e)
         return {"status": "ok", "action": "retry_grant"}
+    # Process referral bonus BEFORE marking APPROVED. If we mark APPROVED
+    # first and the worker crashes (SIGTERM during deploy, OOM, slow Gmail
+    # call timing out the lifespan), the next webhook retry hits the
+    # "duplicate APPROVED" short-circuit and the referrer's bonus is lost
+    # forever. Running it first means retries naturally re-trigger it; the
+    # PENDING_BONUS lock inside process_referral_bonus prevents double-grant.
+    try:
+        await process_referral_bonus(customer_email, package["service"])
+    except Exception as e:
+        logger.warning("Failed to process referral bonus for %s: %s", customer_email, e)
+
+    # CAS-guarded final flip: only overwrite the GRANTING we set ourselves.
+    # Without the status filter, a manual-recovery operator who flipped the
+    # row back to PENDING_GRANT would see their state silently clobbered.
     await db.update(
         "transactions",
-        {"wompi_transaction_id": f"eq.{wompi_tx_id}"},
+        {"wompi_transaction_id": f"eq.{wompi_tx_id}", "status": "eq.GRANTING"},
         {"status": status},
     )
 
@@ -191,16 +215,10 @@ async def wompi_webhook(event: dict):
                 refresh_token=settings.gmail_refresh_token, sender_email=settings.gmail_sender_email,
             )
             sender.send_email(to=customer_email, subject=subject, html_body=html)
-            logger.info("Purchase confirmation email sent to %s", customer_email)
+            logger.info("Purchase confirmation email sent")
         except Exception as e:
-            logger.warning("Failed to send purchase email to %s: %s", customer_email, e)
+            logger.warning("Failed to send purchase email: %s", e)
     await asyncio.to_thread(_send_purchase_email)
 
-    # Process referral bonus if this user was referred (first purchase only)
-    try:
-        await process_referral_bonus(customer_email, package["service"])
-    except Exception as e:
-        logger.warning("Failed to process referral bonus for %s: %s", customer_email, e)
-
-    logger.info("Granted %d %s credits to %s (tx: %s)", package["credits"], package["service"], customer_email, reference)
+    logger.info("Granted %d %s credits (tx: %s)", package["credits"], package["service"], reference)
     return {"status": "ok", "action": "credits_granted", "credits": package["credits"]}

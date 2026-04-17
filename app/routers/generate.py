@@ -242,7 +242,17 @@ async def _process_video(job_id: str, req: VideoRequest):
             creative_direction=req.creative_direction,
             product_analysis=product_analysis, buyer_persona=buyer_persona,
         )
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
+        # CAS: only flip processing→generating. If auto-fail already moved
+        # the job to "failed", abort the pipeline so we don't re-arm a
+        # refunded job (which would also expose us to a 2nd auto-refund).
+        still_active = await db.update(
+            "jobs",
+            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+            {"generated_prompt": prompt, "status": "generating"},
+        )
+        if not still_active:
+            logger.info("Video job %s already terminated by auto-fail — aborting", job_id)
+            return
 
         # Step 5: Generate video with VEO 3.1 (retry with fallback)
         async def _create_video_with_image():
@@ -260,14 +270,19 @@ async def _process_video(job_id: str, req: VideoRequest):
             task_id, base_status = await _retry_kie_task(kie, _create_video_text_only, poll_is_video=True, max_retries=2)
 
         if base_status["state"] != "success":
-            # All retries exhausted — refund credit and show friendly error
+            # All retries exhausted — CAS-guarded refund. If /jobs/status auto-fail
+            # already failed and refunded the job, the CAS misses → we don't
+            # double-refund. Mirrors the landing pipeline pattern.
             credit_svc = CreditService()
             service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
             user = await credit_svc.get_or_create_user(req.email)
-            await credit_svc.refund_credit(user["id"], service_type)
-            await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                "status": "failed", "error_message": _friendly_error(base_status.get("error", "unknown"))
-            })
+            failed_now = await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {"status": "failed", "error_message": _friendly_error(base_status.get("error", "unknown"))},
+            )
+            if failed_now:
+                await credit_svc.refund_credit(user["id"], service_type)
             return
 
         # Save base video result URL — write it to result_url IMMEDIATELY so a
@@ -295,41 +310,78 @@ async def _process_video(job_id: str, req: VideoRequest):
                 await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": current_task_id})
                 ext_status = await _poll_until_done(kie, current_task_id, is_video=True)
                 if ext_status["state"] != "success":
-                    # Extension failed — return the LONGEST successful version
-                    # (final_result_url tracks the best segment so far). Saving
-                    # base_result_url here would silently lose 14s of paid
-                    # content if extensions 1+2 had succeeded.
-                    await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                        "status": "completed", "result_url": final_result_url, "result_type": "mp4",
-                        "completed_at": datetime.now(timezone.utc).isoformat(),
-                        "error_message": f"La extension fallo. Tu video de {seconds_so_far} segundos esta listo.",
-                    })
+                    # CAS-guarded partial success. Don't overwrite an already-
+                    # failed-and-refunded row (would gift the user a free video
+                    # plus refund). Also clear stale error_message from the
+                    # auto-fail path on a true success.
+                    await db.update(
+                        "jobs",
+                        {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                        {
+                            "status": "completed", "result_url": final_result_url, "result_type": "mp4",
+                            "completed_at": datetime.now(timezone.utc).isoformat(),
+                            "error_message": f"La extension fallo. Tu video de {seconds_so_far} segundos esta listo.",
+                        },
+                    )
                     return
                 final_result_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else final_result_url
                 seconds_so_far += 7
             except Exception as e:
-                logger.error("Extension %d failed for job %s: %s", ext_num, job_id, e)
-                await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                    "status": "completed", "result_url": final_result_url, "result_type": "mp4",
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
-                    "error_message": f"La extension fallo. Tu video de {seconds_so_far} segundos esta listo.",
-                })
+                logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
+                await db.update(
+                    "jobs",
+                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                    {
+                        "status": "completed", "result_url": final_result_url, "result_type": "mp4",
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "error_message": f"La extension fallo. Tu video de {seconds_so_far} segundos esta listo.",
+                    },
+                )
                 return
 
-        # All extensions done (or no extensions needed) — save final result
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {
-            "status": "completed", "result_url": final_result_url, "result_type": "mp4",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        })
+        # All extensions done (or no extensions needed) — save final result.
+        # CAS-guarded so an auto-failed-and-refunded row can't be resurrected
+        # to "completed" (which would leave the user with both a video and a
+        # refund). Clear error_message in case auto-fail had set one.
+        await db.update(
+            "jobs",
+            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+            {
+                "status": "completed", "result_url": final_result_url, "result_type": "mp4",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "error_message": None,
+            },
+        )
         await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, DURATION_TO_SERVICE.get(req.duration, "video_8s"), job_id, final_result_url)
 
     except Exception as e:
-        logger.error("Video pipeline failed for job %s: %s", job_id, e)
+        logger.exception("Video pipeline failed for job %s: %s", job_id, e)
         credit_svc = CreditService()
         service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
         user = await credit_svc.get_or_create_user(req.email)
-        await credit_svc.refund_credit(user["id"], service_type)
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": _friendly_error(str(e))})
+        # Re-read the job to see if a partial result_url was already saved
+        # (e.g. base 8s succeeded, extension N raised mid-flight). Refunding
+        # AND leaving the URL accessible would gift a free video — instead,
+        # mark completed-with-warning and keep the partial as the deliverable.
+        current = await db.select_one("jobs", {"id": f"eq.{job_id}"})
+        if current and current.get("result_url"):
+            await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {
+                    "status": "completed",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "error_message": "La generacion fue interrumpida pero tu video parcial esta listo.",
+                },
+            )
+            return
+        failed_now = await db.update(
+            "jobs",
+            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+            {"status": "failed", "error_message": _friendly_error(str(e))},
+        )
+        if failed_now:
+            await credit_svc.refund_credit(user["id"], service_type)
 
 
 async def _process_image(job_id: str, req: ImageRequest):
@@ -363,7 +415,14 @@ async def _process_image(job_id: str, req: ImageRequest):
             aspect_ratio=req.aspect_ratio, creative_direction=creative,
             is_ugc=(req.image_style == "ugc"),
         )
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"generated_prompt": prompt, "status": "generating"})
+        still_active = await db.update(
+            "jobs",
+            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+            {"generated_prompt": prompt, "status": "generating"},
+        )
+        if not still_active:
+            logger.info("Image job %s already terminated by auto-fail — aborting", job_id)
+            return
 
         # Retry image generation up to MAX_RETRIES
         task_id, status = await _retry_kie_task(
@@ -375,26 +434,40 @@ async def _process_image(job_id: str, req: ImageRequest):
         if status["state"] != "success":
             credit_svc = CreditService()
             user = await credit_svc.get_or_create_user(req.email)
-            await credit_svc.refund_credit(user["id"], "image")
-            await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                "status": "failed", "error_message": _friendly_error(status.get("error", "unknown"))
-            })
+            failed_now = await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {"status": "failed", "error_message": _friendly_error(status.get("error", "unknown"))},
+            )
+            if failed_now:
+                await credit_svc.refund_credit(user["id"], "image")
             return
 
         result_url = status["result_urls"][0] if status.get("result_urls") else ""
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {
-            "kie_task_id": task_id, "status": "completed",
-            "result_url": result_url, "result_type": "jpg",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        })
+        # CAS-guarded: don't resurrect an auto-failed-and-refunded job.
+        await db.update(
+            "jobs",
+            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+            {
+                "kie_task_id": task_id, "status": "completed",
+                "result_url": result_url, "result_type": "jpg",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "error_message": None,
+            },
+        )
         await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "image", job_id, result_url)
 
     except Exception as e:
-        logger.error("Image generation failed for job %s: %s", job_id, e)
+        logger.exception("Image generation failed for job %s: %s", job_id, e)
         credit_svc = CreditService()
         user = await credit_svc.get_or_create_user(req.email)
-        await credit_svc.refund_credit(user["id"], "image")
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "failed", "error_message": _friendly_error(str(e))})
+        failed_now = await db.update(
+            "jobs",
+            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+            {"status": "failed", "error_message": _friendly_error(str(e))},
+        )
+        if failed_now:
+            await credit_svc.refund_credit(user["id"], "image")
 
 
 async def _process_landing(job_id: str, req: LandingRequest):
@@ -490,13 +563,18 @@ async def _process_landing(job_id: str, req: LandingRequest):
             if attempt < MAX_RETRIES - 1:
                 await asyncio.sleep(3)
 
-    # All retries failed — refund credit
+    # All retries failed — CAS-guarded refund. If /jobs/status auto-fail
+    # already failed and refunded the job, the CAS misses → we don't
+    # double-refund.
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(req.email)
-    await credit_svc.refund_credit(user["id"], "landing_page")
-    await db.update("jobs", {"id": f"eq.{job_id}"}, {
-        "status": "failed", "error_message": "No se pudo generar la landing page. Tu credito fue restaurado. Intenta de nuevo con una descripcion mas detallada."
-    })
+    failed_now = await db.update(
+        "jobs",
+        {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+        {"status": "failed", "error_message": "No se pudo generar la landing page. Tu credito fue restaurado. Intenta de nuevo con una descripcion mas detallada."},
+    )
+    if failed_now:
+        await credit_svc.refund_credit(user["id"], "landing_page")
 
 
 @router.post("/video", response_model=GenerateResponse, status_code=202)

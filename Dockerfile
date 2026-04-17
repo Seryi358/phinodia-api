@@ -22,4 +22,8 @@ EXPOSE 8000
 
 # 4 workers handle concurrent requests in parallel — single worker was
 # serializing /credits/check under load (p95 3s with 50 concurrent calls).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# --proxy-headers + --forwarded-allow-ips so trailing-slash 307 redirects
+# preserve the https:// scheme (otherwise uvicorn rebuilds Location with
+# http:// and the browser downgrade is blocked by HSTS only on subsequent
+# visits, hurting first-load + crawler experience).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]
