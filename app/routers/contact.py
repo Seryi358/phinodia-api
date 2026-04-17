@@ -15,14 +15,16 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Strip control chars so a malicious user can't inject email headers via
-# \r\n in plain-text fields (Gmail API ignores headers in body but defense
-# in depth).
-_CONTROL = re.compile(r'[\x00-\x1f\x7f]')
+# Strip control chars BUT preserve \n and \r so multi-line messages
+# (typical for "describe tu proyecto") render properly. Header injection
+# is moot here because the user-supplied text only goes into the EMAIL
+# BODY, never into headers (subject is composed server-side from name +
+# quote_type which already pass through this same filter).
+_CONTROL = re.compile(r'[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]')
 
 
 def _clean(s: str) -> str:
-    return _CONTROL.sub(' ', (s or '').strip())[:2000]
+    return _CONTROL.sub(' ', (s or '').strip())[:8000]
 
 
 class ContactRequest(BaseModel):
@@ -30,7 +32,7 @@ class ContactRequest(BaseModel):
     email: EmailStr
     phone: str = Field("", max_length=40)
     quote_type: str = Field("general", max_length=80)
-    message: str = Field(..., min_length=1, max_length=2000)
+    message: str = Field(..., min_length=1, max_length=8000)
     data_consent: bool
 
     @field_validator("name", "phone", "quote_type", "message")
