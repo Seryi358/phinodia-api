@@ -74,16 +74,18 @@ _REQUIRED_SIGNED_PROPS = frozenset({
 
 
 def verify_webhook_signature(event: dict, events_secret: str) -> bool:
-    signature = event.get("signature", {})
-    properties = signature.get("properties", [])
-    expected_checksum = signature.get("checksum", "")
+    # `or {}` not default-arg — explicit null in the payload would otherwise
+    # leak through and AttributeError on .get(). Same pattern for `data`.
+    signature = event.get("signature") or {}
+    properties = signature.get("properties") or []
+    expected_checksum = signature.get("checksum") or ""
     if not isinstance(properties, list) or not _REQUIRED_SIGNED_PROPS.issubset(set(properties)):
         return False
     if not isinstance(expected_checksum, str) or not expected_checksum:
         return False
     values = []
     for prop in properties:
-        val = _resolve_property(event.get("data", {}), prop)
+        val = _resolve_property(event.get("data") or {}, prop)
         if val is not None:
             values.append(str(val))
     timestamp = event.get("timestamp", "")

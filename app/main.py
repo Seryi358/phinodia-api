@@ -28,8 +28,16 @@ async def lifespan(app: FastAPI):
             if pending:
                 _log.info("Draining %d in-flight generation tasks (max 25s)", len(pending))
                 done, still_pending = await _asyncio.wait(pending, timeout=25)
-                for t in still_pending:
-                    t.cancel()
+                if still_pending:
+                    _log.info("Cancelling %d unfinished tasks", len(still_pending))
+                    for t in still_pending:
+                        t.cancel()
+                    # AWAIT the cancellations so each task's except block
+                    # gets event-loop time to refund + checkpoint BEFORE we
+                    # tear down the httpx pool below. Without this gather
+                    # the workers' refund code runs against a closed client
+                    # and silently drops the user's credit.
+                    await _asyncio.wait(still_pending, timeout=10)
     except Exception as e:
         _log.warning("Background task drain failed: %s", e)
     # Close shared httpx pool on shutdown

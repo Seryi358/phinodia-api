@@ -109,26 +109,33 @@ async def get_job_status(job_id: UUID):
             from app.services.credits import CreditService
             credit_svc = CreditService()
             service_type = job.get("service_type")
+            uid = job.get("user_id")
             if job.get("result_url"):
                 # Partial deliverable exists — promote instead of fail+refund.
+                partial_msg = "Tu resultado parcial esta listo."
                 promoted = await db.update(
                     "jobs",
                     {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
                     {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat(),
-                     "error_message": "Tu resultado parcial esta listo."},
+                     "error_message": partial_msg},
                 )
                 if promoted:
                     job["status"] = "completed"
+                    job["error_message"] = partial_msg
             else:
+                fail_msg = "Error interno. Tu credito fue restaurado."
                 forced = await db.update(
                     "jobs",
                     {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                    {"status": "failed", "error_message": "Error interno. Tu credito fue restaurado."},
+                    {"status": "failed", "error_message": fail_msg},
                 )
-                if forced and service_type:
-                    await credit_svc.refund_credit(job["user_id"], service_type)
+                if forced and service_type and uid:
+                    await credit_svc.refund_credit(uid, service_type)
+                elif forced and not uid:
+                    logger.error("Auto-fail job %s missing user_id — credit not refunded", job_id)
                 if forced:
                     job["status"] = "failed"
+                    job["error_message"] = fail_msg
 
     # Don't auto-poll-and-complete if a partial result_url is already saved.
     # For multi-step pipelines (video extensions), the worker stores the base

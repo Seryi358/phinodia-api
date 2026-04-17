@@ -91,8 +91,11 @@ async def wompi_webhook(event: dict):
         ev_is_test = ev_env_raw in test_words
         we_are_prod = settings.wompi_environment == "production"
         if (we_are_prod and ev_is_test) or (not we_are_prod and ev_is_prod):
-            logger.warning("Webhook environment mismatch: expected wompi_env=%s, got event.environment=%s", settings.wompi_environment, ev_env_raw)
-            return {"status": "ok", "action": "wrong_environment"}
+            # 503 (not 200) so Wompi keeps retrying — a 200 here would mark
+            # the event delivered and silently lose the production payment
+            # if WOMPI_ENVIRONMENT was misconfigured during a deploy.
+            logger.error("Webhook environment mismatch: expected wompi_env=%s, got event.environment=%s — forcing Wompi retry", settings.wompi_environment, ev_env_raw)
+            raise HTTPException(503, "wompi env mismatch — retry")
 
     tx_data = event.get("data", {}).get("transaction", {})
     status = tx_data.get("status")
