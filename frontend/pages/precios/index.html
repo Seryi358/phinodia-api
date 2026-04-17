@@ -47,7 +47,7 @@
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
   <link rel="preconnect" href="https://checkout.wompi.co" crossorigin>
   <link rel="preconnect" href="https://ik.imagekit.io">
-  <link rel="stylesheet" href="/static/css/style.css?v=1779500000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1780000000">
   <!-- defer keeps the widget from blocking first paint; it isn't needed
        until the user clicks "Comprar", which is well after page load. -->
   <script src="https://checkout.wompi.co/widget.js" defer></script>
@@ -198,7 +198,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1779500000"></script>
+  <script src="/static/js/api.js?v=1780000000"></script>
   <script>
     const RATE = 5000;
     let currency = 'COP';
@@ -327,17 +327,24 @@
         // — otherwise the user can pay before the registration row exists, and
         // process_referral_bonus runs against an empty table (referrer never
         // gets credit). Bounded timeout so a slow registrar doesn't block.
+        // Two-step: issue-token (proves THIS browser opened ?ref=) then register
+        // with the token. Closes the pre-bind hijack where an attacker could
+        // register arbitrary victim emails to their own code.
         const refCode = lsGet('phinodia_ref');
         if (refCode) {
           try {
             const ctrl = new AbortController();
-            const t = setTimeout(() => ctrl.abort(), 2500);
-            await fetch(API + '/referrals/register', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ referred_email: email, referral_code: refCode }),
-              signal: ctrl.signal,
-            });
+            const t = setTimeout(() => ctrl.abort(), 5000);
+            const tokRes = await fetch(API + '/referrals/issue-token?email=' + encodeURIComponent(email) + '&ref=' + encodeURIComponent(refCode), { signal: ctrl.signal });
+            if (tokRes.ok) {
+              const { token } = await tokRes.json();
+              await fetch(API + '/referrals/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ referred_email: email, referral_code: refCode, token }),
+                signal: ctrl.signal,
+              });
+            }
             clearTimeout(t);
           } catch (_) { /* don't block checkout on registrar failure */ }
         }

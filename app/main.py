@@ -393,6 +393,7 @@ _ROUTE_METHODS = {
     "/api/v1/referrals/code": "GET, HEAD",
     "/api/v1/referrals/stats": "GET, HEAD",
     "/api/v1/referrals/register": "POST",
+    "/api/v1/referrals/issue-token": "GET, HEAD",
     # contact
     "/api/v1/contact": "POST",
 }

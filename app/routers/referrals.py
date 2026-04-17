@@ -1,20 +1,62 @@
 import hashlib
+import hmac
 import logging
+import time
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr
+from app.config import get_settings
 from app.database import db
 from app.services.credits import CreditService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_settings = get_settings()
 
 
 CODE_LEN = 8  # 16^8 = 4.3B codes; 6-char (16M) had ~3% collision at 1k users
+# Token TTL — give the referee enough time to complete the form but not
+# infinite (hijack-by-replay window). 24 h covers typical multi-session
+# signup flows on mobile.
+TOKEN_TTL = 24 * 3600
 
 
 def generate_referral_code(email: str) -> str:
     """Generate a deterministic 8-char referral code from an email."""
     return hashlib.md5(email.lower().strip().encode()).hexdigest()[:CODE_LEN].upper()
+
+
+def _hmac_secret() -> bytes:
+    """Use the existing wompi_integrity_secret as our HMAC key. Already
+    required to be 16+ chars by config validation; rotating it would
+    invalidate all in-flight referral tokens (acceptable trade-off)."""
+    return _settings.wompi_integrity_secret.encode()
+
+
+def issue_referral_token(referee_email: str, referral_code: str, now: int | None = None) -> str:
+    """Sign a (referee, code, timestamp) tuple so the /register endpoint
+    can verify the referee themselves arrived via the ?ref= flow rather
+    than an attacker pre-binding random emails to their own code (which
+    would let them pocket the bonus when the victim eventually buys)."""
+    ts = now if now is not None else int(time.time())
+    payload = f"{referee_email.lower().strip()}|{referral_code.upper().strip()}|{ts}"
+    sig = hmac.new(_hmac_secret(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{ts}.{sig}"
+
+
+def verify_referral_token(token: str, referee_email: str, referral_code: str) -> bool:
+    """Validate the HMAC + timestamp window for an incoming /register call."""
+    if not token or "." not in token:
+        return False
+    ts_str, sig = token.split(".", 1)
+    try:
+        ts = int(ts_str)
+    except ValueError:
+        return False
+    now = int(time.time())
+    if now - ts > TOKEN_TTL or now - ts < -300:  # 5-min clock skew tolerated
+        return False
+    expected = issue_referral_token(referee_email, referral_code, now=ts).split(".", 1)[1]
+    return hmac.compare_digest(sig, expected)
 
 
 def _legacy_code_6(email: str) -> str:
@@ -99,6 +141,10 @@ class ReferralStatsResponse(BaseModel):
 class RegisterReferralRequest(BaseModel):
     referred_email: EmailStr
     referral_code: str
+    # HMAC token issued by /referrals/issue-token after the referee opens
+    # the ?ref= link. Without this, anyone could pre-bind any email to
+    # their own code and pocket the bonus when the victim later buys.
+    token: str | None = None
 
 
 @router.api_route("/code", methods=["GET", "HEAD"], response_model=ReferralCodeResponse)
@@ -189,6 +235,24 @@ async def get_referral_stats(email: EmailStr = Query(..., description="User emai
     )
 
 
+@router.api_route("/issue-token", methods=["GET", "HEAD"])
+async def issue_token(
+    email: EmailStr = Query(..., description="Referee email"),
+    ref: str = Query(..., description="Referrer's referral code"),
+):
+    """Issued client-side after the referee opens the ?ref= link with their
+    OWN email. The signed token gates /register so an attacker can't bind
+    arbitrary victim emails to their own code without a session from that
+    victim's browser. TTL 24 h."""
+    code = ref.upper().strip()
+    referrer_email = await find_referrer_email(code)
+    if not referrer_email:
+        raise HTTPException(400, "Codigo de referido invalido")
+    if email.lower().strip() == referrer_email.lower().strip():
+        raise HTTPException(400, "No puedes referirte a ti mismo")
+    return {"token": issue_referral_token(email, code), "ttl_seconds": TOKEN_TTL}
+
+
 @router.post("/register")
 async def register_referral(req: RegisterReferralRequest, request: Request):
     """Register a referral when someone signs up via a referral link.
@@ -196,9 +260,13 @@ async def register_referral(req: RegisterReferralRequest, request: Request):
     The Referer header is attacker-controlled, so we don't gate on it. Real
     anti-fraud is enforced downstream: the referrer only earns a credit when
     the referred email's webhook-verified purchase fires (process_referral_bonus).
-    Pre-binding random emails here without a real purchase grants nothing.
+    Pre-binding random emails here without a real purchase grants nothing,
+    BUT it still costs the referrer's bonus to the wrong attacker, so the
+    HMAC token below proves the referee themselves opened the ?ref= link.
     """
     code = req.referral_code.upper().strip()
+    if not req.token or not verify_referral_token(req.token, req.referred_email, code):
+        raise HTTPException(403, "Token de referido invalido o expirado")
 
     # Validate referral code: find who it belongs to
     referrer_email = await find_referrer_email(code)
