@@ -47,9 +47,16 @@ async def get_job_status(job_id: UUID):
             created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
             age_minutes = (datetime.now(timezone.utc) - created).total_seconds() / 60
             if age_minutes > 30:
-                if job.get("result_url"):
-                    # Partial deliverable already saved — promote to completed
-                    # with a warning instead of refunding.
+                # Multi-step video pipelines (15s/22s/30s = base + extensions)
+                # legitimately exceed 30 min when KIE is backed up. Don't
+                # promote them to "completed-with-partial" until 60 min — give
+                # the worker more time to finish the full chain.
+                multi_step = job.get("service_type") in ("video_15s", "video_22s", "video_30s")
+                promote_threshold = 60 if multi_step else 30
+                if job.get("result_url") and age_minutes > promote_threshold:
+                    # Partial deliverable already saved AND worker has had
+                    # ample time to finish — promote to completed-with-warning
+                    # instead of refunding.
                     promoted = await db.update(
                         "jobs",
                         {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
@@ -62,7 +69,11 @@ async def get_job_status(job_id: UUID):
                     if promoted:
                         logger.info("Auto-promoted long-running job %s to completed (partial result existed)", job_id)
                         job["status"] = "completed"
-                        job["error_message"] = "La generacion tomo mas de 30 minutos pero tu resultado parcial esta listo."
+                        job["error_message"] = "La generacion tomo mas tiempo del esperado pero tu resultado parcial esta listo."
+                elif job.get("result_url") and multi_step:
+                    # Inside the 30-60min window for a multi-step video — let
+                    # the worker keep extending. Return current state.
+                    pass
                 else:
                     updated = await db.update(
                         "jobs",
@@ -88,8 +99,21 @@ async def get_job_status(job_id: UUID):
                         refreshed = await db.select_one("jobs", {"id": f"eq.{job_id}"})
                         if refreshed:
                             job = refreshed
-        except (ValueError, TypeError) as e:
-            logger.warning("Auto-fail timestamp parse failed for job %s: %r", job_id, job.get("created_at"))
+        except (ValueError, TypeError):
+            # Force-fail jobs whose created_at is malformed — otherwise they
+            # stay "processing" forever and the credit is never refunded.
+            logger.error("Auto-fail timestamp parse failed for job %s: %r — forcing failed", job_id, job.get("created_at"))
+            await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {"status": "failed", "error_message": "Error de timestamp interno. Tu credito fue restaurado."},
+            )
+            from app.services.credits import CreditService
+            credit_svc = CreditService()
+            service_type = job.get("service_type")
+            if service_type:
+                await credit_svc.refund_credit(job["user_id"], service_type)
+            job["status"] = "failed"
 
     # Don't auto-poll-and-complete if a partial result_url is already saved.
     # For multi-step pipelines (video extensions), the worker stores the base

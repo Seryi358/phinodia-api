@@ -34,8 +34,13 @@ async def find_referrer_email(referral_code: str) -> str | None:
     page_size = 1000
     offset = 0
     while True:
+        # Without an explicit `order`, Postgres makes no stable ordering
+        # guarantee across LIMIT/OFFSET pages — concurrent inserts could
+        # cause referees near a page boundary to be skipped or duplicated,
+        # silently failing legitimate referral validations.
         users = await db.select("users", {
             "select": "email",
+            "order": "id",
             "limit": str(page_size),
             "offset": str(offset),
         })

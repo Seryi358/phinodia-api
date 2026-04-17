@@ -339,10 +339,14 @@ async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
 window.addEventListener('pagehide', cancelAllPolls);
 
 // On bfcache restore (Safari/Firefox back-button), polls were cancelled by
-// pagehide but the result UI still shows "Procesando" — reload so the user
-// either resumes a fresh poll (if the page wires it up) or sees current state.
+// pagehide but the result UI still shows "Procesando". Skip the reload if
+// there's an active job persisted in sessionStorage so we don't blow away
+// recoverable in-flight state — the page can resume polling instead.
 window.addEventListener('pageshow', (e) => {
-  if (e.persisted) location.reload();
+  if (!e.persisted) return;
+  let active = null;
+  try { active = sessionStorage.getItem('phinodia_active_job'); } catch (_) {}
+  if (!active) location.reload();
 });
 
 // ── localStorage with TTL ─────────────────────
@@ -355,19 +359,27 @@ function lsSet(key, value, ttlMs) {
 }
 
 function lsGet(key) {
+  let raw;
+  try { raw = localStorage.getItem(key); } catch (_) { return null; }
+  if (!raw) return null;
+  // Backward-compat: accept legacy plain-string values too.
+  if (raw.charAt(0) !== '{') return raw;
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    // Backward-compat: accept legacy plain-string values too.
-    if (raw.charAt(0) !== '{') return raw;
     const obj = JSON.parse(raw);
-    if (!obj || typeof obj !== 'object') return null;
+    if (!obj || typeof obj !== 'object') {
+      try { localStorage.removeItem(key); } catch (_) {}
+      return null;
+    }
     if (obj.e && obj.e < Date.now()) {
-      localStorage.removeItem(key);
+      try { localStorage.removeItem(key); } catch (_) {}
       return null;
     }
     return obj.v == null ? null : obj.v;
-  } catch (_) { return null; }
+  } catch (_) {
+    // Self-heal: corrupted entry would otherwise return null forever.
+    try { localStorage.removeItem(key); } catch (_) {}
+    return null;
+  }
 }
 
 // ── Credits Balance ────────────────────────────

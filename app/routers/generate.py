@@ -316,7 +316,17 @@ async def _process_video(job_id: str, req: VideoRequest):
             )
             try:
                 current_task_id = await kie.extend_video(task_id=current_task_id, prompt=ext_prompt)
-                await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": current_task_id})
+                # CAS-guard the kie_task_id update so we don't overwrite the
+                # task_id on an already-failed-and-refunded row (would burn
+                # KIE poll quota chasing the wrong taskId on operator replay).
+                still_active = await db.update(
+                    "jobs",
+                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                    {"kie_task_id": current_task_id},
+                )
+                if not still_active:
+                    logger.info("Video job %s terminated mid-extension — aborting", job_id)
+                    return
                 ext_status = await _poll_until_done(kie, current_task_id, is_video=True)
                 # Treat success-with-empty-result_urls as a soft failure too.
                 # KIE occasionally returns state=success with no URLs on extend;

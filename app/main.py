@@ -167,11 +167,13 @@ def _evict_stale_buckets(now: float) -> None:
 async def rate_limit_email_lookups(request: Request, call_next):
     path = request.url.path
     if any(path.startswith(p) for p in _RATE_LIMITED_PATHS):
-        # Prefer the connecting peer over the (spoofable) XFF header. The
-        # rate limit is best-effort — a real attacker behind a botnet will
-        # rotate IPs anyway, but at least one machine spamming with rotating
-        # X-Forwarded-For values can no longer pretend to be 4M distinct hops
-        # and exhaust both the limit and our memory.
+        # KNOWN LIMITATION: uvicorn --proxy-headers --forwarded-allow-ips '*'
+        # makes request.client.host follow XFF, so a single attacker rotating
+        # X-Forwarded-For can mint unlimited rate-limit keys. We tolerate this
+        # because (a) the limit is a UX speed-bump not a hard security boundary,
+        # (b) tightening --forwarded-allow-ips requires knowing EasyPanel's
+        # proxy CIDR, and (c) the LRU eviction at _RATE_BUCKET_MAX caps memory
+        # under attack so the spoof can't OOM the worker either.
         client_ip = (request.client.host if request.client else "unknown")
         key = (client_ip, path)
         now = _time.monotonic()
@@ -292,6 +294,17 @@ async def sitemap():
     )
     body = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}\n</urlset>\n'
     return Response(body, media_type="application/xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
+# Reject dotfiles before they reach StaticFiles — prevents accidental serving
+# of .gitkeep, .DS_Store, .env, .bak files from data/uploads or frontend/static.
+@app.middleware("http")
+async def block_dotfile_static(request: Request, call_next):
+    p = request.url.path
+    if p.startswith("/uploads/") or p.startswith("/static/"):
+        if any(seg.startswith(".") for seg in p.split("/") if seg):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return await call_next(request)
 
 
 # Serve uploaded files
