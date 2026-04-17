@@ -36,17 +36,18 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1777100000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1777200000">
   <script src="https://checkout.wompi.co/widget.js"></script>
   <style>
     .demo-section{max-width:800px;margin:0 auto 64px;text-align:center}
     .demo-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:24px;align-items:center;margin-top:32px}
-    .demo-before,.demo-after{border-radius:16px;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center}
-    /* Square product photo (1:1) — cap width so the column doesn't dominate. */
-    .demo-before img{width:100%;max-width:320px;height:auto;display:block;border-radius:16px}
-    /* Portrait video (9:16) — preserve native ratio with aspect-ratio (was
-       being cropped horizontally by object-fit:cover into a 100%-wide
-       landscape box). Native controls + audio: user clicks play to hear it. */
+    /* No container background: the PNG has a transparent background baked
+       in and the video element is sized to its own aspect-ratio, so there
+       are no "black bars" to fill. Just center whatever lives inside. */
+    .demo-before,.demo-after{display:flex;align-items:center;justify-content:center}
+    .demo-before img{width:100%;max-width:320px;height:auto;display:block}
+    /* Portrait video (9:16) — preserve native ratio; the element itself is
+       the only thing that's 9:16, so no wrapper fill/letterboxing is needed. */
     .demo-after video{width:100%;max-width:240px;height:auto;aspect-ratio:9/16;display:block;border-radius:16px;background:#000}
     .demo-arrow{font-size:28px;color:var(--text-secondary);font-weight:300}
     .demo-label{font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-top:8px}
@@ -93,7 +94,7 @@
       <div class="demo-grid">
         <div>
           <div class="demo-before">
-            <img src="/static/images/demo-producto.jpg" alt="Producto original">
+            <img src="/static/images/demo-producto.png" alt="Producto original">
           </div>
           <div class="demo-label">Tu producto</div>
         </div>
@@ -182,7 +183,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1777100000"></script>
+  <script src="/static/js/api.js?v=1777200000"></script>
   <script>
     const RATE = 5000;
     let currency = 'COP';
