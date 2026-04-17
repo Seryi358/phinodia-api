@@ -167,6 +167,12 @@
       if (!form.email || !isValidEmail(form.email)) { _bail('Ingresa un correo electronico valido'); return; }
       if (!form.data_consent) { _bail('Debes aceptar el tratamiento de datos'); return; }
 
+      // Clear any stale result from a prior submission so a download triggered
+      // before the new poll completes can't ship the previous landing.
+      landingHTML = '';
+      document.getElementById('landing-iframe').srcdoc = '';
+      document.getElementById('landing-download').classList.add('hidden');
+
       setLoading('landing-submit', true);
       try {
         const result = await generateLanding(form);

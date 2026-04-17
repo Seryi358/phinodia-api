@@ -104,9 +104,12 @@
     // Allow only https:// URLs (CDN-served media) and same-origin /paths.
     // Blocks javascript:, data:, file:, etc — necessary because escapeHtml
     // does NOT neutralize URI schemes when interpolated into href/src attrs.
+    // Also rewrites legacy internal-hostname URLs (from before api_base_url
+    // was set correctly) to the public hostname so cards stop leaking infra.
     function safeUrl(u) {
       if (typeof u !== 'string') return '';
-      const trimmed = u.trim();
+      let trimmed = u.trim();
+      trimmed = trimmed.replace(/^https:\/\/[a-z0-9-]+\.zb12wf\.easypanel\.host/i, 'https://app.phinodia.com');
       if (/^https:\/\//i.test(trimmed)) return trimmed;
       if (trimmed.startsWith('/')) return trimmed;
       return '';

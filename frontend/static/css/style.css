@@ -149,7 +149,8 @@ img { max-width: 100%; height: auto; }
 .container {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 0 22px;
+  padding-left: 22px;
+  padding-right: 22px;
 }
 
 main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
@@ -838,7 +839,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 }
 
 @media (max-width: 480px) {
-  .container { padding: 0 16px; }
+  .container { padding-left: 16px; padding-right: 16px; }
   .card { padding: 24px; }
   .option-grid { grid-template-columns: 1fr 1fr; }
   .pricing-grid { grid-template-columns: 1fr; }

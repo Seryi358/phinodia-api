@@ -94,7 +94,7 @@ async def _validation_handler(request: Request, exc: RequestValidationError):
             msgs.append(f"Falta el campo: {label}")
         elif etype == "value_error" and msg.startswith("Value error, "):
             msgs.append(msg.removeprefix("Value error, "))
-        elif "email" in etype:
+        elif "email" in etype or str(field) == "email" or msg.startswith("value is not a valid email address"):
             msgs.append("Correo electronico no valido")
         elif etype == "uuid_parsing":
             msgs.append("ID no valido")

@@ -176,14 +176,6 @@
         }
       });
     }
-
-    // Reject anything that isn't an https:// URL — defends against poisoned
-    // result_url fields containing javascript:/data:/file: that would otherwise
-    // execute or leak local resources when assigned to an <a href> or fetched.
-    function isSafeMediaUrl(u) {
-      if (typeof u !== 'string') return false;
-      return /^https:\/\//i.test(u) || u.startsWith('/');
-    }
   </script>
 </body>
 </html>
