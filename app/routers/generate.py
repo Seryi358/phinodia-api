@@ -4,15 +4,16 @@ from datetime import datetime, timezone
 from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from app.config import Settings
+from app.config import get_settings
 from app.database import db
 from app.services.kie_ai import KieAIClient
 from app.services.script_generator import ScriptGenerator
 from app.services.credits import CreditService
 from app.services.gmail import GmailSender, build_delivery_email
+from app.services.result_storage import persist_external_url
 
 router = APIRouter()
-settings = Settings()
+settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
@@ -338,6 +339,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                     # failed-and-refunded row (would gift the user a free video
                     # plus refund). Also clear stale error_message from the
                     # auto-fail path on a true success.
+                    final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
                     await db.update(
                         "jobs",
                         {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
@@ -352,6 +354,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                 seconds_so_far += 7
             except Exception as e:
                 logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
+                final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
                 await db.update(
                     "jobs",
                     {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
@@ -364,6 +367,11 @@ async def _process_video(job_id: str, req: VideoRequest):
                 return
 
         # All extensions done (or no extensions needed) — save final result.
+        # Mirror the upstream URL onto our own /uploads/results/ so the
+        # tile/thumbnail in "Mis generaciones" doesn't 404 once KIE's
+        # tempfile expires. On any download failure, persist_external_url
+        # returns the original URL — user still gets the video today.
+        final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
         # CAS-guarded so an auto-failed-and-refunded row can't be resurrected
         # to "completed" (which would leave the user with both a video and a
         # refund). Clear error_message in case auto-fail had set one.
@@ -480,6 +488,10 @@ async def _process_image(job_id: str, req: ImageRequest):
             return
 
         result_url = status["result_urls"][0] if status.get("result_urls") else ""
+        # Mirror the upstream URL onto our own /uploads/results/ so the
+        # thumbnail in "Mis generaciones" doesn't 404 once KIE's tempfile
+        # expires. On failure, returns the original URL.
+        result_url = await persist_external_url(result_url, job_id, "jpg")
         # CAS-guarded: don't resurrect an auto-failed-and-refunded job.
         completed_now = await db.update(
             "jobs",

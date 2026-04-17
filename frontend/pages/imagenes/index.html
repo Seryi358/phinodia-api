@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1778000000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1778500000">
 </head>
 <body>
 
@@ -62,8 +62,8 @@
       <form id="image-form" onsubmit="return false;">
 
         <div class="form-group">
-          <label>Foto del producto</label>
-          <div class="file-upload" id="image-dropzone">
+          <label id="image-dropzone-label">Foto del producto</label>
+          <div class="file-upload" id="image-dropzone" aria-labelledby="image-dropzone-label">
             <input type="file" accept="image/jpeg,image/png,image/webp" name="product_image">
             <div class="file-upload-icon" style="font-size: 32px; color: var(--border-hover); font-weight: 300;">+</div>
             <div class="file-upload-text">Arrastra tu imagen aqui o <strong>haz clic para seleccionar</strong></div>
@@ -90,8 +90,8 @@
         </div>
 
         <div class="form-group">
-          <label>Estilo de imagen</label>
-          <div class="option-grid" id="style-picker" style="grid-template-columns: 1fr 1fr;">
+          <label id="style-picker-label">Estilo de imagen</label>
+          <div class="option-grid" id="style-picker" style="grid-template-columns: 1fr 1fr;" role="radiogroup" aria-labelledby="style-picker-label">
             <button type="button" class="option-btn selected" data-value="product">Producto<br><small>Estudio / Lifestyle</small></button>
             <button type="button" class="option-btn" data-value="ugc">UGC / Influencer<br><small>Estilo Instagram</small></button>
           </div>
@@ -99,8 +99,8 @@
         </div>
 
         <div class="form-group">
-          <label>Formato</label>
-          <div class="option-grid" id="ratio-picker">
+          <label id="ratio-picker-label">Formato</label>
+          <div class="option-grid" id="ratio-picker" role="radiogroup" aria-labelledby="ratio-picker-label">
             <button type="button" class="option-btn selected" data-value="1:1">1:1<br><small>Instagram</small></button>
             <button type="button" class="option-btn" data-value="9:16">9:16<br><small>Story</small></button>
             <button type="button" class="option-btn" data-value="16:9">16:9<br><small>Banner</small></button>
@@ -155,7 +155,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1778000000"></script>
+  <script src="/static/js/api.js?v=1778500000"></script>
   <script>
     initFileUpload('image-dropzone', 'image-preview', 'image-image-url');
     initOptionPicker('style-picker', 'image-style');

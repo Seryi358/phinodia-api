@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1778000000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1778500000">
 </head>
 <body>
 
@@ -62,8 +62,8 @@
       <form id="video-form" onsubmit="return false;">
 
         <div class="form-group">
-          <label>Foto del producto</label>
-          <div class="file-upload" id="video-dropzone">
+          <label id="video-dropzone-label">Foto del producto</label>
+          <div class="file-upload" id="video-dropzone" aria-labelledby="video-dropzone-label">
             <input type="file" accept="image/jpeg,image/png,image/webp" name="product_image">
             <div class="file-upload-icon" style="font-size: 32px; color: var(--border-hover); font-weight: 300;">+</div>
             <div class="file-upload-text">Arrastra tu imagen aqui o <strong>haz clic para seleccionar</strong></div>
@@ -95,8 +95,8 @@
         </div>
 
         <div class="form-group">
-          <label>Duracion del video</label>
-          <div class="option-grid" id="duration-picker">
+          <label id="duration-picker-label">Duracion del video</label>
+          <div class="option-grid" id="duration-picker" role="radiogroup" aria-labelledby="duration-picker-label">
             <button type="button" class="option-btn" data-value="8">8s<br><small>Reel Express</small></button>
             <button type="button" class="option-btn selected" data-value="15">15s<br><small>Reel Standard</small></button>
             <button type="button" class="option-btn" data-value="22">22s<br><small>Reel Plus</small></button>
@@ -106,8 +106,8 @@
         </div>
 
         <div class="form-group">
-          <label>Formato</label>
-          <div class="option-grid" id="format-picker" style="grid-template-columns: 1fr 1fr;">
+          <label id="format-picker-label">Formato</label>
+          <div class="option-grid" id="format-picker" style="grid-template-columns: 1fr 1fr;" role="radiogroup" aria-labelledby="format-picker-label">
             <button type="button" class="option-btn selected" data-value="portrait">Vertical (9:16)<br><small>Instagram, TikTok</small></button>
             <button type="button" class="option-btn" data-value="landscape">Horizontal (16:9)<br><small>YouTube, Web</small></button>
           </div>
@@ -161,7 +161,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1778000000"></script>
+  <script src="/static/js/api.js?v=1778500000"></script>
   <script>
     initFileUpload('video-dropzone', 'video-preview', 'video-image-url');
     initOptionPicker('duration-picker', 'video-duration');

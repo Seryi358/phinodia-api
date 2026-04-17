@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
@@ -71,3 +72,10 @@ class Settings(BaseSettings):
         return v
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+# Process-wide cached factory. Avoids re-parsing .env + re-validating secrets
+# on each module import (was happening 6× across main + database + 4 routers).
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()

@@ -1,7 +1,7 @@
 import httpx
-from app.config import Settings
+from app.config import get_settings
 
-settings = Settings()
+settings = get_settings()
 
 _REST_URL = f"{settings.supabase_url}/rest/v1"
 _HEADERS = {

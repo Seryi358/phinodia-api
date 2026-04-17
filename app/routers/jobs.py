@@ -3,12 +3,12 @@ from datetime import datetime, timezone
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr
-from app.config import Settings
+from app.config import get_settings
 from app.database import db
 from app.services.kie_ai import KieAIClient
 
 router = APIRouter()
-settings = Settings()
+settings = get_settings()
 logger = logging.getLogger(__name__)
 
 KIE_STATE_MAP = {

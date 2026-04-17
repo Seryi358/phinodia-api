@@ -5,7 +5,7 @@ import time
 import secrets
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
-from app.config import Settings
+from app.config import get_settings
 from app.database import db
 from app.services.credits import CreditService, CreditContention
 from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU
@@ -13,7 +13,7 @@ from app.services.gmail import GmailSender, build_purchase_email
 from app.routers.referrals import process_referral_bonus
 
 router = APIRouter()
-settings = Settings()
+settings = get_settings()
 logger = logging.getLogger(__name__)
 
 

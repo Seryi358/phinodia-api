@@ -18,14 +18,14 @@ PACKAGES_BY_SKU = {
     "video_30s_3":  {"credits": 3,  "service": "video_30s", "amount": 21899000},
     "video_30s_10": {"credits": 10, "service": "video_30s", "amount": 64999000},
     "video_30s_25": {"credits": 25, "service": "video_30s", "amount": 137499000},
-    # Imagenes
+    # Imagenes — bulk discount: $3997/img → $3499/img (-12%) → $2999/img (-25%)
     "image_3":      {"credits": 3,  "service": "image",        "amount": 1199000},
-    "image_10":     {"credits": 10, "service": "image",        "amount": 3999000},
-    "image_25":     {"credits": 25, "service": "image",        "amount": 9999000},
-    # Landing Pages
+    "image_10":     {"credits": 10, "service": "image",        "amount": 3499000},
+    "image_25":     {"credits": 25, "service": "image",        "amount": 7499000},
+    # Landing Pages — bulk discount: $14997 → $12999 (-13%) → $11200 (-25%)
     "landing_3":    {"credits": 3,  "service": "landing_page", "amount": 4499000},
-    "landing_10":   {"credits": 10, "service": "landing_page", "amount": 14999000},
-    "landing_25":   {"credits": 25, "service": "landing_page", "amount": 37499000},
+    "landing_10":   {"credits": 10, "service": "landing_page", "amount": 12999000},
+    "landing_25":   {"credits": 25, "service": "landing_page", "amount": 27999000},
 }
 
 

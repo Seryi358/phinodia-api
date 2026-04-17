@@ -52,11 +52,11 @@ def test_resolve_property_nested():
     ("video_22s_25", 104999000, "video_22s", 25),
     ("video_30s_3", 21899000, "video_30s", 3),
     ("image_3", 1199000, "image", 3),
-    ("image_10", 3999000, "image", 10),
-    ("image_25", 9999000, "image", 25),
+    ("image_10", 3499000, "image", 10),
+    ("image_25", 7499000, "image", 25),
     ("landing_3", 4499000, "landing_page", 3),
-    ("landing_10", 14999000, "landing_page", 10),
-    ("landing_25", 37499000, "landing_page", 25),
+    ("landing_10", 12999000, "landing_page", 10),
+    ("landing_25", 27999000, "landing_page", 25),
 ])
 def test_resolve_package_strict_match(sku, amount, service, credits):
     from app.services.wompi import resolve_package

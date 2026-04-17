@@ -4,7 +4,7 @@ import uuid
 import warnings
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from PIL import Image, ImageOps
-from app.config import Settings
+from app.config import get_settings
 
 # Cap decoded pixel count well below product-photo needs to defend against
 # decompression bombs (a tiny PNG can declare 50000x50000 dimensions and
@@ -12,7 +12,7 @@ from app.config import Settings
 Image.MAX_IMAGE_PIXELS = 24_000_000
 
 router = APIRouter()
-settings = Settings()
+settings = get_settings()
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE = 10 * 1024 * 1024  # 10MB

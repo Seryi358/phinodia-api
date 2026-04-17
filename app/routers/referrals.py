@@ -22,6 +22,32 @@ def _legacy_code_6(email: str) -> str:
     return hashlib.md5(email.lower().strip().encode()).hexdigest()[:6].upper()
 
 
+async def _select_all(table: str, params: dict) -> list[dict]:
+    """Paginate through every row matching `params`.
+
+    PostgREST caps each request at 1000 rows. Without paging, the bulk
+    queries below silently truncate once production crosses that threshold
+    — a referrer's bonus would be missed because their oldest registration
+    fell off the first page. Always passes an explicit `order` so concurrent
+    inserts don't shift rows across page boundaries (would skip/duplicate).
+    """
+    page_size = 1000
+    offset = 0
+    out: list[dict] = []
+    p = dict(params)
+    p.setdefault("order", "id")
+    while True:
+        p["limit"] = str(page_size)
+        p["offset"] = str(offset)
+        chunk = await db.select(table, p)
+        if not chunk:
+            return out
+        out.extend(chunk)
+        if len(chunk) < page_size:
+            return out
+        offset += page_size
+
+
 async def find_referrer_email(referral_code: str) -> str | None:
     """Find the referrer email for a given referral code by scanning users.
 
@@ -90,7 +116,7 @@ async def get_referral_stats(email: EmailStr = Query(..., description="User emai
     link = f"https://app.phinodia.com/precios/?ref={code}"
 
     # Find all referral registrations where this user is the referrer
-    registrations = await db.select("transactions", {
+    registrations = await _select_all("transactions", {
         "plan_name": "eq.referral_registration",
         "status": "eq.REFERRAL",
         "order": "created_at.desc",
@@ -106,7 +132,7 @@ async def get_referral_stats(email: EmailStr = Query(..., description="User emai
     ]
 
     # Fetch all bonus transactions for this referrer once
-    bonus_transactions = await db.select("transactions", {
+    bonus_transactions = await _select_all("transactions", {
         "plan_name": "like.referral_bonus_%",
         "status": "eq.REFERRAL_BONUS",
     })
@@ -186,7 +212,7 @@ async def register_referral(req: RegisterReferralRequest, request: Request):
     # Check if this user was already referred. Use a non-overlapping separator
     # ("|") so emails containing "_" can't suffix-match unrelated registrations.
     referred = req.referred_email.lower().strip()
-    existing = await db.select("transactions", {
+    existing = await _select_all("transactions", {
         "plan_name": "eq.referral_registration",
         "status": "eq.REFERRAL",
     })
@@ -231,7 +257,7 @@ async def process_referral_bonus(customer_email: str, service_type: str):
     # Check if this user was referred (has a referral_registration transaction).
     # Match new "ref|code|email" or legacy "ref_code_email"; the new format
     # avoids suffix collisions for emails that share trailing characters.
-    registrations = await db.select("transactions", {
+    registrations = await _select_all("transactions", {
         "plan_name": "eq.referral_registration",
         "status": "eq.REFERRAL",
     })
@@ -261,7 +287,7 @@ async def process_referral_bonus(customer_email: str, service_type: str):
     # Check if bonus was already FINALIZED (not PENDING_BONUS) for this referral.
     # PENDING_BONUS rows mean a previous attempt inserted but grant_credits never
     # finished — we want this run to retry, not bail.
-    existing_bonuses = await db.select("transactions", {
+    existing_bonuses = await _select_all("transactions", {
         "plan_name": "like.referral_bonus_%",
         "status": "eq.REFERRAL_BONUS",
     })

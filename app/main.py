@@ -5,8 +5,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from app.config import Settings
-settings = Settings()
+from app.config import get_settings
+settings = get_settings()
 
 
 @asynccontextmanager
@@ -174,7 +174,8 @@ def _evict_stale_buckets(now: float) -> None:
 @app.middleware("http")
 async def rate_limit_email_lookups(request: Request, call_next):
     path = request.url.path
-    if any(path.startswith(p) for p in _RATE_LIMITED_PATHS):
+    matched_prefix = next((p for p in _RATE_LIMITED_PATHS if path.startswith(p)), None)
+    if matched_prefix is not None:
         # KNOWN LIMITATION: uvicorn --proxy-headers --forwarded-allow-ips '*'
         # makes request.client.host follow XFF, so a single attacker rotating
         # X-Forwarded-For can mint unlimited rate-limit keys. We tolerate this
@@ -183,7 +184,10 @@ async def rate_limit_email_lookups(request: Request, call_next):
         # proxy CIDR, and (c) the LRU eviction at _RATE_BUCKET_MAX caps memory
         # under attack so the spoof can't OOM the worker either.
         client_ip = (request.client.host if request.client else "unknown")
-        key = (client_ip, path)
+        # Bucket by ROUTE prefix (not full path) so polling /jobs/status/<uuid>
+        # for many different jobs doesn't carve out separate buckets per UUID
+        # — that bypassed the per-user limit and bloated the bucket dict.
+        key = (client_ip, matched_prefix)
         now = _time.monotonic()
         # Periodic sweep of stale buckets to bound dict size under burst
         # traffic / NAT churn — prior `if not bucket: pop` after append was
@@ -254,6 +258,25 @@ async def add_cache_and_security_headers(request: Request, call_next):
         # with attacker-shaped error bodies.
         if response.status_code >= 400 and "Cache-Control" not in response.headers:
             response.headers["Cache-Control"] = "no-store"
+    elif path.endswith(".html") or path.endswith("/") or path == "":
+        # HTML pages need permissive CSP because the inline scripts in each
+        # page (form handlers + onclick attrs) require 'unsafe-inline'. We
+        # restrict img/media/font sources to known hosts, lock connect-src to
+        # our API, lock frame-ancestors so the app can't be embedded by other
+        # sites (clickjacking), and forbid plugins.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://checkout.wompi.co; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https://ik.imagekit.io https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://phinodia.com https://app.phinodia.com; "
+            "media-src 'self' https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://app.phinodia.com; "
+            "connect-src 'self' https://app.phinodia.com https://checkout.wompi.co https://*.wompi.co; "
+            "frame-src 'self' https://checkout.wompi.co; "
+            "frame-ancestors 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self' https://checkout.wompi.co"
+        )
 
     return response
 
