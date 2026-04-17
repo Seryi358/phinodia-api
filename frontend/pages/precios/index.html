@@ -200,7 +200,28 @@
 
   <script src="/static/js/api.js?v=1780000000"></script>
   <script>
-    const RATE = 5000;
+    // Exchange rate seeded with a current value (Apr 2026 ~4200 COP/USD).
+    // We hit exchangerate-api's free public endpoint on first currency
+    // toggle to refresh; if the call fails, we keep the seed. Updating
+    // the seed every few months is enough — the difference between 4150
+    // and 4250 won't sway a USD shopper's decision.
+    let RATE = 4200;
+    let _rateRefreshed = false;
+    async function _refreshRate() {
+      if (_rateRefreshed) return;
+      _rateRefreshed = true;
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2000);
+        const r = await fetch('https://open.er-api.com/v6/latest/USD', { signal: ctrl.signal });
+        clearTimeout(t);
+        if (r.ok) {
+          const d = await r.json();
+          const cop = d?.rates?.COP;
+          if (typeof cop === 'number' && cop > 1000 && cop < 10000) RATE = Math.round(cop);
+        }
+      } catch (_) { /* keep seed */ }
+    }
     let currency = 'COP';
 
     const PLANS = {
@@ -283,6 +304,11 @@
       document.querySelectorAll('.currency-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       renderPlans();
+      // Refresh COP/USD rate on first USD toggle so the conversion isn't
+      // anchored to a stale seed when the FX moves.
+      if (c === 'USD') {
+        _refreshRate().then(() => renderPlans());
+      }
     }
 
     function showTab(tabId, btn) {

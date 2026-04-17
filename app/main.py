@@ -248,9 +248,13 @@ async def add_cache_and_security_headers(request: Request, call_next):
     # very first visit. `includeSubDomains` matches the existing policy.
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
     # Drop the `Server: uvicorn` info-leak header so attackers don't get a
-    # free version-fingerprint pointer to known uvicorn CVEs.
-    response.headers.pop("server", None)
-    response.headers.pop("Server", None)
+    # free version-fingerprint pointer to known uvicorn CVEs. Starlette's
+    # MutableHeaders has no .pop() — use del with KeyError swallow.
+    for _h in ("server", "Server"):
+        try:
+            del response.headers[_h]
+        except KeyError:
+            pass
     # SAMEORIGIN allows the landing page iframe preview on /estado/ and /mis-generaciones/
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     # Permissions-Policy: disable APIs we don't use to limit fingerprinting
@@ -284,7 +288,7 @@ async def add_cache_and_security_headers(request: Request, call_next):
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https://ik.imagekit.io https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://phinodia.com https://app.phinodia.com; "
             "media-src 'self' https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://app.phinodia.com; "
-            "connect-src 'self' https://app.phinodia.com https://checkout.wompi.co https://*.wompi.co; "
+            "connect-src 'self' https://app.phinodia.com https://checkout.wompi.co https://*.wompi.co https://open.er-api.com; "
             "frame-src 'self' data: blob: https://checkout.wompi.co; "
             "frame-ancestors 'self'; "
             "object-src 'none'; "
