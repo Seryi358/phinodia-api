@@ -36,7 +36,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776920000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1777010000">
   <script src="https://checkout.wompi.co/widget.js"></script>
   <style>
     .demo-section{max-width:800px;margin:0 auto 64px;text-align:center}
@@ -177,7 +177,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776920000"></script>
+  <script src="/static/js/api.js?v=1777010000"></script>
   <script>
     const RATE = 5000;
     let currency = 'COP';
@@ -272,11 +272,14 @@
     }
 
     // Referral: capture ref code from URL and store in localStorage
+    // Capture ref code from URL with 30-day TTL — without expiry, a stale
+    // attribution would credit the original referrer for unrelated future
+    // purchases on the same browser (revenue leak + analytics distortion).
     (function() {
       const params = new URLSearchParams(window.location.search);
       const ref = params.get('ref');
       if (ref) {
-        localStorage.setItem('phinodia_ref', ref.toUpperCase().trim());
+        lsSet('phinodia_ref', ref.toUpperCase().trim(), 30 * 24 * 60 * 60 * 1000);
       }
     })();
 
@@ -303,7 +306,7 @@
         // — otherwise the user can pay before the registration row exists, and
         // process_referral_bonus runs against an empty table (referrer never
         // gets credit). Bounded timeout so a slow registrar doesn't block.
-        const refCode = localStorage.getItem('phinodia_ref');
+        const refCode = lsGet('phinodia_ref');
         if (refCode) {
           try {
             const ctrl = new AbortController();

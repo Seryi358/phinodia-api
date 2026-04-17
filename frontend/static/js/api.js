@@ -200,10 +200,16 @@ function handleGenerateError(err) {
 }
 
 // ── Persist email for /mis-generaciones auto-load ──
+// 7-day TTL so a shared/library computer doesn't leak previous user's job
+// history to the next browser session indefinitely.
 function persistEmail(email) {
   if (email && isValidEmail(email)) {
-    try { localStorage.setItem('phinodia_email', email); } catch (_) {}
+    lsSet('phinodia_email', email, 7 * 24 * 60 * 60 * 1000);
   }
+}
+
+function getPersistedEmail() {
+  return lsGet('phinodia_email');
 }
 
 // ── Generate Video ─────────────────────────────
@@ -331,6 +337,38 @@ async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
 // Stop in-flight polls when the user navigates away — otherwise mobile Safari
 // keeps firing requests in the background tab until the tab is killed.
 window.addEventListener('pagehide', cancelAllPolls);
+
+// On bfcache restore (Safari/Firefox back-button), polls were cancelled by
+// pagehide but the result UI still shows "Procesando" — reload so the user
+// either resumes a fresh poll (if the page wires it up) or sees current state.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) location.reload();
+});
+
+// ── localStorage with TTL ─────────────────────
+// Wrapper that expires entries after `ttlMs` so a shared device doesn't leak
+// one user's email/referral attribution to the next user indefinitely.
+function lsSet(key, value, ttlMs) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ v: value, e: Date.now() + ttlMs }));
+  } catch (_) { /* quota / private mode */ }
+}
+
+function lsGet(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    // Backward-compat: accept legacy plain-string values too.
+    if (raw.charAt(0) !== '{') return raw;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object') return null;
+    if (obj.e && obj.e < Date.now()) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return obj.v == null ? null : obj.v;
+  } catch (_) { return null; }
+}
 
 // ── Credits Balance ────────────────────────────
 async function getCredits(email) {
