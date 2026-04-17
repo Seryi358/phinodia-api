@@ -155,6 +155,7 @@ _RATE_LIMITED_PATHS = (
     "/api/v1/referrals/register",
     "/api/v1/upload/image",
     "/api/v1/payments/checkout",
+    "/api/v1/contact",
 )
 _RATE_LIMIT = 30   # requests
 _RATE_WINDOW = 60  # seconds
@@ -280,7 +281,7 @@ async def add_cache_and_security_headers(request: Request, call_next):
 
     return response
 
-from app.routers import generate, jobs, credits, payments, upload, referrals  # noqa: E402
+from app.routers import generate, jobs, credits, payments, upload, referrals, contact  # noqa: E402
 
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
@@ -288,6 +289,7 @@ app.include_router(credits.router, prefix="/api/v1/credits", tags=["credits"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
 app.include_router(referrals.router, prefix="/api/v1/referrals", tags=["referrals"])
+app.include_router(contact.router, prefix="/api/v1", tags=["contact"])
 
 
 @app.get("/health")
@@ -378,6 +380,8 @@ _ROUTE_METHODS = {
     "/api/v1/referrals/code": "GET, HEAD",
     "/api/v1/referrals/stats": "GET, HEAD",
     "/api/v1/referrals/register": "POST",
+    # contact
+    "/api/v1/contact": "POST",
 }
 
 
