@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776560000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776650000">
 </head>
 <body>
 
@@ -155,19 +155,23 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776560000"></script>
+  <script src="/static/js/api.js?v=1776650000"></script>
   <script>
     initFileUpload('image-dropzone', 'image-preview', 'image-image-url');
     initOptionPicker('style-picker', 'image-style');
     initOptionPicker('ratio-picker', 'image-ratio');
 
     async function submitImage() {
+      const _btn = document.getElementById('image-submit');
+      if (_btn && _btn.disabled) return;
+      if (_btn) _btn.disabled = true;
       const form = getFormData('image-form');
-      if (!form.image_url) { showToast('Sube una foto de tu producto', 'error'); return; }
-      if (!form.product_name) { showToast('Escribe el nombre del producto', 'error'); return; }
-      if (!form.description) { showToast('Describe que tipo de imagen quieres', 'error'); return; }
-      if (!form.email || !isValidEmail(form.email)) { showToast('Ingresa un correo electronico valido', 'error'); return; }
-      if (!form.data_consent) { showToast('Debes aceptar el tratamiento de datos', 'error'); return; }
+      const _bail = (msg) => { showToast(msg, 'error'); if (_btn) _btn.disabled = false; };
+      if (!form.image_url) { _bail('Sube una foto de tu producto'); return; }
+      if (!form.product_name) { _bail('Escribe el nombre del producto'); return; }
+      if (!form.description) { _bail('Describe que tipo de imagen quieres'); return; }
+      if (!form.email || !isValidEmail(form.email)) { _bail('Ingresa un correo electronico valido'); return; }
+      if (!form.data_consent) { _bail('Debes aceptar el tratamiento de datos'); return; }
 
       setLoading('image-submit', true);
       try {
@@ -183,14 +187,19 @@
 
           if (status.status === 'completed') {
             badge.className = 'status-badge completed'; badge.textContent = 'Completado';
-            title.textContent = 'Tu imagen esta lista.';
-            text.textContent = 'Descargala ahora.';
             document.getElementById('image-progress').style.width = '100%';
             if (status.result_url) {
+              title.textContent = 'Tu imagen esta lista.';
+              text.textContent = 'Descargala ahora.';
               document.getElementById('image-download').classList.remove('hidden');
               document.getElementById('image-result-preview').src = status.result_url;
               document.getElementById('image-download-link').href = status.result_url;
+            } else {
+              title.textContent = 'No se recibio la imagen';
+              text.textContent = 'Intenta de nuevo o contactanos.';
+              setTimeout(() => resetGenerateForm('image-form', 'image-result', 'image-submit'), 2000);
             }
+            setLoading('image-submit', false);
           } else if (status.status === 'failed' || status.status === 'error') {
             badge.className = 'status-badge failed'; badge.textContent = 'Error';
             title.textContent = 'Hubo un error';

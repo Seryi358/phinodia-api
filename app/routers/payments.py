@@ -131,28 +131,49 @@ async def wompi_webhook(event: dict):
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(customer_email)
 
-    # Order matters: insert the transaction row BEFORE granting credits so we
-    # have an audit trail. If grant fails the row sits as PENDING_GRANT and the
-    # next Wompi retry re-enters this branch (the duplicate check above only
-    # bails on APPROVED). grant_credits is additive/idempotent on (user, service)
-    # so a retry that already succeeded won't double-credit because the second
-    # branch will mark APPROVED and the third retry will short-circuit.
+    # grant_credits is ADDITIVE, not idempotent — calling it twice doubles the
+    # user's balance. So we use the transactions row as a CAS lock: insert
+    # PENDING_GRANT first, then atomically transition PENDING_GRANT→GRANTING
+    # and only the winner of that flip is allowed to call grant_credits.
+    # If our status update at the end fails, the row stays at GRANTING and
+    # the next retry's CAS will see status=GRANTING (not PENDING_GRANT) and
+    # bail without re-granting.
     if not existing:
-        await db.insert("transactions", {
-            "user_id": user["id"],
-            "plan_name": f"{package['service']}_{package['credits']}",
-            "credits_added": package["credits"],
-            "amount_cop": amount,
-            "wompi_transaction_id": wompi_tx_id,
-            "status": "PENDING_GRANT",
-        })
+        try:
+            await db.insert("transactions", {
+                "user_id": user["id"],
+                "plan_name": f"{package['service']}_{package['credits']}",
+                "credits_added": package["credits"],
+                "amount_cop": amount,
+                "wompi_transaction_id": wompi_tx_id,
+                "status": "PENDING_GRANT",
+            })
+        except Exception:
+            # UNIQUE-collision race with a concurrent webhook — re-read.
+            existing = await db.select_one("transactions", {"wompi_transaction_id": f"eq.{wompi_tx_id}"})
+
+    # CAS: only the writer that wins this PENDING_GRANT→GRANTING flip may
+    # grant credits. Everyone else (concurrent retry, post-grant retry,
+    # already-finalized retry) bails without touching the balance.
+    flipped = await db.update(
+        "transactions",
+        {"wompi_transaction_id": f"eq.{wompi_tx_id}", "status": "eq.PENDING_GRANT"},
+        {"status": "GRANTING"},
+    )
+    if not flipped:
+        logger.info("Webhook for tx %s already past PENDING_GRANT — skipping", wompi_tx_id)
+        return {"status": "ok", "action": "already_processed"}
 
     try:
         await credit_svc.grant_credits(user["id"], package["service"], package["credits"])
     except CreditContention:
-        # Leave the row at PENDING_GRANT so Wompi's next retry re-enters this
-        # branch and tries again instead of marking it APPROVED with no credits.
-        logger.error("grant_credits contention for tx %s — leaving PENDING_GRANT for retry", wompi_tx_id)
+        # Roll the CAS back so the next webhook retry can attempt the grant.
+        await db.update(
+            "transactions",
+            {"wompi_transaction_id": f"eq.{wompi_tx_id}", "status": "eq.GRANTING"},
+            {"status": "PENDING_GRANT"},
+        )
+        logger.error("grant_credits contention for tx %s — rolled back to PENDING_GRANT", wompi_tx_id)
         return {"status": "ok", "action": "retry_grant"}
     await db.update(
         "transactions",

@@ -11,12 +11,31 @@ settings = Settings()
 async def lifespan(app: FastAPI):
     os.makedirs("data/uploads", exist_ok=True)
     yield
+    # Drain in-flight generation background tasks before tearing down the
+    # Supabase pool so they can checkpoint state (refund credits / mark
+    # jobs failed). Without this, a redeploy mid-generation crashes the
+    # tasks against a closed httpx client and leaves jobs in "processing"
+    # until the 30-min auto-fail sweeper picks them up.
+    import asyncio as _asyncio
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    try:
+        from app.routers.generate import _background_tasks
+        if _background_tasks:
+            pending = [t for t in _background_tasks if not t.done()]
+            if pending:
+                _log.info("Draining %d in-flight generation tasks (max 25s)", len(pending))
+                done, still_pending = await _asyncio.wait(pending, timeout=25)
+                for t in still_pending:
+                    t.cancel()
+    except Exception as e:
+        _log.warning("Background task drain failed: %s", e)
     # Close shared httpx pool on shutdown
     from app.database import db
     try:
         await db.aclose()
-    except Exception:
-        pass
+    except Exception as e:
+        _log.warning("db.aclose() failed: %s", e)
 
 
 app = FastAPI(
@@ -116,17 +135,21 @@ async def add_cache_and_security_headers(request: Request, call_next):
     response: Response = await call_next(request)
     path = request.url.path
 
-    # Cache control
-    if path.startswith("/static/css/") or path.startswith("/static/js/"):
-        response.headers["Cache-Control"] = "public, max-age=3600"
-    elif path.startswith("/static/images/"):
-        response.headers["Cache-Control"] = "public, max-age=86400"
-    elif path.startswith("/uploads/"):
-        # Cache real images, but never cache 404s — uploads use predictable
-        # uuid filenames and a CDN/proxy negative-caching a 404 BEFORE the
-        # upload finishes would serve stale "not found" to legitimate users.
+    # Cache control. Apply long max-age ONLY to successful responses so a 404
+    # for a typoed asset (or a /uploads/ file requested before upload finishes)
+    # doesn't get negative-cached for hours by browsers/CDNs.
+    is_static = (
+        path.startswith("/static/css/")
+        or path.startswith("/static/js/")
+        or path.startswith("/static/images/")
+        or path.startswith("/uploads/")
+    )
+    if is_static:
         if response.status_code == 200:
-            response.headers["Cache-Control"] = "public, max-age=3600"
+            if path.startswith("/static/images/"):
+                response.headers["Cache-Control"] = "public, max-age=86400"
+            else:
+                response.headers["Cache-Control"] = "public, max-age=3600"
         else:
             response.headers["Cache-Control"] = "no-store"
     elif path.endswith(".html") or path.endswith("/") or path == "/":

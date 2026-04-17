@@ -36,7 +36,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776560000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776650000">
   <script src="https://checkout.wompi.co/widget.js"></script>
   <style>
     .demo-section{max-width:800px;margin:0 auto 64px;text-align:center}
@@ -177,7 +177,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776560000"></script>
+  <script src="/static/js/api.js?v=1776650000"></script>
   <script>
     const RATE = 5000;
     let currency = 'COP';
@@ -299,14 +299,23 @@
       buttons.forEach(b => { b.disabled = true; });
 
       try {
-        // Register referral if ref code exists in localStorage
+        // Register referral if ref code exists. Must AWAIT before opening Wompi
+        // — otherwise the user can pay before the registration row exists, and
+        // process_referral_bonus runs against an empty table (referrer never
+        // gets credit). Bounded timeout so a slow registrar doesn't block.
         const refCode = localStorage.getItem('phinodia_ref');
         if (refCode) {
-          fetch(API + '/referrals/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ referred_email: email, referral_code: refCode }),
-          }).catch(function() {});  // Fire and forget
+          try {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 2500);
+            await fetch(API + '/referrals/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ referred_email: email, referral_code: refCode }),
+              signal: ctrl.signal,
+            });
+            clearTimeout(t);
+          } catch (_) { /* don't block checkout on registrar failure */ }
         }
 
         // Redirect to gracias page based on service type for Meta Pixel Purchase event

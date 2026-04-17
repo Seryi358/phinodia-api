@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776560000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776650000">
 </head>
 <body>
 
@@ -150,18 +150,22 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776560000"></script>
+  <script src="/static/js/api.js?v=1776650000"></script>
   <script>
     let landingHTML = '';
     initFileUpload('landing-dropzone', 'landing-preview', 'landing-image-url');
 
     async function submitLanding() {
+      const _btn = document.getElementById('landing-submit');
+      if (_btn && _btn.disabled) return;
+      if (_btn) _btn.disabled = true;
       const form = getFormData('landing-form');
-      if (!form.image_url) { showToast('Sube una foto de tu producto', 'error'); return; }
-      if (!form.product_name) { showToast('Escribe el nombre del producto', 'error'); return; }
-      if (!form.description) { showToast('Describe tu producto', 'error'); return; }
-      if (!form.email || !isValidEmail(form.email)) { showToast('Ingresa un correo electronico valido', 'error'); return; }
-      if (!form.data_consent) { showToast('Debes aceptar el tratamiento de datos', 'error'); return; }
+      const _bail = (msg) => { showToast(msg, 'error'); if (_btn) _btn.disabled = false; };
+      if (!form.image_url) { _bail('Sube una foto de tu producto'); return; }
+      if (!form.product_name) { _bail('Escribe el nombre del producto'); return; }
+      if (!form.description) { _bail('Describe tu producto'); return; }
+      if (!form.email || !isValidEmail(form.email)) { _bail('Ingresa un correo electronico valido'); return; }
+      if (!form.data_consent) { _bail('Debes aceptar el tratamiento de datos'); return; }
 
       setLoading('landing-submit', true);
       try {
@@ -177,19 +181,30 @@
 
           if (status.status === 'completed') {
             badge.className = 'status-badge completed'; badge.textContent = 'Completado';
-            title.textContent = 'Tu landing page esta lista.';
-            text.textContent = 'Previsualizala abajo y descarga el HTML.';
             document.getElementById('landing-progress').style.width = '100%';
             if (status.result_url) {
               landingHTML = status.result_url;
+              title.textContent = 'Tu landing page esta lista.';
+              text.textContent = 'Previsualizala abajo y descarga el HTML.';
               document.getElementById('landing-iframe').srcdoc = landingHTML;
               document.getElementById('landing-download').classList.remove('hidden');
+            } else {
+              // Defensive: completed but no result body. Treat as error.
+              title.textContent = 'No se recibio la landing page';
+              text.textContent = 'Intenta de nuevo o contactanos.';
+              setTimeout(() => resetGenerateForm('landing-form', 'landing-result', 'landing-submit'), 2000);
             }
+            // Always release the submit button so subsequent renders aren't stuck.
+            setLoading('landing-submit', false);
           } else if (status.status === 'failed' || status.status === 'error') {
             badge.className = 'status-badge failed'; badge.textContent = 'Error';
             title.textContent = 'Hubo un error';
             text.textContent = (status.error_message || 'Intenta de nuevo.').slice(0, 500);
-            // Re-show the form so the user can retry without a hard reload.
+            // Clear landingHTML and hide download so a stale download from a
+            // previous successful run can't be triggered after a failure.
+            landingHTML = '';
+            document.getElementById('landing-iframe').srcdoc = '';
+            document.getElementById('landing-download').classList.add('hidden');
             setTimeout(() => resetGenerateForm('landing-form', 'landing-result', 'landing-submit'), 2000);
           }
         });
@@ -216,7 +231,12 @@
       if (!landingHTML) return;
       const blob = new Blob([landingHTML], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener');
+      const w = window.open(url, '_blank', 'noopener');
+      if (!w) {
+        showToast('Tu navegador bloqueo la ventana. Permite popups o usa Descargar HTML.', 'warning');
+        URL.revokeObjectURL(url);
+        return;
+      }
       // Don't revoke immediately — Firefox/Safari abort the load if the URL is
       // freed before the new tab's navigation is committed. ~30s is plenty.
       setTimeout(() => URL.revokeObjectURL(url), 30000);

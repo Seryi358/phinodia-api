@@ -9,7 +9,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776560000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776650000">
 </head>
 <body>
 
@@ -73,7 +73,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776560000"></script>
+  <script src="/static/js/api.js?v=1776650000"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     if (params.get('job_id')) {
@@ -97,9 +97,16 @@
 
         if (status.status === 'completed') {
           badge.className = 'status-badge completed'; badge.textContent = 'Completado';
+          progress.style.width = '100%';
+          if (!status.result_url) {
+            // Defensive: completed flag but empty body — don't show "listo"
+            // with nothing to download. Could be a data integrity gap.
+            title.textContent = 'No se recibio el contenido';
+            text.textContent = 'Hubo un problema con la generacion. Contactanos si paste por mas de 5 minutos.';
+            return;
+          }
           title.textContent = 'Tu contenido esta listo.';
           text.textContent = '';
-          progress.style.width = '100%';
           if (status.result_url) {
             const preview = document.getElementById('status-preview');
             preview.classList.remove('hidden');

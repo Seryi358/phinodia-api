@@ -130,6 +130,18 @@ async function _safeJson(res) {
   try { return await res.json(); } catch (_) { return {}; }
 }
 
+// FastAPI 422 returns `detail` as an array of validation errors. Coercing it
+// to a string yields "[object Object]" in the toast — useless to the user.
+// Flatten it to a human-readable message.
+function _formatDetail(detail, status) {
+  if (!detail) return `Error ${status}`;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => (d && d.msg) ? d.msg : JSON.stringify(d)).join('; ');
+  }
+  return JSON.stringify(detail);
+}
+
 async function apiPost(path, body) {
   let res;
   try {
@@ -143,7 +155,7 @@ async function apiPost(path, body) {
   }
   const data = await _safeJson(res);
   if (!res.ok) {
-    const err = new Error(data.detail || `Error ${res.status}`);
+    const err = new Error(_formatDetail(data.detail, res.status));
     err.status = res.status;
     throw err;
   }
@@ -159,7 +171,7 @@ async function apiGet(path) {
   }
   const data = await _safeJson(res);
   if (!res.ok) {
-    const err = new Error(data.detail || `Error ${res.status}`);
+    const err = new Error(_formatDetail(data.detail, res.status));
     err.status = res.status;
     throw err;
   }

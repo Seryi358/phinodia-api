@@ -29,11 +29,8 @@ def _detect_format(content: bytes) -> str | None:
         return "jpg"
     if content.startswith(b"\x89PNG\r\n\x1a\n"):
         return "png"
-    # WebP: RIFF????WEBP + a VP8/VP8L/VP8X chunk header to reject "RIFF????WEBP"
-    # crafted-but-empty payloads.
-    if content[:4] == b"RIFF" and content[8:12] == b"WEBP" and content[12:15] in (b"VP8", b"VP8"):
-        # The chunk fourcc is 4 chars: "VP8 ", "VP8L", or "VP8X".
-        return "webp"
+    # WebP: RIFF????WEBP + a 4-byte chunk fourcc ("VP8 ", "VP8L", or "VP8X").
+    # The 4-byte chunk header rejects empty / crafted-but-meaningless payloads.
     if content[:4] == b"RIFF" and content[8:12] == b"WEBP" and content[12:16] in (b"VP8 ", b"VP8L", b"VP8X"):
         return "webp"
     return None

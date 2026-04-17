@@ -7,12 +7,13 @@ from googleapiclient.discovery import build
 
 
 def _safe_url(u: str) -> str:
-    """Reject anything that isn't an https URL or our own /estado path so a
-    poisoned KIE result_url can't render a phishing link in the email body."""
+    """Reject anything that isn't an https URL or our own /-relative path so a
+    poisoned KIE result_url can't render a phishing link in the email body.
+    Case-insensitive scheme check matches what urlparse-based callers accept."""
     if not isinstance(u, str):
         return ""
     u = u.strip()
-    if u.startswith("https://") or u.startswith("https://app.phinodia.com/"):
+    if u.lower().startswith("https://"):
         return html.escape(u, quote=True)
     if u.startswith("/"):
         return html.escape(u, quote=True)

@@ -275,10 +275,11 @@ async def process_referral_bonus(customer_email: str, service_type: str):
         logger.warning("Could not find referrer for code %s", referrer_code)
         return
 
-    # Insert PENDING_BONUS row first so concurrent webhooks collide on the
-    # UNIQUE(wompi_transaction_id) constraint and only one grant runs. If the
-    # grant raises CreditContention we leave the row PENDING_BONUS for the
-    # next webhook redelivery to retry — a manual sweep can also pick it up.
+    # Same CAS pattern as the payments webhook: insert PENDING_BONUS, atomically
+    # flip PENDING_BONUS→GRANTING_BONUS, only the winner of that flip calls
+    # grant_credits. If our final status update fails the row stays GRANTING_BONUS
+    # and the next retry's CAS bails (no double-grant). grant_credits is ADDITIVE
+    # not idempotent, so this lock is the only thing preventing double bonuses.
     credit_svc = CreditService()
     referrer_user = await credit_svc.get_or_create_user(referrer_email)
     bonus_tx_id = f"refbonus|{referrer_code}|{email}"
@@ -292,18 +293,31 @@ async def process_referral_bonus(customer_email: str, service_type: str):
             "status": "PENDING_BONUS",
         })
     except Exception as e:
-        # UNIQUE-constraint collision from a concurrent webhook OR a previous
-        # PENDING_BONUS we should retry. Re-read; only bail if it's already
-        # finalized as REFERRAL_BONUS.
         existing = await db.select_one("transactions", {"wompi_transaction_id": f"eq.{bonus_tx_id}"})
-        if existing and existing.get("status") == "REFERRAL_BONUS":
-            logger.info("Referral bonus already finalized for %s: %s", bonus_tx_id, e)
+        if existing and existing.get("status") in ("REFERRAL_BONUS", "GRANTING_BONUS"):
+            logger.info("Referral bonus in-progress or finalized for %s: %s", bonus_tx_id, e)
             return
+
+    flipped = await db.update(
+        "transactions",
+        {"wompi_transaction_id": f"eq.{bonus_tx_id}", "status": "eq.PENDING_BONUS"},
+        {"status": "GRANTING_BONUS"},
+    )
+    if not flipped:
+        logger.info("Referral bonus for %s already past PENDING_BONUS — skipping", bonus_tx_id)
+        return
+
     from app.services.credits import CreditContention
     try:
         await credit_svc.grant_credits(referrer_user["id"], service_type, 1)
     except CreditContention:
-        logger.error("Referral bonus grant contention for %s — leaving PENDING_BONUS", bonus_tx_id)
+        # Roll the lock back so the next retry can attempt the grant.
+        await db.update(
+            "transactions",
+            {"wompi_transaction_id": f"eq.{bonus_tx_id}", "status": "eq.GRANTING_BONUS"},
+            {"status": "PENDING_BONUS"},
+        )
+        logger.error("Referral bonus grant contention for %s — rolled back", bonus_tx_id)
         return
     await db.update(
         "transactions",

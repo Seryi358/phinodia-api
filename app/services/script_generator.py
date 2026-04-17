@@ -12,6 +12,15 @@ from app.prompts.landing_page import SYSTEM_PROMPT as LANDING_SYSTEM, USER_TEMPL
 ASPECT_RATIOS = {"portrait": "9:16", "landscape": "16:9"}
 
 
+def _esc(s) -> str:
+    """Escape literal curly braces so user-controlled text survives str.format().
+    Without this, product_name='Cool {brand}' raises KeyError mid-worker and
+    burns a credit on a guaranteed-failed generation."""
+    if not isinstance(s, str):
+        return s
+    return s.replace("{", "{{").replace("}", "}}")
+
+
 class ScriptGenerator:
     def __init__(self, api_key: str):
         # Hard timeout per OpenAI call so a hung stream can't pin a worker
@@ -37,13 +46,13 @@ class ScriptGenerator:
     async def analyze_product(self, product_name: str, description: str) -> str:
         """Step 1: Deep product analysis from image description."""
         from app.prompts.product_analyzer import SYSTEM_PROMPT, USER_TEMPLATE
-        user_msg = USER_TEMPLATE.format(product_name=product_name, description=description)
+        user_msg = USER_TEMPLATE.format(product_name=_esc(product_name), description=_esc(description))
         return await self._call_gpt(SYSTEM_PROMPT, user_msg)
 
     async def generate_buyer_persona(self, product_name: str, product_analysis: str) -> str:
         """Step 2: Generate ideal UGC creator persona."""
         from app.prompts.buyer_persona import SYSTEM_PROMPT, USER_TEMPLATE
-        user_msg = USER_TEMPLATE.format(product_name=product_name, product_analysis=product_analysis)
+        user_msg = USER_TEMPLATE.format(product_name=_esc(product_name), product_analysis=_esc(product_analysis))
         return await self._call_gpt(SYSTEM_PROMPT, user_msg)
 
     async def generate_extension_prompt(self, original_prompt: str, extension_number: int, duration: int) -> str:
@@ -69,14 +78,14 @@ Generate ONLY the continuation prompt. No explanations."""
     ) -> str:
         aspect_ratio = ASPECT_RATIOS.get(format_type, "9:16")
         user_msg = VIDEO_USER.format(
-            product_name=product_name,
-            description=description,
+            product_name=_esc(product_name),
+            description=_esc(description),
             duration=duration,
             format=format_type,
             aspect_ratio=aspect_ratio,
-            creative_direction=creative_direction or "Auto-generate creative direction",
-            product_analysis=product_analysis or "Not available",
-            buyer_persona=buyer_persona or "Not available",
+            creative_direction=_esc(creative_direction) or "Auto-generate creative direction",
+            product_analysis=_esc(product_analysis) or "Not available",
+            buyer_persona=_esc(buyer_persona) or "Not available",
         )
         return await self._call_gpt(VIDEO_SYSTEM, user_msg)
 
@@ -104,20 +113,20 @@ Rules:
         if is_ugc:
             ugc_var = get_ugc_variation()
             user_msg = IMAGE_UGC_USER.format(
-                product_name=product_name,
-                description=description,
+                product_name=_esc(product_name),
+                description=_esc(description),
                 aspect_ratio=aspect_ratio,
-                creative_direction=creative_direction or "Authentic UGC style",
+                creative_direction=_esc(creative_direction) or "Authentic UGC style",
                 setting=ugc_var["setting"],
                 imperfection=ugc_var["imperfection"],
                 angle=variation["angle"],
             )
         else:
             user_msg = IMAGE_USER.format(
-                product_name=product_name,
-                description=description,
+                product_name=_esc(product_name),
+                description=_esc(description),
                 aspect_ratio=aspect_ratio,
-                creative_direction=creative_direction or "Auto-generate creative direction",
+                creative_direction=_esc(creative_direction) or "Auto-generate creative direction",
                 angle=variation["angle"],
                 composition=variation["composition"],
                 surface=variation["surface"],
@@ -136,12 +145,12 @@ Rules:
         extra_image_urls: list[str] | None = None,
     ) -> str:
         user_msg = LANDING_USER.format(
-            product_name=product_name,
-            description=description,
+            product_name=_esc(product_name),
+            description=_esc(description),
             image_url=image_url,
-            style_preference=style_preference or "Modern, clean, professional",
-            product_analysis=product_analysis or "Not available",
-            buyer_persona=buyer_persona or "Not available",
+            style_preference=_esc(style_preference) or "Modern, clean, professional",
+            product_analysis=_esc(product_analysis) or "Not available",
+            buyer_persona=_esc(buyer_persona) or "Not available",
             extra_images="\n".join(extra_image_urls) if extra_image_urls else "None",
         )
         return await self._call_gpt(LANDING_SYSTEM, user_msg, max_tokens=16000)

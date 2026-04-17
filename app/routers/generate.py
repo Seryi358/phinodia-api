@@ -61,6 +61,16 @@ def _friendly_error(raw_error: str) -> str:
     return f"Hubo un error en la generacion. Por favor intenta de nuevo. Si el problema persiste, contactanos a scastellanos@phinodia.com"
 
 
+def _escape_braces(s: str) -> str:
+    """Escape literal curly braces so they survive str.format() in prompt templates.
+    Without this, a user submitting product_name='Cool {brand}' crashes the
+    worker with KeyError: 'brand' and burns a credit on guaranteed failure.
+    """
+    if not s:
+        return s
+    return s.replace("{", "{{").replace("}", "}}")
+
+
 def _build_description(req) -> str:
     """Combine all user-provided fields into a rich description for the AI agents."""
     parts = []
@@ -260,14 +270,22 @@ async def _process_video(job_id: str, req: VideoRequest):
             })
             return
 
-        # Save base video result URL for fallback
+        # Save base video result URL — write it to result_url IMMEDIATELY so a
+        # mid-extension worker crash leaves the user with a recoverable 8s video
+        # instead of nothing (status polling reads result_url, kie_task_id may
+        # point at a failed extension by the time of the crash).
         base_result_url = base_status["result_urls"][0] if base_status.get("result_urls") else ""
-        await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": task_id})
+        await db.update("jobs", {"id": f"eq.{job_id}"}, {
+            "kie_task_id": task_id,
+            "result_url": base_result_url,
+            "result_type": "mp4",
+        })
 
         # Step 6: Extend video for durations > 8s
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
         current_task_id = task_id
         final_result_url = base_result_url
+        seconds_so_far = 8
         for ext_num in range(1, num_extensions + 1):
             ext_prompt = await script_gen.generate_extension_prompt(
                 original_prompt=prompt, extension_number=ext_num, duration=req.duration,
@@ -277,20 +295,24 @@ async def _process_video(job_id: str, req: VideoRequest):
                 await db.update("jobs", {"id": f"eq.{job_id}"}, {"kie_task_id": current_task_id})
                 ext_status = await _poll_until_done(kie, current_task_id, is_video=True)
                 if ext_status["state"] != "success":
-                    # Extension failed — save the base video as partial result
+                    # Extension failed — return the LONGEST successful version
+                    # (final_result_url tracks the best segment so far). Saving
+                    # base_result_url here would silently lose 14s of paid
+                    # content if extensions 1+2 had succeeded.
                     await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                        "status": "completed", "result_url": base_result_url, "result_type": "mp4",
+                        "status": "completed", "result_url": final_result_url, "result_type": "mp4",
                         "completed_at": datetime.now(timezone.utc).isoformat(),
-                        "error_message": f"La extension fallo, pero tu video base de 8 segundos esta listo.",
+                        "error_message": f"La extension fallo. Tu video de {seconds_so_far} segundos esta listo.",
                     })
                     return
                 final_result_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else final_result_url
+                seconds_so_far += 7
             except Exception as e:
                 logger.error("Extension %d failed for job %s: %s", ext_num, job_id, e)
                 await db.update("jobs", {"id": f"eq.{job_id}"}, {
-                    "status": "completed", "result_url": base_result_url, "result_type": "mp4",
+                    "status": "completed", "result_url": final_result_url, "result_type": "mp4",
                     "completed_at": datetime.now(timezone.utc).isoformat(),
-                    "error_message": f"La extension fallo, pero tu video base de 8 segundos esta listo.",
+                    "error_message": f"La extension fallo. Tu video de {seconds_so_far} segundos esta listo.",
                 })
                 return
 
@@ -421,7 +443,19 @@ async def _process_landing(job_id: str, req: LandingRequest):
     # Retry landing page generation up to MAX_RETRIES
     for attempt in range(MAX_RETRIES):
         try:
-            await db.update("jobs", {"id": f"eq.{job_id}"}, {"status": "generating"})
+            # CAS: only flip to "generating" if the row is still
+            # processing/generating. If /jobs/status auto-fail already
+            # transitioned us to "failed" and refunded, abort the whole
+            # pipeline — completing here would gift a free landing AND
+            # leave the user with the refund.
+            still_active = await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {"status": "generating"},
+            )
+            if not still_active:
+                logger.info("Landing job %s already terminated by auto-fail — aborting", job_id)
+                return
             html = await script_gen.generate_landing_page(
                 product_name=req.product_name, description=rich_description,
                 image_url=req.image_url, style_preference=req.style_preference,

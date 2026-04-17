@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1776560000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1776650000">
 </head>
 <body>
 
@@ -161,19 +161,25 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1776560000"></script>
+  <script src="/static/js/api.js?v=1776650000"></script>
   <script>
     initFileUpload('video-dropzone', 'video-preview', 'video-image-url');
     initOptionPicker('duration-picker', 'video-duration');
     initOptionPicker('format-picker', 'video-format');
 
     async function submitVideo() {
+      // Block re-entry FIRST so a double-click can't fire two POSTs (and
+      // double-charge a credit) while validation is still running.
+      const _btn = document.getElementById('video-submit');
+      if (_btn && _btn.disabled) return;
+      if (_btn) _btn.disabled = true;
       const form = getFormData('video-form');
-      if (!form.image_url) { showToast('Sube una foto de tu producto', 'error'); return; }
-      if (!form.product_name) { showToast('Escribe el nombre del producto', 'error'); return; }
-      if (!form.description) { showToast('Describe tu vision para el video', 'error'); return; }
-      if (!form.email || !isValidEmail(form.email)) { showToast('Ingresa un correo electronico valido', 'error'); return; }
-      if (!form.data_consent) { showToast('Debes aceptar el tratamiento de datos', 'error'); return; }
+      const _bail = (msg) => { showToast(msg, 'error'); if (_btn) _btn.disabled = false; };
+      if (!form.image_url) { _bail('Sube una foto de tu producto'); return; }
+      if (!form.product_name) { _bail('Escribe el nombre del producto'); return; }
+      if (!form.description) { _bail('Describe tu vision para el video'); return; }
+      if (!form.email || !isValidEmail(form.email)) { _bail('Ingresa un correo electronico valido'); return; }
+      if (!form.data_consent) { _bail('Debes aceptar el tratamiento de datos'); return; }
 
       setLoading('video-submit', true);
       try {
@@ -192,14 +198,19 @@
           if (status.status === 'completed') {
             badge.className = 'status-badge completed';
             badge.textContent = 'Completado';
-            title.textContent = 'Tu video esta listo.';
-            text.textContent = 'Descargalo ahora.';
             progress.style.width = '100%';
             if (status.result_url) {
+              title.textContent = 'Tu video esta listo.';
+              text.textContent = 'Descargalo ahora.';
               document.getElementById('video-download').classList.remove('hidden');
               document.getElementById('video-download-link').href = status.result_url;
               document.getElementById('video-result-preview').src = status.result_url;
+            } else {
+              title.textContent = 'No se recibio el video';
+              text.textContent = 'Intenta de nuevo o contactanos.';
+              setTimeout(() => resetGenerateForm('video-form', 'video-result', 'video-submit'), 2000);
             }
+            setLoading('video-submit', false);
           } else if (status.status === 'failed' || status.status === 'error') {
             badge.className = 'status-badge failed';
             badge.textContent = 'Error';
