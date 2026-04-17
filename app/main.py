@@ -243,7 +243,14 @@ async def add_cache_and_security_headers(request: Request, call_next):
     # Security headers
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # `preload` makes the domain eligible for the HSTS preload list
+    # (hstspreload.org) so browsers refuse to connect over HTTP from the
+    # very first visit. `includeSubDomains` matches the existing policy.
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    # Drop the `Server: uvicorn` info-leak header so attackers don't get a
+    # free version-fingerprint pointer to known uvicorn CVEs.
+    response.headers.pop("server", None)
+    response.headers.pop("Server", None)
     # SAMEORIGIN allows the landing page iframe preview on /estado/ and /mis-generaciones/
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     # Permissions-Policy: disable APIs we don't use to limit fingerprinting

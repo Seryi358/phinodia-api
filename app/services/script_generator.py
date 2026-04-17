@@ -1,5 +1,6 @@
 import httpx
 from openai import AsyncOpenAI
+from app.config import get_settings
 from app.prompts.video_ugc import SYSTEM_PROMPT as VIDEO_SYSTEM, USER_TEMPLATE as VIDEO_USER
 from app.prompts.image_product import (
     SYSTEM_PROMPT as IMAGE_SYSTEM,
@@ -148,6 +149,38 @@ Rules:
             )
         return await self._call_gpt(IMAGE_SYSTEM, user_msg)
 
+    async def _call_claude_opus(self, system: str, user: str, max_tokens: int = 16000) -> str:
+        """Generate via Claude Opus 4.6 served through KIE AI's Anthropic-native
+        endpoint. Used ONLY for landing pages — Opus is dramatically better at
+        long, structured HTML than GPT-4o (12-15 sections vs 3-4, sticks to the
+        design-system spec, produces working keyframes/animations).
+        """
+        settings = get_settings()
+        url = "https://api.kie.ai/claude/v1/messages"
+        body = {
+            "model": "claude-opus-4-6",
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+        }
+        # Reasonable timeout — Opus on a 16K-token landing typically returns
+        # in 30-90 s. Cap at 180 s so a hung stream doesn't pin a worker.
+        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
+            r = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {settings.kie_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            r.raise_for_status()
+            data = r.json()
+        # KIE/Anthropic schema: {"content": [{"type": "text", "text": "..."}]}
+        chunks = data.get("content") or []
+        text = "".join(c.get("text", "") for c in chunks if c.get("type") == "text")
+        return text.strip()
+
     async def generate_landing_page(
         self,
         product_name: str,
@@ -167,6 +200,9 @@ Rules:
             buyer_persona=_esc(buyer_persona) or "Not available",
             extra_images="\n".join(_esc(u) for u in extra_image_urls) if extra_image_urls else "None",
         )
-        # 16K → 16K still enough; bump only the landing call. gpt-4o caps
-        # output at 16384 tokens so 16000 is the practical max.
-        return await self._call_gpt(LANDING_SYSTEM, user_msg, max_tokens=16000)
+        # Opus 4.6 vs GPT-4o for landings:
+        # GPT-4o was producing thin 8 KB pages with 3-4 sections, ignoring
+        # the prompt's "12-15 sections" and animation requirements. Opus 4.6
+        # supports up to 128 K output tokens AND follows long structural
+        # specs reliably — exactly what a 25-40 KB premium landing needs.
+        return await self._call_claude_opus(LANDING_SYSTEM, user_msg, max_tokens=16000)

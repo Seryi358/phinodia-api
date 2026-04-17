@@ -239,6 +239,18 @@
             <div class="gen-actions">${renderActions(job)}</div>
           </div>
         `).join('');
+        // Auto-refresh: if any job is still processing, poll every 15s
+        // until all are terminal. Without this, the user has to reload
+        // manually to see when their generation completes.
+        const stillRunning = jobs.some(j => j.status === 'processing' || j.status === 'generating');
+        if (stillRunning) {
+          if (window._genRefreshTimer) clearTimeout(window._genRefreshTimer);
+          window._genRefreshTimer = setTimeout(() => {
+            // Only re-poll if the page is still visible — saves battery.
+            if (!document.hidden) loadGenerations();
+            else window._genRefreshTimer = null;
+          }, 15000);
+        }
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -254,6 +266,12 @@
         loadGenerations();
       }
     })();
+    // Resume polling when the user returns to the tab.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && document.getElementById('gen-email').value && !window._genRefreshTimer) {
+        loadGenerations();
+      }
+    });
   </script>
 </body>
 </html>

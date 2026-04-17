@@ -96,16 +96,24 @@ async def test_generate_image_prompt():
 
 @pytest.mark.asyncio
 async def test_generate_landing_page():
+    """Landings now go through Claude Opus 4.6 via KIE's Anthropic-native
+    endpoint, not OpenAI. Mock the httpx call to that endpoint."""
     from app.services.script_generator import ScriptGenerator
+    import httpx
 
+    landing_html = "<!DOCTYPE html><html><head><title>Glow Cream</title></head><body>...</body></html>"
     mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "<!DOCTYPE html><html><head><title>Glow Cream</title></head><body>...</body></html>"
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json = MagicMock(return_value={
+        "content": [{"type": "text", "text": landing_html}],
+    })
 
-    with patch("app.services.script_generator.AsyncOpenAI") as MockOpenAI:
-        mock_client = AsyncMock()
-        MockOpenAI.return_value = mock_client
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+    with patch("app.services.script_generator.httpx.AsyncClient") as MockClient:
+        mock_inst = MagicMock()
+        mock_inst.__aenter__ = AsyncMock(return_value=mock_inst)
+        mock_inst.__aexit__ = AsyncMock(return_value=False)
+        mock_inst.post = AsyncMock(return_value=mock_response)
+        MockClient.return_value = mock_inst
 
         gen = ScriptGenerator(api_key="test-key")
         html = await gen.generate_landing_page(
@@ -115,13 +123,16 @@ async def test_generate_landing_page():
             style_preference="modern, dark theme",
         )
 
-        assert "<!DOCTYPE html>" in html
-        call_args = mock_client.chat.completions.create.call_args
-        messages = call_args.kwargs["messages"]
-        # Buyer persona is the primary input the prompt structures around now;
-        # was "AIDA" before the v2 prompt rewrite.
-        assert "BUYER PERSONA" in messages[1]["content"]
-        assert "Crema Facial Glow" in messages[1]["content"]
+        assert html == landing_html
+        post_call = mock_inst.post.call_args
+        url = post_call.args[0]
+        body = post_call.kwargs["json"]
+        assert "kie.ai" in url and "claude" in url
+        assert body["model"].startswith("claude-opus")
+        assert body["max_tokens"] >= 16000
+        # User message must include the buyer-persona structured input
+        assert "BUYER PERSONA" in body["messages"][0]["content"]
+        assert "Crema Facial Glow" in body["messages"][0]["content"]
 
 
 @pytest.mark.asyncio
