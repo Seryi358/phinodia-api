@@ -251,7 +251,12 @@ async def wompi_webhook(event: dict):
             logger.info("Purchase confirmation email sent")
         except Exception as e:
             logger.warning("Failed to send purchase email: %s", e)
-    await asyncio.to_thread(_send_purchase_email)
+    # Fire-and-forget email so a slow Gmail OAuth refresh doesn't push the
+    # webhook response past Wompi's ~30s timeout (which would trigger a
+    # retry and double-send the email even though the credit grant is
+    # idempotent). The pipeline-side delivery emails in generate.py already
+    # run inside background tasks, so they don't have this blocking concern.
+    asyncio.create_task(asyncio.to_thread(_send_purchase_email))
 
     logger.info("Granted %d %s credits (tx: %s)", package["credits"], package["service"], reference)
     return {"status": "ok", "action": "credits_granted", "credits": package["credits"]}

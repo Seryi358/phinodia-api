@@ -356,6 +356,11 @@ async def _api_unknown_or_method_not_allowed(rest_of_path: str, request: Request
     # a real route. Treat any /api/v1/jobs/status/<anything> as a 405 if the
     # method is wrong (the actual route would 422 on bad UUID, not 405).
     if full.startswith("/api/v1/jobs/status/"):
+        # GET/HEAD with bad UUID hits the real route's 422 validator. Anything
+        # else (e.g. POST /jobs/status/<uuid>) is method-not-allowed. Path
+        # without a UUID is just unknown → 404.
+        if request.method in ("GET", "HEAD"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
         return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers={"Allow": "GET, HEAD"})
     allow = _ROUTE_METHODS.get(full)
     if allow:
