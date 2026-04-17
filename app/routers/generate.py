@@ -382,8 +382,12 @@ async def _process_video(job_id: str, req: VideoRequest):
         if completed_now:
             await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, DURATION_TO_SERVICE.get(req.duration, "video_8s"), job_id, final_result_url)
 
-    except Exception as e:
-        logger.exception("Video pipeline failed for job %s: %s", job_id, e)
+    except (Exception, asyncio.CancelledError) as e:
+        # CancelledError must be caught explicitly — it's BaseException, not
+        # Exception, so a bare `except Exception` would let lifespan-drain
+        # cancellations skip the refund/checkpoint and leave the user's
+        # credit trapped on a "generating" row until the auto-fail sweep.
+        logger.exception("Video pipeline failed for job %s: %s", job_id, type(e).__name__)
         credit_svc = CreditService()
         service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
         user = await credit_svc.get_or_create_user(req.email)
@@ -402,6 +406,8 @@ async def _process_video(job_id: str, req: VideoRequest):
                     "error_message": "La generacion fue interrumpida pero tu video parcial esta listo.",
                 },
             )
+            if isinstance(e, asyncio.CancelledError):
+                raise  # re-raise after checkpoint so asyncio task state is correct
             return
         failed_now = await db.update(
             "jobs",
@@ -410,6 +416,8 @@ async def _process_video(job_id: str, req: VideoRequest):
         )
         if failed_now:
             await credit_svc.refund_credit(user["id"], service_type)
+        if isinstance(e, asyncio.CancelledError):
+            raise
 
 
 async def _process_image(job_id: str, req: ImageRequest):
@@ -488,8 +496,9 @@ async def _process_image(job_id: str, req: ImageRequest):
         if completed_now:
             await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, "image", job_id, result_url)
 
-    except Exception as e:
-        logger.exception("Image generation failed for job %s: %s", job_id, e)
+    except (Exception, asyncio.CancelledError) as e:
+        # Catch CancelledError too — see _process_video for the rationale.
+        logger.exception("Image generation failed for job %s: %s", job_id, type(e).__name__)
         credit_svc = CreditService()
         user = await credit_svc.get_or_create_user(req.email)
         failed_now = await db.update(
@@ -499,6 +508,8 @@ async def _process_image(job_id: str, req: ImageRequest):
         )
         if failed_now:
             await credit_svc.refund_credit(user["id"], "image")
+        if isinstance(e, asyncio.CancelledError):
+            raise
 
 
 async def _process_landing(job_id: str, req: LandingRequest):
