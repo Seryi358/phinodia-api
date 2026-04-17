@@ -24,6 +24,15 @@
       {"@type": "Offer", "name": "Reel Express 8s — Basico", "price": "62990", "priceCurrency": "COP"},
       {"@type": "Offer", "name": "Reel Express 8s — Profesional", "price": "189990", "priceCurrency": "COP"},
       {"@type": "Offer", "name": "Reel Express 8s — Empresarial", "price": "399990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Reel Standard 15s — Basico", "price": "116990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Reel Standard 15s — Profesional", "price": "339990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Reel Standard 15s — Empresarial", "price": "724990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Reel Plus 22s — Basico", "price": "167990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Reel Plus 22s — Profesional", "price": "489990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Reel Plus 22s — Empresarial", "price": "1049990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Comercial 30s — Basico", "price": "218990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Comercial 30s — Profesional", "price": "649990", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Comercial 30s — Empresarial", "price": "1374990", "priceCurrency": "COP"},
       {"@type": "Offer", "name": "Imagenes — Basico (3)", "price": "11990", "priceCurrency": "COP"},
       {"@type": "Offer", "name": "Imagenes — Profesional (10)", "price": "34990", "priceCurrency": "COP"},
       {"@type": "Offer", "name": "Imagenes — Empresarial (25)", "price": "74990", "priceCurrency": "COP"},
@@ -36,8 +45,12 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1778500000">
-  <script src="https://checkout.wompi.co/widget.js"></script>
+  <link rel="preconnect" href="https://checkout.wompi.co" crossorigin>
+  <link rel="preconnect" href="https://ik.imagekit.io">
+  <link rel="stylesheet" href="/static/css/style.css?v=1779000000">
+  <!-- defer keeps the widget from blocking first paint; it isn't needed
+       until the user clicks "Comprar", which is well after page load. -->
+  <script src="https://checkout.wompi.co/widget.js" defer></script>
   <style>
     .demo-section{max-width:800px;margin:0 auto 64px;text-align:center}
     .demo-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:24px;align-items:center;margin-top:32px}
@@ -64,6 +77,8 @@
 </head>
 <body>
 
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+
   <nav class="nav">
     <div class="nav-inner">
       <a href="https://phinodia.com/" class="nav-logo">
@@ -82,7 +97,7 @@
     </div>
   </nav>
 
-  <main class="container">
+  <main id="main" class="container">
     <section class="hero" style="padding-bottom: 24px;">
       <p class="hero-badge">Precios</p>
       <h1>Contenido profesional. Precios accesibles.</h1>
@@ -94,7 +109,7 @@
       <div class="demo-grid">
         <div>
           <div class="demo-before">
-            <img src="/static/images/demo-producto.png" alt="Producto original">
+            <img src="/static/images/demo-producto.webp" alt="Producto original">
           </div>
           <div class="demo-label">Tu producto</div>
         </div>
@@ -183,7 +198,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1778500000"></script>
+  <script src="/static/js/api.js?v=1779000000"></script>
   <script>
     const RATE = 5000;
     let currency = 'COP';

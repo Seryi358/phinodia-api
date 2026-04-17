@@ -107,18 +107,25 @@ def _validate_image_url(v: str) -> str:
     v = (v or "").strip()
     if not v:
         raise ValueError("image_url is required")
-    if not (v.startswith("http://") or v.startswith("https://")):
-        raise ValueError("image_url must start with http:// or https://")
+    if not v.startswith("https://"):
+        # Drop http://: every legitimate uploads URL is HTTPS, allowing http
+        # let SSRF/MITM payloads sneak in (a victim's hijacked subdomain on
+        # the same parent domain could become a fake uploads source).
+        raise ValueError("image_url must start with https://")
     # Accept either the absolute api_base_url + /uploads/ OR a future relative
     # path (defense-in-depth — also normalize trailing slash).
     base = (settings.api_base_url or "").rstrip("/")
     allowed_prefix = f"{base}/uploads/"
     if not v.startswith(allowed_prefix):
         raise ValueError("image_url must come from PhinodIA uploads")
-    # Disallow path-traversal hops AFTER the /uploads/ segment.
+    # Strict format match: tail must be exactly <32-hex>.{jpg,png,webp}.
+    # Earlier loose check ("/" or ".." in tail) let `?evil=1` and `#frag`
+    # sneak through, plus accepted any extension. Lock to what /upload/image
+    # actually produces.
     tail = v[len(allowed_prefix):]
-    if "/" in tail or ".." in tail or "\\" in tail:
-        raise ValueError("image_url has invalid path")
+    import re as _re
+    if not _re.fullmatch(r'[a-f0-9]{32}\.(jpg|png|webp)', tail):
+        raise ValueError("image_url has invalid filename")
     return v
 
 
@@ -405,11 +412,15 @@ async def _process_video(job_id: str, req: VideoRequest):
         # mark completed-with-warning and keep the partial as the deliverable.
         current = await db.select_one("jobs", {"id": f"eq.{job_id}"})
         if current and current.get("result_url"):
+            # Mirror the partial KIE URL onto our own /uploads/results/ so
+            # the user can still access it after KIE's tempfile expires.
+            mirrored = await persist_external_url(current["result_url"], job_id, "mp4")
             await db.update(
                 "jobs",
                 {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
                 {
                     "status": "completed",
+                    "result_url": mirrored,
                     "completed_at": datetime.now(timezone.utc).isoformat(),
                     "error_message": "La generacion fue interrumpida pero tu video parcial esta listo.",
                 },
@@ -561,7 +572,12 @@ async def _process_landing(job_id: str, req: LandingRequest):
                     await asyncio.sleep(3)
             except Exception as e:
                 logger.warning("Extra image generation failed: %s", e)
-    except Exception as e:
+    except (Exception, asyncio.CancelledError) as e:
+        # CancelledError must be re-raised so the outer handler refunds
+        # the credit; without this, a SIGTERM during landing pre-processing
+        # leaks a credit (job stuck in processing until the 30-min sweeper).
+        if isinstance(e, asyncio.CancelledError):
+            raise
         logger.warning("Landing pre-processing failed: %s", e)
         product_analysis = ""
         buyer_persona = ""

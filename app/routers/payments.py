@@ -217,7 +217,10 @@ async def wompi_webhook(event: dict):
             {"status": "PENDING_GRANT"},
         )
         logger.exception("grant_credits failed for tx %s — rolled back to PENDING_GRANT: %s", wompi_tx_id, e)
-        return {"status": "ok", "action": "retry_grant"}
+        # MUST return 5xx so Wompi retries — returning 200 here marked the
+        # event as delivered and credits were silently lost. Wompi only
+        # retries on non-2xx (sandbox docs §retry-policy).
+        raise HTTPException(503, "grant_credits transient failure — please retry")
     # Process referral bonus BEFORE marking APPROVED. If we mark APPROVED
     # first and the worker crashes (SIGTERM during deploy, OOM, slow Gmail
     # call timing out the lifespan), the next webhook retry hits the

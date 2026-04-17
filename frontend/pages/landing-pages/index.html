@@ -29,9 +29,11 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1778500000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1779000000">
 </head>
 <body>
+
+  <a class="skip-link" href="#main">Saltar al contenido</a>
 
   <nav class="nav">
     <div class="nav-inner">
@@ -51,7 +53,7 @@
     </div>
   </nav>
 
-  <main class="container">
+  <main id="main" class="container">
     <section class="hero" style="padding-bottom: 24px;">
       <p class="hero-badge">Landing Pages</p>
       <h1>Paginas que convierten.</h1>
@@ -64,7 +66,7 @@
         <div class="form-group">
           <label id="landing-dropzone-label">Foto del producto</label>
           <div class="file-upload" id="landing-dropzone" aria-labelledby="landing-dropzone-label">
-            <input type="file" accept="image/jpeg,image/png,image/webp" name="product_image">
+            <input type="file" accept="image/jpeg,image/png,image/webp" name="product_image" aria-label="Subir foto del producto">
             <div class="file-upload-icon" style="font-size: 32px; color: var(--border-hover); font-weight: 300;">+</div>
             <div class="file-upload-text">Arrastra tu imagen aqui o <strong>haz clic para seleccionar</strong></div>
             <img id="landing-preview" class="file-preview hidden" alt="Vista previa">
@@ -150,7 +152,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1778500000"></script>
+  <script src="/static/js/api.js?v=1779000000"></script>
   <script>
     let landingHTML = '';
     initFileUpload('landing-dropzone', 'landing-preview', 'landing-image-url');

@@ -288,10 +288,19 @@ async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
     if (data.progress === undefined || data.progress === null) data.progress = 0;
     onUpdate(data);
   };
+  // Validate UUID before any fetch — `jobId` from URL params is attacker-controlled.
+  // Without this, a payload like `../by-email?email=victim@x.com` would interpolate
+  // verbatim and the browser would normalize the path back into a different endpoint,
+  // exposing other users' job histories.
+  const _UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!_UUID.test(String(jobId))) {
+    onUpdate({ status: 'error', error_message: 'ID no valido.', progress: 0 });
+    return handle;
+  }
   const poll = async () => {
     if (handle.cancelled) return;
     try {
-      const res = await fetch(`${API}/jobs/status/${jobId}`);
+      const res = await fetch(`${API}/jobs/status/${encodeURIComponent(jobId)}`);
       if (handle.cancelled) return;
       if (res.status === 404) {
         safeUpdate({ status: 'error', error_message: 'Trabajo no encontrado. Verifica el ID.', progress: 0 });

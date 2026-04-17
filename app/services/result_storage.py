@@ -64,6 +64,8 @@ async def persist_external_url(url: str, job_id: str, ext: str) -> str:
     filename = f"{job_id}.{safe_ext}"
     path = os.path.join(RESULTS_DIR, filename)
 
+    tmp = path + ".part"
+    success = False
     try:
         async with httpx.AsyncClient(timeout=DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
             async with client.stream("GET", url) as resp:
@@ -73,19 +75,29 @@ async def persist_external_url(url: str, job_id: str, ext: str) -> str:
                 total = 0
                 # Write to a temp file then rename — atomic publish so a
                 # half-downloaded file can't be served on a worker crash.
-                tmp = path + ".part"
                 with open(tmp, "wb") as f:
                     async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
                         total += len(chunk)
                         if total > MAX_BYTES:
-                            f.close()
-                            os.remove(tmp)
                             logger.warning("persist_external_url: %s exceeded MAX_BYTES for job %s", url, job_id)
                             return url
                         f.write(chunk)
                 os.replace(tmp, path)
-    except (httpx.HTTPError, OSError, asyncio.TimeoutError) as e:
+                success = True
+    except (httpx.HTTPError, OSError, asyncio.TimeoutError, asyncio.CancelledError) as e:
         logger.warning("persist_external_url failed for job %s (%s): %s — keeping upstream URL", job_id, url, e)
+        if isinstance(e, asyncio.CancelledError):
+            raise
         return url
+    finally:
+        # Always clean the .part — earlier code only removed it on the
+        # MAX_BYTES branch, so any httpx/OSError mid-stream left the orphan
+        # forever. Filling data/uploads/results/ over time.
+        if not success:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
 
     return f"{_settings.api_base_url}{PUBLIC_PREFIX}/{filename}"

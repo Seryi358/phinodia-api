@@ -13,8 +13,8 @@
   /* WCAG AA: #86868b on white = 3.48:1 (FAILS for body text). #6e6e73 hits
      4.6:1. Promote tertiary to secondary; keep #86868b for decorative-only
      captions where contrast is non-blocking. */
-  --text-secondary: #6e6e73;
-  --text-tertiary: #86868b;
+  --text-secondary: #525257;
+  --text-tertiary: #6e6e73;
   --accent: #0066cc;
   --accent-hover: #0055b3;
   --accent-subtle: rgba(0,102,204,0.06);
@@ -142,6 +142,9 @@ img { max-width: 100%; height: auto; }
   color: var(--text);
   font-size: 20px;
   cursor: pointer;
+  /* WCAG 2.5.5 — minimum 44x44 tap target on mobile. */
+  min-width: 44px;
+  min-height: 44px;
   padding: 8px;
 }
 
@@ -343,8 +346,38 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   font-size: 17px;
   font-family: inherit;
   transition: border-color var(--transition);
-  outline: none;
   letter-spacing: -0.022em;
+}
+
+/* WCAG 2.4.7 — preserve a visible focus indicator when JS focuses inputs.
+   Removed `outline: none` shorthand: tab-keyboard users had no clue where
+   their cursor was. :focus-visible only paints on keyboard focus, so click
+   focus stays visually clean. */
+.form-input:focus-visible,
+.form-textarea:focus-visible,
+.form-select:focus-visible,
+.option-btn:focus-visible,
+.btn:focus-visible,
+.tab:focus-visible,
+.currency-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* WCAG 2.4.1 — skip-link lets keyboard users bypass the nav. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 200;
+  padding: 12px 18px;
+  background: var(--text);
+  color: #fff;
+  border-radius: 0 0 12px 0;
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 0;
 }
 
 .form-input:focus, .form-textarea:focus, .form-select:focus {
@@ -772,8 +805,11 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 
 .footer-links a {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   text-decoration: none;
+  /* WCAG 2.5.5 — give legal links a 44px touch target on mobile. */
+  display: inline-block;
+  padding: 12px 4px;
 }
 
 .footer-links a:hover { color: var(--text); text-decoration: none; }

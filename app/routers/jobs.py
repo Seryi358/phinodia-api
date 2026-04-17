@@ -76,6 +76,27 @@ async def get_job_status(job_id: UUID, request: Request):
                         logger.info("Auto-promoted long-running job %s to completed (partial result existed)", job_id)
                         job["status"] = "completed"
                         job["error_message"] = partial_msg
+                        # Notify the user — the worker's CAS will miss
+                        # ("status in (processing,generating)" no longer
+                        # matches), so without this email the user has a
+                        # completed job they never hear about. Look up the
+                        # user's email since jobs only stores user_id.
+                        try:
+                            user_row = await db.select_one("users", {"id": f"eq.{job.get('user_id')}"})
+                            user_email = user_row.get("email") if user_row else None
+                            if user_email:
+                                from app.routers.generate import _send_delivery_email_safe
+                                import asyncio as _aio
+                                await _aio.to_thread(
+                                    _send_delivery_email_safe,
+                                    user_email,
+                                    job.get("input_description", "tu producto") or "tu producto",
+                                    job.get("service_type", "video_8s"),
+                                    job_id,
+                                    job.get("result_url", "") or "",
+                                )
+                        except Exception as _e:
+                            logger.warning("Auto-promote email send failed for %s: %s", job_id, _e)
                 else:
                     updated = await db.update(
                         "jobs",
@@ -257,6 +278,19 @@ async def list_jobs_by_email(
     })
 
     summaries = []
+    # Legacy rows hold the EasyPanel internal hostname in input_image_url
+    # because earlier versions of upload/image used `request.url.hostname`
+    # instead of api_base_url. Rewrite both fields on serialization so old
+    # /mis-generaciones thumbnails stop leaking infra to anyone (curl,
+    # mobile clients) — not just to the JS client which already patched it.
+    public_host = (settings.api_base_url or "https://app.phinodia.com").rstrip("/")
+    import re as _re
+    _internal = _re.compile(r'^https://(?:[a-z0-9-]+\.)?zb12wf\.easypanel\.host', _re.I)
+    def _normalize(u: str | None) -> str | None:
+        if not u:
+            return u
+        return _internal.sub(public_host, u, count=1)
+
     for job in jobs:
         st = job.get("service_type", "")
         rt = job.get("result_type") or _infer_type(st)
@@ -264,13 +298,15 @@ async def list_jobs_by_email(
         result_url = job.get("result_url")
         if rt == "html" and result_url:
             result_url = f"/estado/?job_id={job['id']}"
+        else:
+            result_url = _normalize(result_url)
         summaries.append(JobSummary(
             job_id=job["id"],
             service_type=st,
             status=job.get("status", "unknown"),
             result_type=rt,
             result_url=result_url,
-            input_image_url=job.get("input_image_url"),
+            input_image_url=_normalize(job.get("input_image_url")),
             input_description=job.get("input_description"),
             created_at=job.get("created_at"),
             completed_at=job.get("completed_at"),
