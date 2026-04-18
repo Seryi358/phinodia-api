@@ -276,7 +276,61 @@ img { max-width: 100%; height: auto; display: block; }
     section, footer, header { padding-left: var(--ph-pad); padding-right: var(--ph-pad); }
     section > *, footer > * { max-width: 100%; }
 }
-</style>"""
+</style>
+<script>
+// Safety net: Opus sometimes generates scroll-reveal wrappers with
+// opacity:0 + translateY but forgets to include the IntersectionObserver
+// that's supposed to reveal them. Without this, half the page renders
+// blank. We attach a universal observer that flips opacity:0 -> 1 on any
+// element entering the viewport. Runs idempotently — if the page already
+// has its own observer it just reveals slightly earlier.
+(function(){
+    if (!('IntersectionObserver' in window)) {
+        document.querySelectorAll('*').forEach(function(el){
+            if (getComputedStyle(el).opacity === '0') {
+                el.style.opacity = '1';
+                el.style.transform = 'none';
+            }
+        });
+        return;
+    }
+    function startObserver() {
+        var io = new IntersectionObserver(function(entries){
+            entries.forEach(function(e){
+                if (e.isIntersecting) {
+                    e.target.style.opacity = '1';
+                    e.target.style.transform = 'none';
+                    e.target.style.transition = 'opacity 600ms ease, transform 600ms ease';
+                    io.unobserve(e.target);
+                }
+            });
+        }, { threshold: 0.05, rootMargin: '0px 0px -10% 0px' });
+        // Find ALL elements that the AI hid behind opacity:0 — we don't
+        // care about selectors, just compute style.
+        document.querySelectorAll('section, section *, header, header *, footer, footer *, main *').forEach(function(el){
+            if (getComputedStyle(el).opacity === '0') {
+                io.observe(el);
+            }
+        });
+        // Hero entrance: things at the very top should reveal immediately
+        // (not wait for scroll), since they're already visible.
+        setTimeout(function(){
+            document.querySelectorAll('section:first-of-type *, header *').forEach(function(el){
+                if (getComputedStyle(el).opacity === '0') {
+                    el.style.opacity = '1';
+                    el.style.transform = 'none';
+                    el.style.transition = 'opacity 600ms ease, transform 600ms ease';
+                }
+            });
+        }, 100);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startObserver);
+    } else {
+        startObserver();
+    }
+})();
+</script>"""
 
 
 @router.get("/landing/{job_id}", response_class=HTMLResponse)
