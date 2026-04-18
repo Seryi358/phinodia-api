@@ -252,6 +252,27 @@ def _normalize_result(value: str | None, result_type: str | None) -> str | None:
     return _INTERNAL_HOST_RE.sub(public, value)
 
 
+# Last-resort layout safety net injected into every landing response.
+# The AI sometimes emits sections with vertical-only padding, which
+# leaves cards flush to the left edge on desktop. This wrapper rule
+# centers everything inside a max 1200px frame WITHOUT touching the
+# AI's color/typography decisions.
+_LANDING_SAFETY_CSS = """<style>
+:root { --ph-max: 1200px; --ph-pad: clamp(20px, 4vw, 64px); }
+body { margin: 0; min-width: 320px; }
+section, footer, header, main > div, main > article {
+    padding-left: max(var(--ph-pad), calc((100vw - var(--ph-max)) / 2));
+    padding-right: max(var(--ph-pad), calc((100vw - var(--ph-max)) / 2));
+    box-sizing: border-box;
+}
+section > *, footer > * { max-width: var(--ph-max); margin-left: auto; margin-right: auto; }
+img { max-width: 100%; height: auto; display: block; }
+@media (max-width: 768px) {
+    section, footer, header { padding-left: var(--ph-pad); padding-right: var(--ph-pad); }
+}
+</style>"""
+
+
 @router.get("/landing/{job_id}", response_class=HTMLResponse)
 async def get_landing_html(job_id: UUID):
     """Serve a completed landing-page job's HTML directly so the /estado
@@ -266,6 +287,11 @@ async def get_landing_html(job_id: UUID):
     if not job or job.get("result_type") != "html" or not job.get("result_url"):
         raise HTTPException(404, "Landing not found")
     html = _normalize_result(job["result_url"], "html") or ""
+    # Inject layout safety CSS as the LAST <style> in <head> so it overrides
+    # any AI-generated rule. Without it, GPT-4o-fallback landings render
+    # as left-edge-flush sections at desktop widths.
+    if "</head>" in html:
+        html = html.replace("</head>", _LANDING_SAFETY_CSS + "</head>", 1)
     # Strict CSP for the AI-generated content. `frame-ancestors 'self'`
     # only allows our /estado iframe to embed it; nobody else can iframe
     # it to phish. Drop `default-src 'none'` so inline styles/images work.
