@@ -324,10 +324,46 @@ img { max-width: 100%; height: auto; display: block; }
             });
         }, 100);
     }
+    // Counter animation safety net: Opus generates stats like
+    // <span data-target="98">0</span>% but its inline counter script
+    // sometimes fails to fire (CSP-blocked, syntax error, or selector
+    // mismatch). When that happens, the user sees "0 hidratacion",
+    // "0% nota piel", "0 ceramidas". This runs idempotently — if the AI's
+    // own counter already animated, our pass overwrites with the same final
+    // value (no visible difference).
+    function startCounters() {
+        var counters = document.querySelectorAll('[data-target], [data-count], [data-value], [data-to], [data-number], [data-counter]');
+        if (!counters.length) return;
+        var cio = new IntersectionObserver(function(entries){
+            entries.forEach(function(e){
+                if (!e.isIntersecting) return;
+                var el = e.target;
+                cio.unobserve(el);
+                var raw = el.getAttribute('data-target') || el.getAttribute('data-count') || el.getAttribute('data-value') || el.getAttribute('data-to') || el.getAttribute('data-number') || el.getAttribute('data-counter');
+                var target = parseFloat(String(raw).replace(/[^0-9.-]/g, ''));
+                if (!isFinite(target)) return;
+                var isFloat = String(raw).indexOf('.') !== -1;
+                var duration = 1500;
+                var startTime = null;
+                function step(ts){
+                    if (startTime === null) startTime = ts;
+                    var t = Math.min(1, (ts - startTime) / duration);
+                    var eased = 1 - Math.pow(1 - t, 3);
+                    var current = target * eased;
+                    el.textContent = isFloat ? current.toFixed(1) : Math.round(current).toString();
+                    if (t < 1) requestAnimationFrame(step);
+                    else el.textContent = isFloat ? target.toFixed(1) : Math.round(target).toString();
+                }
+                requestAnimationFrame(step);
+            });
+        }, { threshold: 0.3 });
+        counters.forEach(function(el){ cio.observe(el); });
+    }
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', startObserver);
+        document.addEventListener('DOMContentLoaded', function(){ startObserver(); startCounters(); });
     } else {
         startObserver();
+        startCounters();
     }
 })();
 </script>"""
