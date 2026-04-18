@@ -163,9 +163,13 @@ Rules:
             "system": system,
             "messages": [{"role": "user", "content": user}],
         }
-        # Reasonable timeout — Opus on a 16K-token landing typically returns
-        # in 30-90 s. Cap at 180 s so a hung stream doesn't pin a worker.
-        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
+        # Opus on a 16K-token landing measured at ~3-4 min in production
+        # (~13 s per 1k output tokens). Earlier 180 s cap was timing out
+        # mid-stream and triggering the worker's retry loop, which itself
+        # ran out of MAX_RETRIES — symptom: jobs stuck "generating" 12 min
+        # then silently failed. 360 s gives Opus enough headroom for the
+        # full 16K cap with a margin for network jitter.
+        async with httpx.AsyncClient(timeout=httpx.Timeout(360.0, connect=10.0)) as client:
             r = await client.post(
                 url,
                 headers={
@@ -179,6 +183,16 @@ Rules:
         # KIE/Anthropic schema: {"content": [{"type": "text", "text": "..."}]}
         chunks = data.get("content") or []
         text = "".join(c.get("text", "") for c in chunks if c.get("type") == "text")
+        text = text.strip()
+        # Strip markdown fences — Opus tends to wrap output in ```html
+        # despite explicit prompt instruction not to. Without this the
+        # raw fence chars hit the iframe as literal text and the page
+        # renders as a plain `<` followed by the doctype string.
+        if text.startswith("```"):
+            # Drop opening fence (with optional language tag) and closing fence.
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3].rstrip()
         return text.strip()
 
     async def generate_landing_page(
