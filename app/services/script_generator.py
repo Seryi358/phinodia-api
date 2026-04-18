@@ -214,9 +214,17 @@ Rules:
             buyer_persona=_esc(buyer_persona) or "Not available",
             extra_images="\n".join(_esc(u) for u in extra_image_urls) if extra_image_urls else "None",
         )
-        # Opus 4.6 vs GPT-4o for landings:
-        # GPT-4o was producing thin 8 KB pages with 3-4 sections, ignoring
-        # the prompt's "12-15 sections" and animation requirements. Opus 4.6
-        # supports up to 128 K output tokens AND follows long structural
-        # specs reliably — exactly what a 25-40 KB premium landing needs.
-        return await self._call_claude_opus(LANDING_SYSTEM, user_msg, max_tokens=16000)
+        # Opus 4.6 vs GPT-4o: Opus produces dramatically richer landings
+        # (12-15 sections vs 3-4, follows the design system) — always try
+        # it first. But KIE's Claude endpoint goes through Cloudflare and
+        # returns 403/500 during provider maintenance windows; without
+        # this fallback, the whole landing pipeline burns 3 retries +
+        # refunds the user's credit on infra issues out of our control.
+        # GPT-4o output is thinner but at least delivers SOMETHING.
+        import logging as _l
+        _log = _l.getLogger(__name__)
+        try:
+            return await self._call_claude_opus(LANDING_SYSTEM, user_msg, max_tokens=16000)
+        except Exception as e:
+            _log.warning("Opus 4.6 unavailable (%s) — falling back to gpt-4o", type(e).__name__)
+            return await self._call_gpt(LANDING_SYSTEM, user_msg, max_tokens=16000)
