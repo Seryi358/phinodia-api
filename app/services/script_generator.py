@@ -208,7 +208,24 @@ Rules:
         product_analysis: str = "",
         buyer_persona: str = "",
         extra_image_urls: list[str] | None = None,
+        price: int = 0,
+        original_price: int = 0,
+        discount_percent: int = 0,
+        stock_urgency: str = "",
+        guarantee: str = "",
+        bonus: str = "",
     ) -> str:
+        # Format COP with thousand separator using "." (Colombian convention).
+        # If price is 0, send "(no especificado — inventa uno realista)" so
+        # Opus knows it can fabricate vs. is being told to leave it blank.
+        def _cop(n: int) -> str:
+            return f"${n:,}".replace(",", ".")
+        price_display = _cop(price) + " COP" if price > 0 else "(no especificado — inventa uno realista para el producto)"
+        original_price_display = _cop(original_price) + " COP" if original_price > 0 else "(no aplica — omite el anchor pricing)"
+        discount_display = f"{discount_percent}% OFF" if discount_percent > 0 else "(no aplica)"
+        guarantee_display = guarantee or "30 dias para devolverlo, sin preguntas"
+        bonus_display = bonus or "(no aplica)"
+        stock_urgency_display = stock_urgency or "(no aplica — usa urgencia generica como 'Solo esta semana')"
         user_msg = LANDING_USER.format(
             product_name=_esc(product_name),
             description=_esc(description),
@@ -217,6 +234,12 @@ Rules:
             product_analysis=_esc(product_analysis) or "Not available",
             buyer_persona=_esc(buyer_persona) or "Not available",
             extra_images="\n".join(_esc(u) for u in extra_image_urls) if extra_image_urls else "None",
+            price_display=_esc(price_display),
+            original_price_display=_esc(original_price_display),
+            discount_display=_esc(discount_display),
+            stock_urgency=_esc(stock_urgency_display),
+            guarantee_display=_esc(guarantee_display),
+            bonus_display=_esc(bonus_display),
         )
         # Opus 4.6 vs GPT-4o: Opus produces dramatically richer landings
         # (12-15 sections vs 3-4, follows the design system) — always try

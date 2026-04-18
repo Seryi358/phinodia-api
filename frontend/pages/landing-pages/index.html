@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1780000000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1780100000">
 </head>
 <body>
 
@@ -109,6 +109,42 @@
         </div>
 
         <div class="form-group">
+          <label for="landing-price">A que precio lo vas a vender? (COP)</label>
+          <input type="number" id="landing-price" name="price" class="form-input" placeholder="79990" min="0" max="2000000000" step="1000">
+          <p class="form-hint">Precio en pesos colombianos. Ej: 79990 se mostrara como $79.990. Dejalo vacio si quieres que la IA invente uno.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="landing-original-price">Precio anterior (opcional, para mostrar descuento)</label>
+          <input type="number" id="landing-original-price" name="original_price" class="form-input" placeholder="129990" min="0" max="2000000000" step="1000">
+          <p class="form-hint">Si lo pones, se mostrara tachado al lado del precio actual (anchor pricing).</p>
+        </div>
+
+        <div class="form-group">
+          <label for="landing-discount">Descuento (% — opcional)</label>
+          <input type="number" id="landing-discount" name="discount_percent" class="form-input" placeholder="40" min="0" max="99" step="1">
+          <p class="form-hint">Aparecera como badge "-40% OFF" en la seccion de oferta.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="landing-stock-urgency">Urgencia o escasez (opcional)</label>
+          <input type="text" id="landing-stock-urgency" name="stock_urgency" class="form-input" placeholder="Ej: Solo 50 unidades disponibles esta semana" maxlength="200">
+          <p class="form-hint">Texto que aparecera en el banner de urgencia. Si lo dejas vacio la IA inventa uno generico.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="landing-bonus">Bonus o regalo incluido (opcional)</label>
+          <input type="text" id="landing-bonus" name="bonus" class="form-input" placeholder="Ej: Envio gratis + guia PDF de uso" maxlength="300">
+          <p class="form-hint">Lo que tu cliente recibe ADEMAS del producto principal. Refuerza la oferta.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="landing-guarantee">Garantia (opcional)</label>
+          <input type="text" id="landing-guarantee" name="guarantee" class="form-input" placeholder="Ej: 30 dias para devolverlo, sin preguntas" maxlength="200">
+          <p class="form-hint">Por defecto: "30 dias para devolverlo, sin preguntas".</p>
+        </div>
+
+        <div class="form-group">
           <label for="landing-email">Tu correo electronico</label>
           <input type="email" id="landing-email" name="email" class="form-input" placeholder="tucorreo@ejemplo.com" required>
         </div>
@@ -152,7 +188,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1780000000"></script>
+  <script src="/static/js/api.js?v=1780100000"></script>
   <script>
     let landingHTML = '';
     initFileUpload('landing-dropzone', 'landing-preview', 'landing-image-url');

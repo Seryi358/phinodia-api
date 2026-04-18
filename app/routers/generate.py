@@ -170,6 +170,16 @@ class LandingRequest(BaseModel):
     product_category: str = Field("", max_length=300)
     target_audience: str = Field("", max_length=300)
     style_preference: str = Field("", max_length=200)
+    # Pricing/offer fields — all optional. If price is empty, the prompt
+    # falls back to "AI inventa precio razonable" instead of leaving the
+    # CTA section blank. Capped at 2 billion COP to block junk like
+    # 99999999999 from making the rendered "$" look broken.
+    price: int = Field(0, ge=0, le=2_000_000_000)
+    original_price: int = Field(0, ge=0, le=2_000_000_000)
+    discount_percent: int = Field(0, ge=0, le=99)
+    stock_urgency: str = Field("", max_length=200)
+    guarantee: str = Field("", max_length=200)
+    bonus: str = Field("", max_length=300)
     data_consent: bool
 
     _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
@@ -624,6 +634,10 @@ async def _process_landing(job_id: str, req: LandingRequest):
                 image_url=req.image_url, style_preference=req.style_preference,
                 product_analysis=product_analysis, buyer_persona=buyer_persona,
                 extra_image_urls=extra_image_urls,
+                price=req.price, original_price=req.original_price,
+                discount_percent=req.discount_percent,
+                stock_urgency=req.stock_urgency, guarantee=req.guarantee,
+                bonus=req.bonus,
             )
             # Validate that GPT actually returned HTML, not a refusal text. A
             # 600-char "I cannot generate that" refusal would otherwise be

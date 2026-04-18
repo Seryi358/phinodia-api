@@ -248,6 +248,13 @@ async function generateImage(formData) {
 // ── Generate Landing Page ──────────────────────
 async function generateLanding(formData) {
   persistEmail(formData.email);
+  // Coerce numeric pricing fields — getFormData returns them as strings, but
+  // the Pydantic LandingRequest expects ints. Without parseInt the empty
+  // string becomes "", which Pydantic rejects with 422.
+  const _toInt = (v) => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
   return apiPost('/generate/landing', {
     email: formData.email,
     image_url: formData.image_url,
@@ -256,6 +263,12 @@ async function generateLanding(formData) {
     product_category: formData.product_category || '',
     target_audience: formData.target_audience || '',
     style_preference: formData.style_preference || '',
+    price: _toInt(formData.price),
+    original_price: _toInt(formData.original_price),
+    discount_percent: _toInt(formData.discount_percent),
+    stock_urgency: formData.stock_urgency || '',
+    guarantee: formData.guarantee || '',
+    bonus: formData.bonus || '',
     data_consent: formData.data_consent,
   });
 }

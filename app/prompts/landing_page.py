@@ -97,6 +97,14 @@ BUYER PERSONA (escribe copy ESPECIFICO para esta persona):
 IMAGENES ADICIONALES DEL PRODUCTO (usa todas en distintas secciones con CSS treatments variados):
 {extra_images}
 
+OFERTA (usar EXACTAMENTE estos valores en S11 Pricing — NO inventes precios si vienen):
+- Precio actual: {price_display}
+- Precio anterior (tachado en anchor): {original_price_display}
+- Descuento: {discount_display}
+- Urgencia/escasez: {stock_urgency}
+- Garantia: {guarantee_display}
+- Bonus/regalo incluido: {bonus_display}
+
 TU JOB:
 
 Construye una sales page sin-salida siguiendo AIDA:
@@ -108,5 +116,7 @@ Construye una sales page sin-salida siguiendo AIDA:
 6. SVG icons inline. Cero emojis.
 7. Microcopy especifico para el buyer persona (usa sus pain points exactos).
 8. Espanol Colombia, "tu" informal, formato $79.990.
+9. PRICING (S11): si "Precio actual" viene, usalo TAL CUAL. Si tambien viene "Precio anterior", muestralo tachado al lado del nuevo (anchor pricing). Si viene "Descuento", muestralo como badge "-XX%". Si viene "Urgencia/escasez", ponla en S13 como banner. Si viene "Garantia", reemplaza el copy generico de garantia por este texto. Si viene "Bonus", anadelo como bullet destacado en S11 con icono SVG de regalo.
+10. Si algun campo de OFERTA llega vacio, NO lo menciones. NO digas "precio no disponible" — simplemente omite ese elemento.
 
 Output SOLO el HTML completo desde <!DOCTYPE html>. Sin markdown fences. Sin comentarios."""
