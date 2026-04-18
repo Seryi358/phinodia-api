@@ -214,6 +214,9 @@ Rules:
         stock_urgency: str = "",
         guarantee: str = "",
         bonus: str = "",
+        whatsapp_number: str = "",
+        key_benefits: str = "",
+        shipping_info: str = "",
     ) -> str:
         # Format COP with thousand separator using "." (Colombian convention).
         # If price is 0, send "(no especificado — inventa uno realista)" so
@@ -226,6 +229,16 @@ Rules:
         guarantee_display = guarantee or "30 dias para devolverlo, sin preguntas"
         bonus_display = bonus or "(no aplica)"
         stock_urgency_display = stock_urgency or "(no aplica — usa urgencia generica como 'Solo esta semana')"
+        shipping_display = shipping_info or "(no especificado — usa 'Envio gratis a toda Colombia')"
+        # Build wa.me link with pre-filled greeting; if user didn't provide
+        # a number, fall back to a #comprar anchor (Opus will scroll to S11).
+        if whatsapp_number:
+            from urllib.parse import quote
+            greeting = quote(f"Hola, me interesa {product_name}. Quiero mas informacion.")
+            cta_destination_display = f"https://wa.me/{whatsapp_number}?text={greeting}"
+        else:
+            cta_destination_display = "#comprar (anchor interno hacia S11 Pricing)"
+        key_benefits_display = key_benefits or "(no especificado — deduce 5-6 beneficios del analisis del producto)"
         user_msg = LANDING_USER.format(
             product_name=_esc(product_name),
             description=_esc(description),
@@ -240,6 +253,9 @@ Rules:
             stock_urgency=_esc(stock_urgency_display),
             guarantee_display=_esc(guarantee_display),
             bonus_display=_esc(bonus_display),
+            shipping_display=_esc(shipping_display),
+            cta_destination_display=_esc(cta_destination_display),
+            key_benefits_display=_esc(key_benefits_display),
         )
         # Opus 4.6 vs GPT-4o: Opus produces dramatically richer landings
         # (12-15 sections vs 3-4, follows the design system) — always try

@@ -97,6 +97,23 @@ def _strip_required(v: str) -> str:
     return v
 
 
+def _normalize_whatsapp(v: str) -> str:
+    """Strip non-digits from WhatsApp; default-prefix Colombian 10-digit
+    numbers with 57 so wa.me works. Empty stays empty (CTA falls back to
+    a #comprar anchor)."""
+    v = (v or "").strip()
+    if not v:
+        return ""
+    digits = "".join(c for c in v if c.isdigit())
+    if not digits:
+        return ""
+    if len(digits) == 10 and digits.startswith("3"):
+        digits = "57" + digits
+    if len(digits) < 10 or len(digits) > 15:
+        raise ValueError("whatsapp_number must be 10-15 digits (or include country code)")
+    return digits
+
+
 def _validate_image_url(v: str) -> str:
     """image_url must reference an upload from our /uploads/ directory.
 
@@ -180,10 +197,18 @@ class LandingRequest(BaseModel):
     stock_urgency: str = Field("", max_length=200)
     guarantee: str = Field("", max_length=200)
     bonus: str = Field("", max_length=300)
+    # Contact + offer detail — all optional. whatsapp_number drives the CTA
+    # destination (without it, buttons go to a #comprar anchor that does
+    # nothing). key_benefits stops Opus from inventing benefits the user
+    # didn't ask for. shipping_info fills the offer story in S11.
+    whatsapp_number: str = Field("", max_length=20)
+    key_benefits: str = Field("", max_length=1000)
+    shipping_info: str = Field("", max_length=200)
     data_consent: bool
 
     _v_url = field_validator("image_url")(lambda cls, v: _validate_image_url(v))
     _v_strip = field_validator("description", "product_name")(lambda cls, v: _strip_required(v))
+    _v_wa = field_validator("whatsapp_number")(lambda cls, v: _normalize_whatsapp(v))
 
 
 class GenerateResponse(BaseModel):
@@ -638,6 +663,9 @@ async def _process_landing(job_id: str, req: LandingRequest):
                 discount_percent=req.discount_percent,
                 stock_urgency=req.stock_urgency, guarantee=req.guarantee,
                 bonus=req.bonus,
+                whatsapp_number=req.whatsapp_number,
+                key_benefits=req.key_benefits,
+                shipping_info=req.shipping_info,
             )
             # Validate that GPT actually returned HTML, not a refusal text. A
             # 600-char "I cannot generate that" refusal would otherwise be

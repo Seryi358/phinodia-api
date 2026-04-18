@@ -29,7 +29,7 @@
   <link rel="icon" href="/static/images/favicon-32.png" sizes="32x32">
   <link rel="icon" href="/static/images/favicon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=1780100000">
+  <link rel="stylesheet" href="/static/css/style.css?v=1780200000">
 </head>
 <body>
 
@@ -145,6 +145,24 @@
         </div>
 
         <div class="form-group">
+          <label for="landing-shipping">Tiempo de envio (opcional)</label>
+          <input type="text" id="landing-shipping" name="shipping_info" class="form-input" placeholder="Ej: 1-2 dias Bogota, 3-5 dias resto del pais" maxlength="200">
+          <p class="form-hint">Aparecera bajo el precio. Por defecto: "Envio gratis a toda Colombia".</p>
+        </div>
+
+        <div class="form-group">
+          <label for="landing-whatsapp">WhatsApp de contacto (opcional)</label>
+          <input type="tel" id="landing-whatsapp" name="whatsapp_number" class="form-input" placeholder="3001234567 o +57 300 1234567" maxlength="20">
+          <p class="form-hint">Si lo pones, TODOS los botones de "Comprar" abriran WhatsApp con un mensaje listo: "Hola, me interesa [producto]". Sin esto, los botones solo hacen scroll a la oferta.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="landing-benefits">Beneficios principales del producto (opcional)</label>
+          <textarea id="landing-benefits" name="key_benefits" class="form-textarea" placeholder="Ej:&#10;Hidrata por 24 horas&#10;Reduce manchas en 14 dias&#10;Apto para piel sensible&#10;Sin parabenos ni sulfatos" maxlength="1000"></textarea>
+          <p class="form-hint">Un beneficio por linea (3-6 lineas). Si lo dejas vacio, la IA los inventa basandose en el analisis del producto.</p>
+        </div>
+
+        <div class="form-group">
           <label for="landing-email">Tu correo electronico</label>
           <input type="email" id="landing-email" name="email" class="form-input" placeholder="tucorreo@ejemplo.com" required>
         </div>
@@ -188,7 +206,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1780100000"></script>
+  <script src="/static/js/api.js?v=1780200000"></script>
   <script>
     let landingHTML = '';
     initFileUpload('landing-dropzone', 'landing-preview', 'landing-image-url');

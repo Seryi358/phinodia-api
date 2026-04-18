@@ -104,6 +104,12 @@ OFERTA (usar EXACTAMENTE estos valores en S11 Pricing — NO inventes precios si
 - Urgencia/escasez: {stock_urgency}
 - Garantia: {guarantee_display}
 - Bonus/regalo incluido: {bonus_display}
+- Tiempo/politica de envio: {shipping_display}
+
+CTA destino: {cta_destination_display}
+
+BENEFICIOS REALES DEL PRODUCTO (si vienen, usalos LITERAL en S6 Beneficios — NO inventes; si vacio, deduce del analisis):
+{key_benefits_display}
 
 TU JOB:
 
@@ -116,7 +122,9 @@ Construye una sales page sin-salida siguiendo AIDA:
 6. SVG icons inline. Cero emojis.
 7. Microcopy especifico para el buyer persona (usa sus pain points exactos).
 8. Espanol Colombia, "tu" informal, formato $79.990.
-9. PRICING (S11): si "Precio actual" viene, usalo TAL CUAL. Si tambien viene "Precio anterior", muestralo tachado al lado del nuevo (anchor pricing). Si viene "Descuento", muestralo como badge "-XX%". Si viene "Urgencia/escasez", ponla en S13 como banner. Si viene "Garantia", reemplaza el copy generico de garantia por este texto. Si viene "Bonus", anadelo como bullet destacado en S11 con icono SVG de regalo.
+9. PRICING (S11): si "Precio actual" viene, usalo TAL CUAL. Si tambien viene "Precio anterior", muestralo tachado al lado del nuevo (anchor pricing). Si viene "Descuento", muestralo como badge "-XX%". Si viene "Urgencia/escasez", ponla en S13 como banner. Si viene "Garantia", reemplaza el copy generico de garantia por este texto. Si viene "Bonus", anadelo como bullet destacado en S11 con icono SVG de regalo. Si viene "Tiempo/politica de envio", muestralo bajo el precio.
 10. Si algun campo de OFERTA llega vacio, NO lo menciones. NO digas "precio no disponible" — simplemente omite ese elemento.
+11. CTA: TODOS los botones de compra (hero, S11, S14) deben usar EXACTAMENTE el href de "CTA destino". Si es una URL wa.me, abre en nueva pestana (target="_blank" rel="noopener"). Si es "#comprar" (anchor sin destino), apuntalo a la seccion S11.
+12. BENEFICIOS (S6): si vienen "BENEFICIOS REALES DEL PRODUCTO", usa esos textos literales como bullets — uno por linea. NO inventes beneficios adicionales. Si esta vacio, deduce 5-6 beneficios del analisis del producto.
 
 Output SOLO el HTML completo desde <!DOCTYPE html>. Sin markdown fences. Sin comentarios."""

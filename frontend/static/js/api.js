@@ -269,6 +269,9 @@ async function generateLanding(formData) {
     stock_urgency: formData.stock_urgency || '',
     guarantee: formData.guarantee || '',
     bonus: formData.bonus || '',
+    whatsapp_number: formData.whatsapp_number || '',
+    key_benefits: formData.key_benefits || '',
+    shipping_info: formData.shipping_info || '',
     data_consent: formData.data_consent,
   });
 }
