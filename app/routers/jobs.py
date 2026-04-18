@@ -272,7 +272,11 @@ async def get_landing_html(job_id: UUID):
     headers = {
         "Content-Security-Policy": (
             "default-src 'self'; "
-            "img-src 'self' data: https://app.phinodia.com https://phinodia.com https://ik.imagekit.io; "
+            # KIE returns gallery images on tempfile.aiquickdraw.com — must
+            # allow them so the AI-built gallery actually renders. Earlier
+            # CSP only allowed our own origin + ImageKit, so the 4
+            # extra-image_urls came back as broken icons.
+            "img-src 'self' data: https://app.phinodia.com https://phinodia.com https://ik.imagekit.io https://tempfile.aiquickdraw.com https://*.aiquickdraw.com; "
             "style-src 'self' 'unsafe-inline'; "
             "font-src 'self' data: https://fonts.gstatic.com; "
             "script-src 'none'; "
