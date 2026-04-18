@@ -149,13 +149,19 @@ Rules:
             )
         return await self._call_gpt(IMAGE_SYSTEM, user_msg)
 
-    async def _call_claude_opus(self, system: str, user: str, max_tokens: int = 16000) -> str:
-        """Generate via Claude Opus 4.6 against the official Anthropic API
+    async def _call_claude_opus(self, system: str, user: str, max_tokens: int = 32000) -> str:
+        """Generate via Claude Opus 4.7 against the official Anthropic API
         (api.anthropic.com). Earlier path went through KIE AI's reseller
         endpoint, but that started returning 500 "server is being maintained"
         intermittently — official direct API has no such jitter. Used ONLY
-        for landing pages (Opus output is 25-40 KB, scripts video/image
+        for landing pages (Opus output is 25-80 KB, scripts video/image
         stay on gpt-4o which is short + cheaper).
+
+        max_tokens=32000 default: with the new 9 offer fields injected into
+        the user message, Opus needs ~22-25K output tokens to render all
+        12-15 sections AND close </html>. At 16K it was hitting the cap
+        mid-S8 (no S11 pricing, no FAQ, no closing tags) and the user got
+        a half-broken landing.
         """
         settings = get_settings()
         if not settings.anthropic_api_key:
@@ -171,10 +177,12 @@ Rules:
             "system": system,
             "messages": [{"role": "user", "content": user}],
         }
-        # Opus on a 16K-token landing measures ~3-4 min on official API
-        # (~13 s per 1k output tokens). 360 s gives headroom for the full
-        # 16K cap plus network jitter.
-        async with httpx.AsyncClient(timeout=httpx.Timeout(360.0, connect=10.0)) as client:
+        # Opus on a 32K-token landing measures ~6-8 min on official API
+        # (~13 s per 1k output tokens). 600 s gives headroom for the full
+        # 32K cap plus network jitter. Doubled from 360 s when we doubled
+        # max_tokens — without bumping this, the httpx timeout fires before
+        # Opus finishes and the user sees a fallback gpt-4o landing.
+        async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=10.0)) as client:
             r = await client.post(
                 url,
                 headers={
@@ -267,7 +275,9 @@ Rules:
         import logging as _l
         _log = _l.getLogger(__name__)
         try:
-            return await self._call_claude_opus(LANDING_SYSTEM, user_msg, max_tokens=16000)
+            return await self._call_claude_opus(LANDING_SYSTEM, user_msg, max_tokens=32000)
         except Exception as e:
-            _log.warning("Opus 4.6 unavailable (%s) — falling back to gpt-4o", type(e).__name__)
+            _log.warning("Opus 4.7 unavailable (%s) — falling back to gpt-4o", type(e).__name__)
+            # gpt-4o capped at 16K — it never produces full 12-15 section
+            # landings anyway, so we don't waste tokens trying for 32K.
             return await self._call_gpt(LANDING_SYSTEM, user_msg, max_tokens=16000)

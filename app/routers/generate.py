@@ -670,9 +670,14 @@ async def _process_landing(job_id: str, req: LandingRequest):
             # Validate that GPT actually returned HTML, not a refusal text. A
             # 600-char "I cannot generate that" refusal would otherwise be
             # delivered as the user's "landing page".
+            # Also require closing </html> tag — Opus hitting the max_tokens
+            # cap mid-S8 produces valid-looking HTML that abruptly ends with
+            # an unclosed <div>, breaking the rendered iframe AND skipping
+            # the pricing/CTA sections (lost sale).
             stripped = (html or "").lstrip().lower()
             looks_like_html = stripped.startswith("<!doctype html") or stripped.startswith("<html")
-            if html and len(html) > 500 and looks_like_html:
+            ends_properly = (html or "").rstrip().lower().endswith("</html>")
+            if html and len(html) > 500 and looks_like_html and ends_properly:
                 # CAS: only mark completed if the row is still in a non-terminal
                 # state. The /jobs/status auto-fail at 30min could have already
                 # transitioned this job to "failed" and refunded — overwriting
