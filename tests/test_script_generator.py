@@ -96,10 +96,17 @@ async def test_generate_image_prompt():
 
 @pytest.mark.asyncio
 async def test_generate_landing_page():
-    """Landings now go through Claude Opus 4.6 via KIE's Anthropic-native
-    endpoint, not OpenAI. Mock the httpx call to that endpoint."""
+    """Landings call Claude Opus 4.6 via the official Anthropic API.
+    The test sets ANTHROPIC_API_KEY in settings cache so the Opus path
+    fires (instead of falling back to OpenAI on missing key)."""
     from app.services.script_generator import ScriptGenerator
-    import httpx
+    from app.config import get_settings
+
+    # Inject a fake anthropic key into the cached Settings instance so the
+    # Opus call doesn't immediately raise + fall back to OpenAI.
+    settings = get_settings()
+    original = settings.anthropic_api_key
+    settings.anthropic_api_key = "sk-ant-test-key-1234567890"
 
     landing_html = "<!DOCTYPE html><html><head><title>Glow Cream</title></head><body>...</body></html>"
     mock_response = MagicMock()
@@ -108,31 +115,37 @@ async def test_generate_landing_page():
         "content": [{"type": "text", "text": landing_html}],
     })
 
-    with patch("app.services.script_generator.httpx.AsyncClient") as MockClient:
-        mock_inst = MagicMock()
-        mock_inst.__aenter__ = AsyncMock(return_value=mock_inst)
-        mock_inst.__aexit__ = AsyncMock(return_value=False)
-        mock_inst.post = AsyncMock(return_value=mock_response)
-        MockClient.return_value = mock_inst
+    try:
+        with patch("app.services.script_generator.httpx.AsyncClient") as MockClient:
+            mock_inst = MagicMock()
+            mock_inst.__aenter__ = AsyncMock(return_value=mock_inst)
+            mock_inst.__aexit__ = AsyncMock(return_value=False)
+            mock_inst.post = AsyncMock(return_value=mock_response)
+            MockClient.return_value = mock_inst
 
-        gen = ScriptGenerator(api_key="test-key")
-        html = await gen.generate_landing_page(
-            product_name="Crema Facial Glow",
-            description="Crema hidratante premium",
-            image_url="https://example.com/cream.jpg",
-            style_preference="modern, dark theme",
-        )
+            gen = ScriptGenerator(api_key="test-key")
+            html = await gen.generate_landing_page(
+                product_name="Crema Facial Glow",
+                description="Crema hidratante premium",
+                image_url="https://example.com/cream.jpg",
+                style_preference="modern, dark theme",
+            )
 
-        assert html == landing_html
-        post_call = mock_inst.post.call_args
-        url = post_call.args[0]
-        body = post_call.kwargs["json"]
-        assert "kie.ai" in url and "claude" in url
-        assert body["model"].startswith("claude-opus")
-        assert body["max_tokens"] >= 16000
-        # User message must include the buyer-persona structured input
-        assert "BUYER PERSONA" in body["messages"][0]["content"]
-        assert "Crema Facial Glow" in body["messages"][0]["content"]
+            assert html == landing_html
+            post_call = mock_inst.post.call_args
+            url = post_call.args[0]
+            body = post_call.kwargs["json"]
+            headers = post_call.kwargs["headers"]
+            # Now hits api.anthropic.com directly, not KIE.
+            assert url == "https://api.anthropic.com/v1/messages"
+            assert headers["x-api-key"] == "sk-ant-test-key-1234567890"
+            assert "anthropic-version" in headers
+            assert body["model"] == "claude-opus-4-6"
+            assert body["max_tokens"] >= 16000
+            assert "BUYER PERSONA" in body["messages"][0]["content"]
+            assert "Crema Facial Glow" in body["messages"][0]["content"]
+    finally:
+        settings.anthropic_api_key = original
 
 
 @pytest.mark.asyncio
