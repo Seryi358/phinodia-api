@@ -2,9 +2,80 @@ import io
 import os
 import uuid
 import warnings
+from collections import deque
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from PIL import Image, ImageOps
 from app.config import get_settings
+
+
+def _strip_solid_background(img: Image.Image, tolerance: int = 25) -> Image.Image:
+    """Edge-flood-fill to alpha=0 so a product photo on a uniform light/dark
+    backdrop becomes transparent. Far cheaper and more predictable than
+    rembg (no ML model, no extra deps), at the cost of failing on busy
+    backgrounds — those simply ship unchanged.
+
+    Algorithm: BFS from each edge pixel, marking pixels whose RGB delta vs
+    the seed corner is below `tolerance` as background. Anything connected
+    to the seed via that delta becomes transparent. The product (which
+    typically has high contrast against the backdrop and isn't connected
+    to the corners) keeps its alpha.
+    """
+    if img.size[0] * img.size[1] > 4_000_000:
+        # 4MP guard so we don't BFS through a 24MP image and starve the worker.
+        # Resize for the bg-strip pass, but keep the result at original size
+        # would require either a mask resize OR skipping. Cheaper to skip.
+        return img
+    img = img.convert("RGBA")
+    w, h = img.size
+    px = img.load()
+
+    def _is_bg(c, seed):
+        return (
+            abs(c[0] - seed[0]) <= tolerance
+            and abs(c[1] - seed[1]) <= tolerance
+            and abs(c[2] - seed[2]) <= tolerance
+        )
+
+    # Use the average of the 4 corner pixels as the background seed.
+    corners = [px[0, 0], px[w - 1, 0], px[0, h - 1], px[w - 1, h - 1]]
+    seed = (
+        sum(c[0] for c in corners) // 4,
+        sum(c[1] for c in corners) // 4,
+        sum(c[2] for c in corners) // 4,
+    )
+
+    visited = bytearray(w * h)
+    queue: deque[tuple[int, int]] = deque()
+    # Seed with all edge pixels that match the background color.
+    for x in range(w):
+        for y in (0, h - 1):
+            if _is_bg(px[x, y], seed):
+                queue.append((x, y))
+                visited[y * w + x] = 1
+    for y in range(h):
+        for x in (0, w - 1):
+            if _is_bg(px[x, y], seed):
+                queue.append((x, y))
+                visited[y * w + x] = 1
+
+    bg_pixel_count_estimate = sum(visited)
+    # If fewer than 5% of edge pixels look like the seed background, the
+    # photo probably isn't on a uniform backdrop — bail to avoid mangling.
+    if bg_pixel_count_estimate < (2 * (w + h)) * 0.10:
+        return img
+
+    while queue:
+        x, y = queue.popleft()
+        px[x, y] = (0, 0, 0, 0)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h:
+                idx = ny * w + nx
+                if not visited[idx]:
+                    visited[idx] = 1
+                    if _is_bg(px[nx, ny], seed):
+                        queue.append((nx, ny))
+    return img
 
 # Cap decoded pixel count well below product-photo needs to defend against
 # decompression bombs (a tiny PNG can declare 50000x50000 dimensions and
@@ -68,12 +139,31 @@ async def upload_image(file: UploadFile = File(...)):
             img.verify()
             img = Image.open(io.BytesIO(content))  # re-open: verify() exhausts the file
             img = ImageOps.exif_transpose(img)
-            if detected == "jpg" and img.mode != "RGB":
-                img = img.convert("RGB")
-            elif detected == "png" and img.mode in ("I", "F", "CMYK"):
-                img = img.convert("RGBA" if "A" in img.mode else "RGB")
+            # Strip uniform backdrop so the product photo blends into any
+            # landing-page background instead of looking like a sticker
+            # cut from a white square. JPEGs don't support transparency,
+            # so always promote to PNG when the strip succeeds (alpha
+            # actually appears) — otherwise downsteam consumers see a
+            # white rectangle painted by the JPEG encoder.
+            stripped = _strip_solid_background(img)
+            # Cheap "did it actually carve out a hole?" check: sample a few
+            # corner pixels — if they're now alpha=0 the strip worked.
+            had_alpha = False
+            if stripped.mode == "RGBA":
+                w, h = stripped.size
+                samples = [stripped.getpixel((0, 0)), stripped.getpixel((w - 1, h - 1))]
+                had_alpha = any(p[3] == 0 for p in samples)
+            if had_alpha:
+                # Force PNG output regardless of declared format.
+                detected = "png"
+                img = stripped
+            else:
+                if detected == "jpg" and img.mode != "RGB":
+                    img = img.convert("RGB")
+                elif detected == "png" and img.mode in ("I", "F", "CMYK"):
+                    img = img.convert("RGBA" if "A" in img.mode else "RGB")
             out = io.BytesIO()
-            save_kwargs = {"quality": 92, "optimize": True} if detected == "jpg" else {}
+            save_kwargs = {"quality": 92, "optimize": True} if detected == "jpg" else {"optimize": True}
             img.save(out, format=PILLOW_FORMATS[detected], **save_kwargs)
             clean_bytes = out.getvalue()
     except HTTPException:

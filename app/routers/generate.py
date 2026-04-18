@@ -551,27 +551,38 @@ async def _process_landing(job_id: str, req: LandingRequest):
             product_name=req.product_name, product_analysis=product_analysis,
         )
 
-        # Step 3: Generate extra product images with Nano Banana 2
-        extra_image_urls = []
+        # Step 3: Generate 4 extra product images via image-to-image so the
+        # landing has visual richness (gallery, lifestyle, ingredient close-up,
+        # in-context shot). All 4 fired CONCURRENTLY — sequential cost ~6 min,
+        # parallel ~90 s. Each promotes the same source product image into a
+        # different scene/angle so the page never repeats the same photo.
         image_prompts = [
-            f"Professional product photography of {req.product_name} on a clean white surface with soft studio lighting, minimal shadows, centered composition, 4K quality",
-            f"Lifestyle flat lay photo featuring {req.product_name} surrounded by complementary items, warm natural lighting, Instagram aesthetic, top-down view",
+            f"Hero product shot of {req.product_name}: centered, premium studio lighting, soft gradient backdrop matching the brand palette, magazine-quality, sharp focus on label and texture, 16:9",
+            f"Lifestyle flat lay featuring {req.product_name} surrounded by complementary natural elements (leaves, fabric, ceramic), warm window light, Pinterest aesthetic, top-down 16:9",
+            f"Macro close-up of {req.product_name} texture/ingredient/material detail, beautiful bokeh background, soft natural light, editorial style, 16:9",
+            f"Real-life in-context shot of {req.product_name} being used or displayed in a stylish modern home setting, lifestyle photography with a Colombian person from the target audience, candid mood, 16:9",
         ]
-        for img_prompt in image_prompts:
+
+        async def _gen_one(prompt: str) -> str | None:
             try:
                 task_id = await kie.create_image_task(
-                    prompt=img_prompt, image_url=req.image_url, aspect_ratio="16:9",
+                    prompt=prompt, image_url=req.image_url, aspect_ratio="16:9",
                 )
                 for _ in range(60):
                     status = await kie.get_task_status(task_id)
                     if status["state"] == "success" and status["result_urls"]:
-                        extra_image_urls.append(status["result_urls"][0])
-                        break
+                        return status["result_urls"][0]
                     if status["state"] in ("failed", "fail"):
-                        break
+                        return None
                     await asyncio.sleep(3)
             except Exception as e:
-                logger.warning("Extra image generation failed: %s", e)
+                logger.warning("Extra image generation failed (%s): %s", prompt[:40], e)
+            return None
+
+        # Fan out — gather lets ALL 4 images generate in parallel.
+        results = await asyncio.gather(*(_gen_one(p) for p in image_prompts), return_exceptions=False)
+        extra_image_urls = [u for u in results if u]
+        logger.info("Generated %d/%d extra images for landing job %s", len(extra_image_urls), len(image_prompts), job_id)
     except (Exception, asyncio.CancelledError) as e:
         # CancelledError must be re-raised so the outer handler refunds
         # the credit; without this, a SIGTERM during landing pre-processing
