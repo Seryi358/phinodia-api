@@ -162,7 +162,11 @@ Rules:
             raise RuntimeError("ANTHROPIC_API_KEY not set — cannot use Opus")
         url = "https://api.anthropic.com/v1/messages"
         body = {
-            "model": "claude-opus-4-6",
+            # Opus 4.7 is Anthropic's flagship — strongest at long-form
+            # structured HTML with consistent design-system adherence.
+            # Opus 4.6 was the previous default; 4.7 is a meaningful jump
+            # for landings (better section count, fewer layout misses).
+            "model": "claude-opus-4-7",
             "max_tokens": max_tokens,
             "system": system,
             "messages": [{"role": "user", "content": user}],

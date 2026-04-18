@@ -140,7 +140,7 @@ async def test_generate_landing_page():
             assert url == "https://api.anthropic.com/v1/messages"
             assert headers["x-api-key"] == "sk-ant-test-key-1234567890"
             assert "anthropic-version" in headers
-            assert body["model"] == "claude-opus-4-6"
+            assert body["model"] == "claude-opus-4-7"
             assert body["max_tokens"] >= 16000
             assert "BUYER PERSONA" in body["messages"][0]["content"]
             assert "Crema Facial Glow" in body["messages"][0]["content"]
