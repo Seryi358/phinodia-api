@@ -267,8 +267,21 @@ section, footer, header, main > div, main > article {
 }
 section > *, footer > * { max-width: var(--ph-max); margin-left: auto; margin-right: auto; }
 img { max-width: 100%; height: auto; display: block; }
+/* Cards on white backgrounds inside dark sections were inheriting the
+   parent's white color, so the text rendered as white-on-white. Force
+   any element that LOOKS like a card to use dark text; if the AI made
+   a dark-bg card it must override with !important (rare). */
+[class*="card"], [class*="box"], [class*="tile"], [class*="item"]:not(li),
+[class*="benefit"], [class*="feature"], [class*="stat"]:not(strong),
+[class*="testim"], [class*="ingredient"] {
+    color: #1d1d1f;
+}
+[class*="card"] *, [class*="box"] *, [class*="tile"] * {
+    color: inherit;
+}
 @media (max-width: 768px) {
     section, footer, header { padding-left: var(--ph-pad); padding-right: var(--ph-pad); }
+    section > *, footer > * { max-width: 100%; }
 }
 </style>"""
 
