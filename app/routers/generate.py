@@ -582,6 +582,15 @@ async def _process_landing(job_id: str, req: LandingRequest):
         # Fan out — gather lets ALL 4 images generate in parallel.
         results = await asyncio.gather(*(_gen_one(p) for p in image_prompts), return_exceptions=False)
         extra_image_urls = [u for u in results if u]
+        # Mirror each generated image to our own /uploads/results/ so the
+        # landing's gallery doesn't break in 7-30 days when KIE's tempfile
+        # URLs expire. Done sequentially (4 small downloads) to keep code
+        # simple — in practice each is <500 KB, total ~2 s.
+        persisted = []
+        for i, url in enumerate(extra_image_urls):
+            mirrored = await persist_external_url(url, f"{job_id}-x{i}", "jpg")
+            persisted.append(mirrored)
+        extra_image_urls = persisted
         logger.info("Generated %d/%d extra images for landing job %s", len(extra_image_urls), len(image_prompts), job_id)
     except (Exception, asyncio.CancelledError) as e:
         # CancelledError must be re-raised so the outer handler refunds

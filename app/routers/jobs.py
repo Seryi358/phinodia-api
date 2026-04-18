@@ -279,9 +279,18 @@ async def get_landing_html(job_id: UUID):
             "img-src 'self' data: https://app.phinodia.com https://phinodia.com https://ik.imagekit.io https://tempfile.aiquickdraw.com https://*.aiquickdraw.com; "
             "style-src 'self' 'unsafe-inline'; "
             "font-src 'self' data: https://fonts.gstatic.com; "
-            "script-src 'none'; "
+            # Allow inline scripts ONLY: the AI-generated landings include
+            # an inline IntersectionObserver for scroll-reveal animations
+            # AND for animated counters. With script-src 'none' those
+            # scripts never ran, so any element starting at opacity:0
+            # stayed invisible forever — the landing rendered as a blank
+            # white page. No external script sources are allowed, so an
+            # injected <script src="evil.com"> still can't load.
+            "script-src 'self' 'unsafe-inline'; "
             "frame-ancestors 'self'; "
-            "form-action 'none'"
+            "form-action 'none'; "
+            "base-uri 'none'; "
+            "object-src 'none'"
         ),
         "X-Content-Type-Options": "nosniff",
     }
