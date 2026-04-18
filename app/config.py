@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str
 
+    # Anthropic — direct API for landing-page generation (Opus 4.6).
+    # Optional: if absent, the landing path falls back to OpenAI.
+    anthropic_api_key: str = ""
+
     # Wompi
     wompi_private_key: str
     wompi_public_key: str
@@ -58,6 +62,15 @@ class Settings(BaseSettings):
     def _non_empty_secret(cls, v: str) -> str:
         if not v or len(v) < 16:
             raise ValueError("secret/key must be set and >= 16 chars")
+        return v
+
+    @field_validator("anthropic_api_key")
+    @classmethod
+    def _optional_anthropic(cls, v: str) -> str:
+        # Optional secret — empty string is allowed (we fall back to OpenAI),
+        # but if set it must look like a real key.
+        if v and len(v) < 16:
+            raise ValueError("anthropic_api_key must be empty or >= 16 chars")
         return v
 
     @field_validator("supabase_url", "api_base_url")

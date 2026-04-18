@@ -150,46 +150,46 @@ Rules:
         return await self._call_gpt(IMAGE_SYSTEM, user_msg)
 
     async def _call_claude_opus(self, system: str, user: str, max_tokens: int = 16000) -> str:
-        """Generate via Claude Opus 4.6 served through KIE AI's Anthropic-native
-        endpoint. Used ONLY for landing pages — Opus is dramatically better at
-        long, structured HTML than GPT-4o (12-15 sections vs 3-4, sticks to the
-        design-system spec, produces working keyframes/animations).
+        """Generate via Claude Opus 4.6 against the official Anthropic API
+        (api.anthropic.com). Earlier path went through KIE AI's reseller
+        endpoint, but that started returning 500 "server is being maintained"
+        intermittently — official direct API has no such jitter. Used ONLY
+        for landing pages (Opus output is 25-40 KB, scripts video/image
+        stay on gpt-4o which is short + cheaper).
         """
         settings = get_settings()
-        url = "https://api.kie.ai/claude/v1/messages"
+        if not settings.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not set — cannot use Opus")
+        url = "https://api.anthropic.com/v1/messages"
         body = {
             "model": "claude-opus-4-6",
             "max_tokens": max_tokens,
             "system": system,
             "messages": [{"role": "user", "content": user}],
         }
-        # Opus on a 16K-token landing measured at ~3-4 min in production
-        # (~13 s per 1k output tokens). Earlier 180 s cap was timing out
-        # mid-stream and triggering the worker's retry loop, which itself
-        # ran out of MAX_RETRIES — symptom: jobs stuck "generating" 12 min
-        # then silently failed. 360 s gives Opus enough headroom for the
-        # full 16K cap with a margin for network jitter.
+        # Opus on a 16K-token landing measures ~3-4 min on official API
+        # (~13 s per 1k output tokens). 360 s gives headroom for the full
+        # 16K cap plus network jitter.
         async with httpx.AsyncClient(timeout=httpx.Timeout(360.0, connect=10.0)) as client:
             r = await client.post(
                 url,
                 headers={
-                    "Authorization": f"Bearer {settings.kie_api_key}",
+                    "x-api-key": settings.anthropic_api_key,
+                    "anthropic-version": "2023-06-01",
                     "Content-Type": "application/json",
                 },
                 json=body,
             )
             r.raise_for_status()
             data = r.json()
-        # KIE/Anthropic schema: {"content": [{"type": "text", "text": "..."}]}
+        # Anthropic schema: {"content": [{"type": "text", "text": "..."}], "usage": {...}}
         chunks = data.get("content") or []
         text = "".join(c.get("text", "") for c in chunks if c.get("type") == "text")
         text = text.strip()
-        # Strip markdown fences — Opus tends to wrap output in ```html
-        # despite explicit prompt instruction not to. Without this the
-        # raw fence chars hit the iframe as literal text and the page
-        # renders as a plain `<` followed by the doctype string.
+        # Strip markdown fences — Opus sometimes wraps output in ```html
+        # despite the explicit "no markdown fences" prompt. Without this
+        # the iframe shows raw fence chars as literal text.
         if text.startswith("```"):
-            # Drop opening fence (with optional language tag) and closing fence.
             text = text.split("\n", 1)[1] if "\n" in text else text[3:]
             if text.endswith("```"):
                 text = text[:-3].rstrip()
