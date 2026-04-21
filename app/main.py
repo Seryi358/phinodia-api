@@ -284,11 +284,15 @@ async def add_cache_and_security_headers(request: Request, call_next):
         # sites (clickjacking), and forbid plugins.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://checkout.wompi.co; "
+            # Meta Pixel needs connect.facebook.net (fbevents.js script)
+            # https://developers.facebook.com/docs/meta-pixel/get-started
+            "script-src 'self' 'unsafe-inline' https://checkout.wompi.co https://connect.facebook.net; "
             "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https://ik.imagekit.io https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://phinodia.com https://app.phinodia.com; "
+            # facebook.com needed for the noscript <img> 1px tracking pixel
+            "img-src 'self' data: https://ik.imagekit.io https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://phinodia.com https://app.phinodia.com https://www.facebook.com https://*.facebook.com; "
             "media-src 'self' https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://app.phinodia.com; "
-            "connect-src 'self' https://app.phinodia.com https://checkout.wompi.co https://*.wompi.co https://open.er-api.com; "
+            # facebook.com + connect.facebook.net for fbq POST events
+            "connect-src 'self' https://app.phinodia.com https://checkout.wompi.co https://*.wompi.co https://open.er-api.com https://www.facebook.com https://connect.facebook.net; "
             "frame-src 'self' data: blob: https://checkout.wompi.co; "
             "frame-ancestors 'self'; "
             "object-src 'none'; "
