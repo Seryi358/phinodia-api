@@ -314,6 +314,22 @@ async def health():
     return {"status": "ok"}
 
 
+# Public, cache-safe config consumed by the frontend Pixel snippet.
+# Returns ONLY the public Pixel ID — never the CAPI access token (that
+# stays server-side or attackers could mint events on our pixel and
+# poison Advantage+ AI training).
+@app.get("/api/v1/public-config")
+async def public_config():
+    from app.config import get_settings
+    s = get_settings()
+    return {
+        "meta_pixel_id": s.meta_pixel_id,
+        # Wompi public key is already inlined in CheckoutResponse, but
+        # keeping a one-liner endpoint future-proofs the frontend for any
+        # config (e.g. Mixpanel token, Sentry DSN) without a redeploy.
+    }
+
+
 # Root of the webapp redirects to the marketing site so there's only one
 # canonical home page. The webapp's /videos, /imagenes, /precios etc. still
 # serve normally from the pages mount below.

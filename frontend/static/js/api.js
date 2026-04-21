@@ -415,7 +415,29 @@ async function getCredits(email) {
 // ── Wompi Checkout ─────────────────────────────
 async function openWompiCheckout(sku, email, redirectUrl) {
   try {
-    const checkout = await apiPost('/payments/checkout', { sku, email });
+    // Forward Meta tracking signals so the backend CAPI call has the same
+    // identity context as the browser Pixel — boosts Event Match Quality
+    // from ~5 to ~8+ which Meta's algorithm explicitly rewards in 2026
+    // (better attribution → cheaper CPA on Advantage+ Sales).
+    const fbp = (typeof getFbp === 'function') ? getFbp() : '';
+    const fbc = (typeof getFbc === 'function') ? getFbc() : '';
+    const checkout = await apiPost('/payments/checkout', {
+      sku, email, fbp, fbc, page_url: window.location.href.slice(0, 500),
+    });
+
+    // Fire Pixel InitiateCheckout with the matched event_id Meta will use
+    // to dedupe against our server-side InitiateCheckout (already fired
+    // by the backend in /payments/checkout). Prefix matches the backend's
+    // `ic_${reference}` convention.
+    if (typeof phTrack === 'function') {
+      phTrack('InitiateCheckout', {
+        value: checkout.amount_cents / 100,
+        currency: checkout.currency,
+        content_ids: [sku],
+        content_type: 'product',
+      }, 'ic_' + checkout.reference);
+    }
+
     const widget = new WidgetCheckout({
       currency: checkout.currency,
       amountInCents: checkout.amount_cents,
@@ -427,6 +449,20 @@ async function openWompiCheckout(sku, email, redirectUrl) {
     });
     widget.open(function(result) {
       if (result.transaction && result.transaction.status === 'APPROVED') {
+        // Fire Pixel Purchase with event_id = reference. The backend
+        // CAPI Purchase event in /payments/webhook uses the same event_id
+        // so Meta dedupes within its 48h window. If the user uses PSE
+        // (which redirects to /gracias-* on phinodia.com instead of
+        // returning here), this Pixel call doesn't fire — but the CAPI
+        // webhook still does, so the conversion is captured.
+        if (typeof phTrack === 'function') {
+          phTrack('Purchase', {
+            value: checkout.amount_cents / 100,
+            currency: checkout.currency,
+            content_ids: [sku],
+            content_type: 'product',
+          }, checkout.reference);
+        }
         showToast('Pago aprobado. Tus creditos se acreditaran en segundos.', 'success');
         setTimeout(() => window.location.reload(), 3000);
       }

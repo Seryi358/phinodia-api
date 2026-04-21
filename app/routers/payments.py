@@ -3,13 +3,14 @@ import hashlib
 import logging
 import time
 import secrets
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, EmailStr, Field
 from app.config import get_settings
 from app.database import db
 from app.services.credits import CreditService, CreditContention
 from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU
 from app.services.gmail import GmailSender, build_purchase_email
+from app.services.meta_capi import get_capi
 from app.routers.referrals import process_referral_bonus
 
 router = APIRouter()
@@ -20,6 +21,11 @@ logger = logging.getLogger(__name__)
 class CheckoutRequest(BaseModel):
     sku: str
     email: EmailStr
+    # Meta tracking signals collected client-side. All optional — empty
+    # strings are fine; CAPI just gets a lower Event Match Quality score.
+    fbp: str = Field("", max_length=200)   # _fbp cookie value
+    fbc: str = Field("", max_length=300)   # built from ?fbclid= URL param
+    page_url: str = Field("", max_length=500)
 
 
 class CheckoutResponse(BaseModel):
@@ -28,10 +34,16 @@ class CheckoutResponse(BaseModel):
     currency: str
     integrity_hash: str
     public_key: str
+    # Shared between Pixel (frontend fires InitiateCheckout/Purchase with
+    # this) and CAPI (we fire the same with this same id) so Meta dedupes.
+    # We use the reference itself: it's already unique per checkout attempt
+    # and stored on the resulting transaction row, so the Purchase event
+    # in the webhook can resolve it from tx_data["reference"].
+    event_id: str
 
 
 @router.post("/checkout", response_model=CheckoutResponse)
-async def create_checkout(req: CheckoutRequest):
+async def create_checkout(req: CheckoutRequest, request: Request):
     package = PACKAGES_BY_SKU.get(req.sku)
     if not package:
         raise HTTPException(400, f"Paquete desconocido: {req.sku}")
@@ -43,12 +55,45 @@ async def create_checkout(req: CheckoutRequest):
     concat = f"{reference}{amount}{currency}{settings.wompi_integrity_secret}"
     integrity_hash = hashlib.sha256(concat.encode()).hexdigest()
 
+    # Fire CAPI InitiateCheckout in the background — best-effort, must
+    # never block or fail the checkout response. Meta uses these "high
+    # intent" events to optimize Advantage+ Sales bidding even before
+    # any Purchase event lands. Same event_id as the eventual Purchase
+    # would be wrong (different event_name) — Meta dedupes per (event_id,
+    # event_name) so we use a derivative key.
+    capi = get_capi()
+    if capi.enabled:
+        client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else None)
+        user_agent = request.headers.get("user-agent", "")[:500]
+        # InitiateCheckout id ties Pixel and CAPI for THIS specific click.
+        # Frontend Pixel fires `fbq('track', 'InitiateCheckout', {...}, {eventID: ic_event_id})`.
+        ic_event_id = f"ic_{reference}"
+        ic_task = asyncio.create_task(capi.send_event(
+            event_name="InitiateCheckout",
+            event_id=ic_event_id,
+            email=req.email,
+            client_ip=client_ip,
+            user_agent=user_agent,
+            fbp=req.fbp or None,
+            fbc=req.fbc or None,
+            event_source_url=req.page_url or None,
+            value_cop=amount // 100,        # Wompi stores cents, Meta wants COP majors
+            currency=currency,
+            content_ids=[req.sku],
+            content_type="product",
+        ))
+        # Hold a strong ref so asyncio's GC doesn't collect mid-flight
+        from app.routers.generate import _background_tasks
+        _background_tasks.add(ic_task)
+        ic_task.add_done_callback(_background_tasks.discard)
+
     return CheckoutResponse(
         reference=reference,
         amount_cents=amount,
         currency=currency,
         integrity_hash=integrity_hash,
         public_key=settings.wompi_public_key,
+        event_id=reference,  # Purchase event uses the reference as event_id
     )
 
 
@@ -272,6 +317,29 @@ async def wompi_webhook(event: dict):
     _email_task = asyncio.create_task(asyncio.to_thread(_send_purchase_email))
     _background_tasks.add(_email_task)
     _email_task.add_done_callback(_background_tasks.discard)
+
+    # Mirror Purchase to Meta CAPI server-side. event_id == reference, same
+    # ID the frontend Pixel uses on the gracias page → Meta dedupes within
+    # 48h. Best-effort: a Meta API blip can't fail the credit grant. We
+    # don't have IP/UA here (this is a server-to-server webhook), but we
+    # do have the email which gives ~6.5 EMQ on its own; combined with the
+    # frontend Pixel event (which has IP/UA/fbp/fbc) the effective EMQ
+    # post-dedup is the union — Meta picks whichever has more signals.
+    capi = get_capi()
+    if capi.enabled:
+        purchase_task = asyncio.create_task(capi.send_event(
+            event_name="Purchase",
+            event_id=reference,                       # MUST match Pixel-side
+            email=customer_email,
+            value_cop=amount // 100,                  # cents → COP
+            currency="COP",
+            content_ids=[sku_from_ref],
+            content_type="product",
+            action_source="website",
+            event_source_url=f"{settings.api_base_url}/gracias",
+        ))
+        _background_tasks.add(purchase_task)
+        purchase_task.add_done_callback(_background_tasks.discard)
 
     logger.info("Granted %d %s credits (tx: %s)", package["credits"], package["service"], reference)
     return {"status": "ok", "action": "credits_granted", "credits": package["credits"]}

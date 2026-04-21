@@ -15,6 +15,24 @@ class Settings(BaseSettings):
     # Optional: if absent, the landing path falls back to OpenAI.
     anthropic_api_key: str = ""
 
+    # Meta (Facebook/Instagram) — Conversions API server-side tracking.
+    # All optional: if any is empty the CAPI calls become no-ops so the
+    # app boots fine before the BM is wired. When set, every conversion
+    # the backend witnesses (Purchase, Lead, InitiateCheckout, Contact)
+    # is mirrored to Meta with a shared event_id so frontend Pixel + our
+    # server fire dedupe within Meta's 48h window. CAPI in 2026 is
+    # mandatory: pixel-only setups lose 30-50% of events to Safari/iOS
+    # privacy mitigations, ad-blockers, and consent banners — without
+    # CAPI, Advantage+ AI optimizes blind and CPA inflates 2-3x.
+    meta_pixel_id: str = ""
+    meta_capi_access_token: str = ""
+    meta_test_event_code: str = ""
+    # Marketing-bot ENV (read by the separate phinodia-ads-bot service —
+    # kept here too so a single source-of-truth holds the whole stack).
+    meta_ad_account_id: str = ""
+    meta_business_id: str = ""
+    meta_catalog_id: str = ""
+
     # Wompi
     wompi_private_key: str
     wompi_public_key: str
