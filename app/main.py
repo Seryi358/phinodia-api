@@ -292,7 +292,11 @@ async def add_cache_and_security_headers(request: Request, call_next):
             "img-src 'self' data: https://ik.imagekit.io https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://phinodia.com https://app.phinodia.com https://www.facebook.com https://*.facebook.com; "
             "media-src 'self' https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://app.phinodia.com; "
             # facebook.com + connect.facebook.net for fbq POST events
-            "connect-src 'self' https://app.phinodia.com https://checkout.wompi.co https://*.wompi.co https://open.er-api.com https://www.facebook.com https://connect.facebook.net; "
+            # stape.st + run.app: Meta auto-configures Stape's CAPI Gateway
+            # proxy for new pixels in 2026 (first-party event sync helper).
+            # Without these, the Pixel logs CSP errors but core tracking
+            # still works — our direct CAPI server-to-server is independent.
+            "connect-src 'self' https://app.phinodia.com https://checkout.wompi.co https://*.wompi.co https://open.er-api.com https://www.facebook.com https://connect.facebook.net https://*.stape.st https://*.run.app; "
             "frame-src 'self' data: blob: https://checkout.wompi.co; "
             "frame-ancestors 'self'; "
             "object-src 'none'; "
