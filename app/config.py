@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Optional: if absent, the landing path falls back to OpenAI.
     anthropic_api_key: str = ""
 
+    # Admin token — single-secret for /api/v1/admin/* endpoints
+    # (sales dashboard + CSV export). Set in EasyPanel env. Empty = disabled.
+    admin_token: str = ""
+
     # Meta (Facebook/Instagram) — Conversions API server-side tracking.
     # All optional: if any is empty the CAPI calls become no-ops so the
     # app boots fine before the BM is wired. When set, every conversion

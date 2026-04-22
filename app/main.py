@@ -306,7 +306,7 @@ async def add_cache_and_security_headers(request: Request, call_next):
 
     return response
 
-from app.routers import generate, jobs, credits, payments, upload, referrals, contact  # noqa: E402
+from app.routers import generate, jobs, credits, payments, upload, referrals, contact, admin  # noqa: E402
 
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
@@ -315,6 +315,7 @@ app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"]
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
 app.include_router(referrals.router, prefix="/api/v1/referrals", tags=["referrals"])
 app.include_router(contact.router, prefix="/api/v1", tags=["contact"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
 @app.get("/health")
