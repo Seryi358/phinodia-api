@@ -341,6 +341,35 @@
         return;
       }
 
+      // Fire AddToCart pixel event — middle-funnel signal. Meta's algorithm
+      // uses this (along with InitiateCheckout fired later by api.js) to
+      // optimize bidding BEFORE enough Purchase volume exists to escape
+      // learning. No CAPI mirror needed here — the server sees the
+      // subsequent /payments/checkout call which carries the same signal.
+      // Generate ephemeral event_id so Meta dedupes if the user clicks
+      // twice (debounce below prevents the 2nd request but Meta might
+      // see the 2nd Pixel fire in some browser retry paths).
+      let planPrice = 0;
+      let planCredits = 0;
+      let planLabel = '';
+      for (const plans of Object.values(PLANS)) {
+        const found = plans.find(p => p.sku === sku);
+        if (found) { planPrice = found.price; planCredits = found.credits; planLabel = found.label; break; }
+      }
+      if (typeof phTrack === 'function' && planPrice > 0) {
+        const atcEventId = 'atc_' + sku + '_' + Date.now();
+        phTrack('AddToCart', {
+          value: planPrice,
+          currency: 'COP',
+          content_ids: [sku],
+          content_type: 'product',
+          content_name: sku,
+          content_category: planLabel,
+          contents: [{id: sku, quantity: 1, item_price: planPrice}],
+          num_items: 1,
+        }, atcEventId);
+      }
+
       // Debounce: stop the user from spamming "Comprar" while the previous
       // checkout request/widget is still being prepared (otherwise N modals
       // stack and N orphan references hit the backend).
@@ -381,13 +410,7 @@
         if (sku.startsWith('image')) graciasPage = 'https://phinodia.com/gracias-imagenes/';
         if (sku.startsWith('landing')) graciasPage = 'https://phinodia.com/gracias-landing/';
 
-        // Find the plan price for the event value
-        let planPrice = 0;
-        for (const plans of Object.values(PLANS)) {
-          const found = plans.find(p => p.sku === sku);
-          if (found) { planPrice = found.price; break; }
-        }
-
+        // planPrice already computed above for AddToCart event
         const redirectUrl = graciasPage + '?plan=' + sku + '&value=' + planPrice;
         await openWompiCheckout(sku, email, redirectUrl);
       } finally {
@@ -397,6 +420,20 @@
     }
 
     renderPlans();
+
+    // Fire ViewContent on page load — middle-funnel signal that the user
+    // saw the pricing page. Helps Meta's algorithm build a profile of
+    // "high intent" audience members for retargeting and lookalike seeding.
+    // Deferred behind requestAnimationFrame to let the Pixel finish init.
+    requestAnimationFrame(() => {
+      if (typeof phTrack === 'function') {
+        phTrack('ViewContent', {
+          content_category: 'Planes',
+          content_name: 'Pricing page',
+          content_type: 'product_group',
+        }, 'vc_precios_' + Date.now());
+      }
+    });
   </script>
 </body>
 </html>

@@ -217,6 +217,17 @@
         showToast(err.message, 'error');
       }
     }
+
+    // ViewContent — mid-funnel signal the user reached the image landing
+    requestAnimationFrame(() => {
+      if (typeof phTrack === 'function') {
+        phTrack('ViewContent', {
+          content_category: 'imagenes',
+          content_name: 'Image generator landing',
+          content_type: 'product_group',
+        }, 'vc_imagenes_' + Date.now());
+      }
+    });
   </script>
 </body>
 </html>
