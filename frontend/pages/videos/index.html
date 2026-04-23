@@ -232,6 +232,17 @@
         showToast(err.message, 'error');
       }
     }
+
+    // ViewContent — mid-funnel: user reached the video-generation landing
+    requestAnimationFrame(() => {
+      if (typeof phTrack === 'function') {
+        phTrack('ViewContent', {
+          content_category: 'videos',
+          content_name: 'Video generator landing',
+          content_type: 'product_group',
+        }, 'vc_videos_' + Date.now());
+      }
+    });
   </script>
 </body>
 </html>

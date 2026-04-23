@@ -306,6 +306,17 @@
       // freed before the new tab's navigation is committed. ~30s is plenty.
       setTimeout(() => URL.revokeObjectURL(url), 30000);
     }
+
+    // ViewContent — mid-funnel: user reached the landing-pages landing
+    requestAnimationFrame(() => {
+      if (typeof phTrack === 'function') {
+        phTrack('ViewContent', {
+          content_category: 'landing_pages',
+          content_name: 'Landing pages generator landing',
+          content_type: 'product_group',
+        }, 'vc_landing_' + Date.now());
+      }
+    });
   </script>
 </body>
 </html>
