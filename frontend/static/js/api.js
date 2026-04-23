@@ -413,7 +413,7 @@ async function getCredits(email) {
 }
 
 // ── Wompi Checkout ─────────────────────────────
-async function openWompiCheckout(sku, email, redirectUrl) {
+async function openWompiCheckout(sku, email, redirectUrl, abVariant) {
   try {
     // Forward Meta tracking signals so the backend CAPI call has the same
     // identity context as the browser Pixel — boosts Event Match Quality
@@ -422,7 +422,9 @@ async function openWompiCheckout(sku, email, redirectUrl) {
     const fbp = (typeof getFbp === 'function') ? getFbp() : '';
     const fbc = (typeof getFbc === 'function') ? getFbc() : '';
     const checkout = await apiPost('/payments/checkout', {
-      sku, email, fbp, fbc, page_url: window.location.href.slice(0, 500),
+      sku, email, fbp, fbc,
+      page_url: window.location.href.slice(0, 500),
+      ab_variant: abVariant || '',
     });
 
     // Fire Pixel InitiateCheckout with the matched event_id Meta will use

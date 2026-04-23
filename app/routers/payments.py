@@ -26,6 +26,12 @@ class CheckoutRequest(BaseModel):
     fbp: str = Field("", max_length=200)   # _fbp cookie value
     fbc: str = Field("", max_length=300)   # built from ?fbclid= URL param
     page_url: str = Field("", max_length=500)
+    # A/B test variant assigned client-side (ab-test.js). Single letter
+    # a-z; empty string = no test / control. Embedded in reference as
+    # `-v<letter>` suffix so the webhook can parse it back without a
+    # separate DB lookup. Also stored in transactions.plan_name via
+    # `__ab<letter>` suffix for dashboard aggregation.
+    ab_variant: str = Field("", max_length=1, pattern=r"^[a-z]?$")
 
 
 class CheckoutResponse(BaseModel):
@@ -49,6 +55,8 @@ async def create_checkout(req: CheckoutRequest, request: Request):
         raise HTTPException(400, f"Paquete desconocido: {req.sku}")
 
     reference = f"PH-{req.sku}-{int(time.time())}-{secrets.token_hex(4)}"
+    if req.ab_variant:
+        reference = f"{reference}-v{req.ab_variant}"
     currency = "COP"
     amount = package["amount"]
 
@@ -171,10 +179,17 @@ async def wompi_webhook(event: dict):
         logger.error("Webhook missing customer_email for tx %s — forcing Wompi retry", tx_data.get("id"))
         raise HTTPException(503, "customer_email missing — retry")
 
-    # Extract SKU from reference (format: PH-{sku}-{timestamp}-{hex}) — we always
-    # generate this format in /payments/checkout. Reject if Wompi sends a reference
-    # we didn't issue.
+    # Extract SKU from reference — format:
+    #   PH-{sku}-{timestamp}-{hex}            (classic, no A/B)
+    #   PH-{sku}-{timestamp}-{hex}-v{letter}  (with A/B variant)
+    # Strip the -v<letter> suffix FIRST if present, then apply the old
+    # parsing logic unchanged (keeps the rest of the flow one path).
     ref_parts = reference.split("-")
+    ab_variant = ""
+    if (len(ref_parts) >= 5 and ref_parts[-1].startswith("v") and len(ref_parts[-1]) == 2
+            and ref_parts[-1][1:].isalpha()):
+        ab_variant = ref_parts[-1][1:]
+        ref_parts = ref_parts[:-1]
     if len(ref_parts) < 4 or ref_parts[0] != "PH":
         logger.warning("Webhook reference %r doesn't match PH-{sku}-{ts}-{hex}", reference)
         return {"status": "ok", "action": "bad_reference"}
@@ -216,11 +231,19 @@ async def wompi_webhook(event: dict):
     # If our status update at the end fails, the row stays at GRANTING and
     # the next retry's CAS will see status=GRANTING (not PENDING_GRANT) and
     # bail without re-granting.
+    # Encode A/B variant in plan_name so the admin dashboard can aggregate
+    # conversions per variant without needing a schema migration. Format:
+    #   image_3         (no variant — control group in flight tests)
+    #   image_3__ab_b   (variant B)
+    # Parsing on the dashboard side: split on "__ab_" to recover variant.
+    plan_name_with_ab = f"{package['service']}_{package['credits']}"
+    if ab_variant:
+        plan_name_with_ab = f"{plan_name_with_ab}__ab_{ab_variant}"
     if not existing:
         try:
             await db.insert("transactions", {
                 "user_id": user["id"],
-                "plan_name": f"{package['service']}_{package['credits']}",
+                "plan_name": plan_name_with_ab,
                 "credits_added": package["credits"],
                 "amount_cop": amount,
                 "wompi_transaction_id": wompi_tx_id,
@@ -327,6 +350,11 @@ async def wompi_webhook(event: dict):
     # post-dedup is the union — Meta picks whichever has more signals.
     capi = get_capi()
     if capi.enabled:
+        # Include A/B variant in custom_data so Meta's internal reports
+        # (+ any downstream analytics) can segment by variant. Meta indexes
+        # most custom_data fields but not all — content_category with
+        # variant suffix is the UI-accessible breakdown (see frontend).
+        custom = {"ab_variant": ab_variant} if ab_variant else None
         purchase_task = asyncio.create_task(capi.send_event(
             event_name="Purchase",
             event_id=reference,                       # MUST match Pixel-side
@@ -337,6 +365,7 @@ async def wompi_webhook(event: dict):
             content_type="product",
             action_source="website",
             event_source_url=f"{settings.api_base_url}/gracias",
+            custom_data=custom,
         ))
         _background_tasks.add(purchase_task)
         purchase_task.add_done_callback(_background_tasks.discard)
