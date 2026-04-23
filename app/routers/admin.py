@@ -216,3 +216,132 @@ async def sales_dashboard(token: str = Query(...), days: int = Query(90, ge=1, l
 </body>
 </html>"""
     return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+
+
+# ── A/B test dashboard ───────────────────────────────────────────────
+# Aggregates transactions by variant encoded in plan_name (format:
+# "<service>_<credits>__ab_<letter>" or just "<service>_<credits>" for
+# control/no-test). Frontend assigns variant on first visit to /precios
+# (test id precios_cta_v1) and the variant rides through the checkout →
+# reference suffix → webhook → plan_name encoding.
+
+def _extract_variant(plan_name: str) -> tuple[str, str]:
+    """Returns (plan_without_variant, variant_or_empty)."""
+    if "__ab_" in plan_name:
+        base, suffix = plan_name.rsplit("__ab_", 1)
+        variant = suffix[:1] if suffix else ""
+        return base, variant
+    return plan_name, ""
+
+
+async def _ab_aggregate(test_id: str, days: int) -> dict:
+    rows = await _fetch_sales(days=days)
+    # Group by variant. 'none' captures rows with no variant suffix
+    # (either pre-AB-test rows or users who visited before rollout).
+    agg: dict[str, dict] = {}
+    for r in rows:
+        _, variant = _extract_variant(r.get("plan", ""))
+        key = variant or "none"
+        if key not in agg:
+            agg[key] = {
+                "variant": key,
+                "conversions": 0,
+                "revenue_cop": 0.0,
+                "plans": {},
+            }
+        agg[key]["conversions"] += 1
+        agg[key]["revenue_cop"] += float(r.get("monto_cop", 0))
+        base_plan, _ = _extract_variant(r.get("plan", ""))
+        agg[key]["plans"][base_plan] = agg[key]["plans"].get(base_plan, 0) + 1
+    # Compute averages
+    for v in agg.values():
+        v["avg_ticket_cop"] = (v["revenue_cop"] / v["conversions"]) if v["conversions"] else 0
+    # Stable ordering — 'a' first, then 'b', then the rest
+    ordered = sorted(agg.values(), key=lambda x: (x["variant"] != "a", x["variant"] != "b", x["variant"]))
+    return {
+        "test_id": test_id,
+        "period_days": days,
+        "variants": ordered,
+        "total_conversions": sum(v["conversions"] for v in ordered),
+        "total_revenue_cop": sum(v["revenue_cop"] for v in ordered),
+        "generado_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/ab-test.json")
+async def ab_test_json(
+    token: str = Query(...),
+    test_id: str = Query("precios_cta_v1"),
+    days: int = Query(30, ge=1, le=365),
+):
+    """Aggregation for a given A/B test over N days."""
+    _check_token(token)
+    return await _ab_aggregate(test_id, days)
+
+
+@router.get("/ab-test", response_class=HTMLResponse)
+async def ab_test_dashboard(
+    token: str = Query(...),
+    test_id: str = Query("precios_cta_v1"),
+    days: int = Query(30, ge=1, le=365),
+):
+    """HTML dashboard — variant comparison with conversion rate lift."""
+    _check_token(token)
+    d = await _ab_aggregate(test_id, days)
+    variants = d["variants"]
+    # Find baseline (variant 'a' if present, else first)
+    baseline = next((v for v in variants if v["variant"] == "a"), variants[0] if variants else None)
+    rows_html = ""
+    for v in variants:
+        lift_vs_a = ""
+        if baseline and baseline["conversions"] > 0 and v["variant"] != baseline["variant"]:
+            if v["conversions"] > 0:
+                lift_rev = (v["avg_ticket_cop"] - baseline["avg_ticket_cop"]) / baseline["avg_ticket_cop"] * 100
+                lift_vs_a = f'<span style="color:{"#080" if lift_rev>=0 else "#a00"}">{lift_rev:+.1f}%</span>'
+        plans_str = ", ".join(f'{p}×{n}' for p, n in sorted(v["plans"].items()))
+        rows_html += (
+            f'<tr><td><b>{v["variant"].upper()}</b></td>'
+            f'<td style="text-align:right">{v["conversions"]}</td>'
+            f'<td style="text-align:right">${int(v["revenue_cop"]):,}</td>'
+            f'<td style="text-align:right">${int(v["avg_ticket_cop"]):,}</td>'
+            f'<td style="text-align:right">{lift_vs_a}</td>'
+            f'<td style="font-size:12px">{plans_str}</td></tr>'
+        )
+    html = f"""<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8"><title>PhinodIA A/B — {test_id}</title>
+<style>
+  body {{ font-family:-apple-system,BlinkMacSystemFont,sans-serif; max-width:900px; margin:32px auto; padding:24px; background:#f5f7fa; color:#0B1437 }}
+  h1 {{ color:#0B1437; border-bottom:3px solid #3B82F6; padding-bottom:8px }}
+  .meta {{ color:#666; font-size:14px; margin:8px 0 24px }}
+  .kpi {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:16px 0 }}
+  .kpi > div {{ background:white; padding:16px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05) }}
+  .kpi .label {{ font-size:12px; color:#666; text-transform:uppercase; letter-spacing:0.05em }}
+  .kpi .value {{ font-size:22px; font-weight:700; margin-top:6px }}
+  table {{ width:100%; background:white; border-collapse:collapse; border-radius:8px; overflow:hidden; margin-top:16px; box-shadow:0 1px 3px rgba(0,0,0,0.05) }}
+  th {{ background:#0B1437; color:white; text-align:left; padding:12px }}
+  td {{ padding:12px; border-top:1px solid #eee }}
+  tr:nth-child(even) {{ background:#f9fafb }}
+  .note {{ margin-top:24px; padding:12px; background:#eef6ff; border-left:4px solid #3B82F6; border-radius:4px; font-size:13px }}
+</style></head><body>
+<h1>🧪 A/B Test — {test_id}</h1>
+<div class="meta">Últimos {d['period_days']} días · generado {d['generado_at'][:19]} UTC</div>
+<div class="kpi">
+  <div><div class="label">Variantes</div><div class="value">{len(variants)}</div></div>
+  <div><div class="label">Conversiones totales</div><div class="value">{d['total_conversions']}</div></div>
+  <div><div class="label">Revenue total</div><div class="value">${int(d['total_revenue_cop']):,}</div></div>
+</div>
+<table><thead><tr>
+  <th>Variante</th><th style="text-align:right">Conversiones</th>
+  <th style="text-align:right">Revenue COP</th><th style="text-align:right">Ticket promedio</th>
+  <th style="text-align:right">Lift vs A</th><th>Planes vendidos</th>
+</tr></thead><tbody>
+{rows_html or '<tr><td colspan="6">Sin datos todavía — espera que el tráfico acumule conversiones por variante</td></tr>'}
+</tbody></table>
+<div class="note">
+  <b>Interpretación:</b> con menos de ~30 conversiones por variante los resultados no son
+  estadísticamente significativos — seguir midiendo hasta cruzar ese umbral. La variante
+  'none' agrupa transacciones sin variant suffix (pre-test o tráfico directo).
+</div>
+</body></html>"""
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})

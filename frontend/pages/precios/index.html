@@ -200,6 +200,7 @@
 
   <script src="/static/js/api.js?v=1780300000"></script>
   <script defer src="/static/js/meta-pixel.js?v=1780300000"></script>
+  <script src="/static/js/ab-test.js?v=1780300000"></script>
   <script>
     // Exchange rate seeded with a current value (Apr 2026 ~4200 COP/USD).
     // We hit exchangerate-api's free public endpoint on first currency
@@ -358,13 +359,16 @@
       }
       if (typeof phTrack === 'function' && planPrice > 0) {
         const atcEventId = 'atc_' + sku + '_' + Date.now();
+        const catWithAb = (typeof phAB !== 'undefined')
+          ? phAB.categoryWithVariant(planLabel, 'precios_cta_v1')
+          : planLabel;
         phTrack('AddToCart', {
           value: planPrice,
           currency: 'COP',
           content_ids: [sku],
           content_type: 'product',
           content_name: sku,
-          content_category: planLabel,
+          content_category: catWithAb,
           contents: [{id: sku, quantity: 1, item_price: planPrice}],
           num_items: 1,
         }, atcEventId);
@@ -412,7 +416,11 @@
 
         // planPrice already computed above for AddToCart event
         const redirectUrl = graciasPage + '?plan=' + sku + '&value=' + planPrice;
-        await openWompiCheckout(sku, email, redirectUrl);
+        // Pass A/B variant so backend can embed in reference + webhook CAPI
+        const abVariant = (typeof phAB !== 'undefined')
+          ? phAB.getVariant('precios_cta_v1')
+          : '';
+        await openWompiCheckout(sku, email, redirectUrl, abVariant);
       } finally {
         _checkoutInFlight = false;
         buttons.forEach(b => { b.disabled = false; });
@@ -421,14 +429,33 @@
 
     renderPlans();
 
+    // A/B test: precios_cta_v1 — CTA button copy (control "Comprar" vs
+    // variant B "Quiero empezar"). Applied AFTER renderPlans so the
+    // dynamic buttons get the overridden text. Variant travels with
+    // Pixel events via content_category suffix and with checkout via
+    // ab_variant field → reference suffix → CAPI Purchase custom_data.
+    const _abVariant = (typeof phAB !== 'undefined')
+      ? phAB.getVariant('precios_cta_v1')
+      : '';
+    if (_abVariant === 'b') {
+      document.querySelectorAll('button[data-sku]').forEach(b => {
+        b.textContent = 'Quiero empezar';
+      });
+      document.body.setAttribute('data-ab-precios-cta', 'b');
+    } else {
+      document.body.setAttribute('data-ab-precios-cta', _abVariant || 'a');
+    }
+
     // Fire ViewContent on page load — middle-funnel signal that the user
-    // saw the pricing page. Helps Meta's algorithm build a profile of
-    // "high intent" audience members for retargeting and lookalike seeding.
-    // Deferred behind requestAnimationFrame to let the Pixel finish init.
+    // saw the pricing page. Category carries A/B variant so Meta Events
+    // Manager can split conversions by variant natively.
     requestAnimationFrame(() => {
       if (typeof phTrack === 'function') {
+        const cat = (typeof phAB !== 'undefined')
+          ? phAB.categoryWithVariant('Planes', 'precios_cta_v1')
+          : 'Planes';
         phTrack('ViewContent', {
-          content_category: 'Planes',
+          content_category: cat,
           content_name: 'Pricing page',
           content_type: 'product_group',
         }, 'vc_precios_' + Date.now());
