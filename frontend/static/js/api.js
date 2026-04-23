@@ -438,13 +438,21 @@ async function openWompiCheckout(sku, email, redirectUrl) {
       }, 'ic_' + checkout.reference);
     }
 
+    // Append ?ref=<reference> so the WP gracias-* pages can pass it as
+    // the Purchase eventID — that's what lets Meta dedupe the WP Pixel
+    // Purchase against the CAPI Purchase fired from /payments/webhook.
+    // Without it Meta falls to heuristic dedup and inflates conversions.
+    const ru = redirectUrl || window.location.origin + '/precios';
+    const sep = ru.includes('?') ? '&' : '?';
+    const redirectWithRef = ru + sep + 'ref=' + encodeURIComponent(checkout.reference);
+
     const widget = new WidgetCheckout({
       currency: checkout.currency,
       amountInCents: checkout.amount_cents,
       reference: checkout.reference,
       publicKey: checkout.public_key,
       signature: { integrity: checkout.integrity_hash },
-      redirectUrl: redirectUrl || window.location.origin + '/precios',
+      redirectUrl: redirectWithRef,
       customerData: { email: email },
     });
     widget.open(function(result) {
