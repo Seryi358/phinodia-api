@@ -267,7 +267,14 @@ async def _process_video(job_id: str, req: VideoRequest):
         first_frame_prompt = await script_gen.generate_image_prompt(
             product_name=req.product_name, description=rich_description,
             aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
-            creative_direction="Close-up selfie photo taken with front-facing phone camera at arm's length. Young woman smiling at camera, one arm extended toward viewer holding the phone (arm visible reaching forward), other hand holding the product at chest level with label facing camera. Slightly above eye-level angle, natural window light, casual home background. Raw unedited phone photo quality.",
+            creative_direction=(
+                "Close-up arm's-length front-camera selfie. The creator matches the buyer persona, "
+                "looks into the lens, and holds the real product at chest level with the packaging clearly visible. "
+                "Natural home setting, candid phone-photo realism, slight imperfections, no visible phone in frame."
+            ),
+            product_analysis=product_analysis,
+            buyer_persona=buyer_persona,
+            prompt_mode="video_first_frame",
         )
 
         # Retry first frame generation
@@ -501,8 +508,10 @@ async def _process_image(job_id: str, req: ImageRequest):
 
         prompt = await script_gen.generate_image_prompt(
             product_name=req.product_name,
-            description=rich_description + "\n\nProduct Analysis:\n" + product_analysis,
+            description=rich_description,
             aspect_ratio=req.aspect_ratio, creative_direction=creative,
+            product_analysis=product_analysis,
+            buyer_persona=buyer_persona if req.image_style == "ugc" else "",
             is_ugc=(req.image_style == "ugc"),
         )
         still_active = await db.update(
@@ -591,12 +600,49 @@ async def _process_landing(job_id: str, req: LandingRequest):
         # in-context shot). All 4 fired CONCURRENTLY — sequential cost ~6 min,
         # parallel ~90 s. Each promotes the same source product image into a
         # different scene/angle so the page never repeats the same photo.
-        image_prompts = [
-            f"Hero product shot of {req.product_name}: centered, premium studio lighting, soft gradient backdrop matching the brand palette, magazine-quality, sharp focus on label and texture, 16:9",
-            f"Lifestyle flat lay featuring {req.product_name} surrounded by complementary natural elements (leaves, fabric, ceramic), warm window light, Pinterest aesthetic, top-down 16:9",
-            f"Macro close-up of {req.product_name} texture/ingredient/material detail, beautiful bokeh background, soft natural light, editorial style, 16:9",
-            f"Real-life in-context shot of {req.product_name} being used or displayed in a stylish modern home setting, lifestyle photography with a Colombian person from the target audience, candid mood, 16:9",
+        image_specs = [
+            {
+                "mode": "landing_hero",
+                "creative_direction": (
+                    "Landing-page hero banner. Center the product prominently with premium but believable styling, "
+                    "clean negative space for future copy, photorealistic materials, and a backdrop aligned with the brand tone."
+                ),
+            },
+            {
+                "mode": "landing_flatlay",
+                "creative_direction": (
+                    "Lifestyle flat lay for a sales page. Top-down composition with tasteful complementary props, "
+                    "Pinterest-like realism, and the product clearly dominant over the styling elements."
+                ),
+            },
+            {
+                "mode": "landing_macro",
+                "creative_direction": (
+                    "Macro detail still for the landing gallery. Focus on the product texture, finish, and material cues "
+                    "from the product analysis while keeping the packaging identity accurate."
+                ),
+            },
+            {
+                "mode": "landing_lifestyle",
+                "creative_direction": (
+                    "Real-life in-context lifestyle image for the landing page. Cast a believable Colombian customer from the buyer persona, "
+                    "showing natural interaction with the product in a stylish but lived-in home setting."
+                ),
+            },
         ]
+
+        image_prompts = await asyncio.gather(*(
+            script_gen.generate_image_prompt(
+                product_name=req.product_name,
+                description=rich_description,
+                aspect_ratio="16:9",
+                creative_direction=spec["creative_direction"],
+                product_analysis=product_analysis,
+                buyer_persona=buyer_persona,
+                prompt_mode=spec["mode"],
+            )
+            for spec in image_specs
+        ))
 
         async def _gen_one(prompt: str) -> str | None:
             try:

@@ -4,7 +4,9 @@ from app.config import get_settings
 from app.prompts.video_ugc import SYSTEM_PROMPT as VIDEO_SYSTEM, USER_TEMPLATE as VIDEO_USER
 from app.prompts.image_product import (
     SYSTEM_PROMPT as IMAGE_SYSTEM,
-    USER_TEMPLATE as IMAGE_USER,
+    USER_TEMPLATE_FIRST_FRAME as IMAGE_FIRST_FRAME_USER,
+    USER_TEMPLATE_LANDING as IMAGE_LANDING_USER,
+    USER_TEMPLATE_PRODUCT as IMAGE_PRODUCT_USER,
     USER_TEMPLATE_UGC as IMAGE_UGC_USER,
     get_variation_context, get_ugc_variation,
 )
@@ -122,26 +124,69 @@ Rules:
         description: str,
         aspect_ratio: str = "1:1",
         creative_direction: str = "",
+        product_analysis: str = "",
+        buyer_persona: str = "",
         is_ugc: bool = False,
+        prompt_mode: str = "product",
     ) -> str:
         variation = get_variation_context()
-        if is_ugc:
+        mode = prompt_mode
+        if is_ugc and prompt_mode == "product":
+            mode = "ugc"
+
+        if mode in {"ugc", "video_first_frame"}:
             ugc_var = get_ugc_variation()
+        if mode == "ugc":
             user_msg = IMAGE_UGC_USER.format(
                 product_name=_esc(product_name),
+                use_case="Instagram-style UGC product photo",
                 description=_esc(description),
                 aspect_ratio=aspect_ratio,
-                creative_direction=_esc(creative_direction) or "Authentic UGC style",
+                creative_direction=_esc(creative_direction) or "Authentic Instagram-style UGC selfie with believable phone-camera realism",
+                product_analysis=_esc(product_analysis) or "Not available",
+                buyer_persona=_esc(buyer_persona) or "Not available",
                 setting=ugc_var["setting"],
                 imperfection=ugc_var["imperfection"],
                 angle=variation["angle"],
+                lighting=variation["lighting"],
             )
-        else:
-            user_msg = IMAGE_USER.format(
+        elif mode == "video_first_frame":
+            user_msg = IMAGE_FIRST_FRAME_USER.format(
+                product_name=_esc(product_name),
+                use_case="Vertical selfie first frame for an AI-generated UGC video",
+                description=_esc(description),
+                aspect_ratio=aspect_ratio,
+                creative_direction=_esc(creative_direction) or "Front-camera selfie first frame, authentic, motion-ready, product clearly visible",
+                product_analysis=_esc(product_analysis) or "Not available",
+                buyer_persona=_esc(buyer_persona) or "Not available",
+                setting=ugc_var["setting"],
+                imperfection=ugc_var["imperfection"],
+                angle=variation["angle"],
+                lighting=variation["lighting"],
+            )
+        elif mode.startswith("landing_"):
+            user_msg = IMAGE_LANDING_USER.format(
                 product_name=_esc(product_name),
                 description=_esc(description),
                 aspect_ratio=aspect_ratio,
-                creative_direction=_esc(creative_direction) or "Auto-generate creative direction",
+                use_case=mode.replace("_", " "),
+                shot_brief=_esc(creative_direction) or "Landing gallery still that supports ecommerce conversion",
+                creative_direction=_esc(creative_direction) or "Modern ecommerce landing-page visual",
+                product_analysis=_esc(product_analysis) or "Not available",
+                buyer_persona=_esc(buyer_persona) or "Not available",
+                angle=variation["angle"],
+                composition=variation["composition"],
+                surface=variation["surface"],
+                lighting=variation["lighting"],
+            )
+        else:
+            user_msg = IMAGE_PRODUCT_USER.format(
+                product_name=_esc(product_name),
+                use_case="Ecommerce product marketing still",
+                description=_esc(description),
+                aspect_ratio=aspect_ratio,
+                creative_direction=_esc(creative_direction) or "Premium ecommerce still, commercially useful, believable",
+                product_analysis=_esc(product_analysis) or "Not available",
                 angle=variation["angle"],
                 composition=variation["composition"],
                 surface=variation["surface"],

@@ -85,6 +85,7 @@ async def test_generate_image_prompt():
             description="Crema hidratante con vitamina C",
             aspect_ratio="1:1",
             creative_direction="Natural bathroom setting",
+            product_analysis="50ml glass jar, frosted finish, white lid, premium skincare packaging",
         )
 
         assert "cream jar" in prompt.lower() or "marble" in prompt.lower()
@@ -92,6 +93,105 @@ async def test_generate_image_prompt():
         messages = call_args.kwargs["messages"]
         # New image prompt uses GPT Image 2 (not iPhone-specific)
         assert "GPT Image 2" in messages[0]["content"]
+        assert "50ml glass jar" in messages[1]["content"]
+        assert "SCENE:" in messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_generate_image_prompt_ugc_uses_buyer_persona_and_realism_cues():
+    from app.services.script_generator import ScriptGenerator
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "SCENE: candid bathroom selfie..."
+
+    with patch("app.services.script_generator.AsyncOpenAI") as MockOpenAI:
+        mock_client = AsyncMock()
+        MockOpenAI.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        gen = ScriptGenerator(api_key="test-key")
+        prompt = await gen.generate_image_prompt(
+            product_name="Crema Facial Glow",
+            description="Crema hidratante para rutina nocturna",
+            aspect_ratio="9:16",
+            creative_direction="Instagram selfie showing the product naturally",
+            product_analysis="50ml glass jar, rounded shoulders, satin label, matte lid",
+            buyer_persona="Valentina, 27, Bogota, skincare creator with warm and natural vibe",
+            prompt_mode="ugc",
+        )
+
+        assert "SCENE:" in prompt
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        assert "Instagram-style UGC selfie" in messages[1]["content"]
+        assert "Valentina, 27" in messages[1]["content"]
+        assert "50ml glass jar" in messages[1]["content"]
+        assert "captured like a real phone selfie" in messages[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_generate_image_prompt_first_frame_uses_video_seed_mode():
+    from app.services.script_generator import ScriptGenerator
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "SCENE: vertical selfie first frame..."
+
+    with patch("app.services.script_generator.AsyncOpenAI") as MockOpenAI:
+        mock_client = AsyncMock()
+        MockOpenAI.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        gen = ScriptGenerator(api_key="test-key")
+        prompt = await gen.generate_image_prompt(
+            product_name="Crema Facial Glow",
+            description="UGC ad first frame",
+            aspect_ratio="9:16",
+            creative_direction="Front-camera selfie first frame, phone out of frame",
+            product_analysis="50ml glass jar, frosted body, white cap",
+            buyer_persona="Sofia, 28, Bogota, skincare enthusiast",
+            prompt_mode="video_first_frame",
+        )
+
+        assert "vertical selfie first frame" in prompt.lower()
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        assert "FIRST FRAME" in messages[1]["content"]
+        assert "Sofia, 28" in messages[1]["content"]
+        assert "phone out of frame" in messages[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_generate_image_prompt_landing_mode_uses_shot_brief():
+    from app.services.script_generator import ScriptGenerator
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "SCENE: premium landing hero..."
+
+    with patch("app.services.script_generator.AsyncOpenAI") as MockOpenAI:
+        mock_client = AsyncMock()
+        MockOpenAI.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        gen = ScriptGenerator(api_key="test-key")
+        prompt = await gen.generate_image_prompt(
+            product_name="Crema Facial Glow",
+            description="Landing hero for skincare product",
+            aspect_ratio="16:9",
+            creative_direction="Centered hero banner with breathing room for copy",
+            product_analysis="50ml glass jar, premium finish",
+            buyer_persona="Mujeres 25-35 en Colombia",
+            prompt_mode="landing_hero",
+        )
+
+        assert "landing hero" in prompt.lower()
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        assert "landing-page gallery image" in messages[1]["content"]
+        assert "Centered hero banner" in messages[1]["content"]
+        assert "Mujeres 25-35" in messages[1]["content"]
 
 
 @pytest.mark.asyncio

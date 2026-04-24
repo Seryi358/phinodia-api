@@ -1,69 +1,60 @@
 import random
 
-# Variation pools for automatic diversity
+# Variation pools for automatic diversity.
 ANGLES = [
-    "45-degree angle from above, looking down at the product",
-    "straight-on eye-level shot, product centered",
-    "low angle looking up at the product, dramatic perspective",
-    "overhead flat lay, top-down bird's eye view",
-    "three-quarter angle from slightly below, product prominent",
-    "close-up macro shot focusing on product texture and label details",
-    "side profile angle showing product depth and shape",
+    "45-degree three-quarter angle",
+    "straight-on eye-level framing",
+    "slightly low angle hero framing",
+    "top-down flat lay framing",
+    "tight macro crop focused on texture and label area",
+    "medium close-up with shallow depth of field",
+    "side-profile framing showing depth and silhouette",
 ]
 
 COMPOSITIONS = [
-    "rule of thirds, product on the left with negative space",
-    "centered product, symmetrical composition",
-    "product slightly off-center with lifestyle elements around it",
-    "product in foreground with blurred contextual background",
-    "product placed among complementary items, styled arrangement",
-    "minimalist single product, generous white space",
-    "product held in hand, showing scale and real use",
+    "subject centered with balanced negative space",
+    "rule-of-thirds framing with the product slightly off-center",
+    "clean editorial composition with foreground-background separation",
+    "minimal composition with generous breathing room around the product",
+    "lifestyle composition with believable supporting props kept secondary",
 ]
 
 SURFACES = [
-    "marble countertop with subtle veining",
-    "rustic reclaimed wood table, warm texture",
-    "clean white surface with soft shadows",
-    "linen fabric draped naturally, organic feel",
-    "concrete surface with industrial aesthetic",
-    "bathroom shelf with everyday items nearby",
-    "kitchen counter with morning light",
-    "bedside table with soft lamp light",
+    "soft marble vanity surface",
+    "clean matte tabletop",
+    "linen fabric surface with natural folds",
+    "warm wood countertop",
+    "neutral ceramic or stone surface",
 ]
 
 LIGHTING = [
-    "soft natural window light from the left side",
-    "golden hour warm directional sunlight",
-    "overcast diffused even lighting, no harsh shadows",
-    "rim lighting from behind, creating product silhouette glow",
-    "overhead soft studio light, minimal shadows",
-    "warm morning light through sheer curtains",
-    "cool blue-toned natural daylight",
+    "soft natural window light",
+    "warm morning daylight",
+    "diffused editorial studio light",
+    "gentle golden-hour side light",
+    "clean overcast daylight with soft shadows",
 ]
 
 UGC_SETTINGS = [
-    "bathroom mirror selfie, messy counter visible, toothbrush in background",
-    "bedroom with unmade bed in background, natural window light",
-    "kitchen counter with coffee mug and phone charger nearby",
-    "car interior, sitting in driver seat, natural daylight through windshield",
-    "living room couch, TV remote and blanket visible",
-    "office desk with laptop and water bottle in background",
-    "outdoor cafe table with sunlight and slight shadows",
+    "bathroom mirror area with everyday clutter in the background",
+    "bedroom near a window with lived-in details",
+    "kitchen counter with casual morning-life context",
+    "living room couch area with authentic home details",
+    "parked car interior in natural daylight",
+    "desk or vanity corner with realistic personal items",
 ]
 
 UGC_IMPERFECTIONS = [
-    "slight motion blur on edges, phone camera quality",
-    "slightly overexposed highlights from window light",
-    "soft grain and noise typical of phone camera in indoor lighting",
-    "autofocus slightly hunting, product sharp but background soft",
-    "slight lens flare from light source, unedited look",
-    "natural skin imperfections visible, no retouching",
-    "uneven lighting with visible shadows, real phone photo",
+    "light phone-camera grain",
+    "slight motion softness at the frame edges",
+    "minor highlight clipping from window light",
+    "subtle autofocus softness in the background",
+    "natural skin texture with no beauty retouching",
+    "slightly uneven household lighting",
 ]
 
+
 def get_variation_context():
-    """Generate random variation for each image to ensure diversity."""
     return {
         "angle": random.choice(ANGLES),
         "composition": random.choice(COMPOSITIONS),
@@ -71,8 +62,8 @@ def get_variation_context():
         "lighting": random.choice(LIGHTING),
     }
 
+
 def get_ugc_variation():
-    """Generate random UGC-specific variation."""
     return {
         "setting": random.choice(UGC_SETTINGS),
         "imperfection": random.choice(UGC_IMPERFECTIONS),
@@ -80,65 +71,175 @@ def get_ugc_variation():
 
 
 SYSTEM_PROMPT = """<identity>
-You are an expert prompt engineer for GPT Image 2, an AI image generation model. You create concise, descriptive prompts that produce stunning product photography.
+You write production-ready prompts for GPT Image 2.
 </identity>
 
-<instructions>
-Generate a SHORT, DESCRIPTIVE prompt for GPT Image 2. The prompt will be sent DIRECTLY to the image generation model.
+<source_of_truth>
+Apply OpenAI's official GPT Image prompting guidance:
+- organize prompts in a consistent order: scene/background -> subject -> key details -> constraints
+- be specific about composition, lighting, pose, texture, and the intended deliverable
+- for photorealism, explicitly say photorealistic / real photo and use photography language
+- describe people, gaze, hands, framing, and object interaction when humans appear
+- state invariants and exclusions explicitly, especially what must be preserved from the reference product image
+- keep the prompt skimmable with short labeled lines instead of one dense paragraph when the request is complex
+</source_of_truth>
 
-CRITICAL RULES:
-1. ABSOLUTELY NO TEXT in the generated image — no labels, brand names, titles, watermarks, or text of any kind
-2. Prompt must be UNDER 300 characters for clean, controllable GPT Image 2 results
-3. Describe the SCENE, not the product details — the product image is provided as reference
-4. Focus on: lighting, composition, background, mood, camera angle
-5. The product will be placed naturally in the scene you describe
-6. USE THE PROVIDED VARIATION CONTEXT — this ensures each generation is unique with different angles, compositions, and settings
-</instructions>
+<global_rules>
+1. Output ONE final prompt for GPT Image 2 and nothing else.
+2. Use short labeled sections in this order:
+SCENE:
+SUBJECT:
+PRODUCT:
+COMPOSITION:
+CONSTRAINTS:
+3. The prompt must be optimized for image-to-image generation with a provided product reference image.
+4. Preserve exact product identity unless the user explicitly asks otherwise:
+   - shape and proportions
+   - packaging/jar/bottle geometry
+   - cap, pump, lid, and label placement
+   - materials, finish, and main color palette
+   - believable physical scale from the product analysis
+5. Always forbid extra text, watermarks, packaging redesigns, duplicate products, anatomy glitches, and unrelated props overpowering the product.
+6. When the target style is candid or UGC, make it feel like a real phone photo captured in the moment. Favor realism, natural texture, and small imperfections over polished ad perfection.
+7. When the target style is studio/product marketing, keep it photorealistic, premium, and commercially useful without looking fake or overprocessed.
+</global_rules>
+"""
 
-<gpt_image_2_techniques>
-EFFECTIVE KEYWORDS:
-- Lighting: "soft natural window light", "golden hour warmth", "diffused overhead light", "rim lighting"
-- Composition: "rule of thirds", "shallow depth of field", "centered product", "overhead flat lay"
-- Surfaces: "marble countertop", "rustic wood table", "linen fabric", "concrete surface"
-- Atmosphere: "minimal clean", "cozy warm tones", "fresh natural", "editorial style"
-- Camera: "45-degree angle", "eye-level shot", "macro close-up", "lifestyle context"
 
-AVOID:
-- Long paragraphs — keep it concise
-- Technical jargon the model won't understand
-- Requesting text or typography in the image
-- Over-describing the product itself (the reference image handles that)
-- Words like "4K", "ultra HD", "photorealistic" (model already generates high quality)
-</gpt_image_2_techniques>
+USER_TEMPLATE_PRODUCT = """DELIVERABLE
+Create a GPT Image 2 prompt for a product-marketing still image.
 
-<output_format>
-Respond with ONLY the prompt text. No explanations, no markdown, no prefixes.
-One concise paragraph, under 300 characters.
-</output_format>"""
+INPUTS
+Product name: {product_name}
+Use case: {use_case}
+Aspect ratio: {aspect_ratio}
+User request:
+{description}
 
-USER_TEMPLATE = """Product: {product_name}
-Description: {description}
-Format: {aspect_ratio}
-Creative direction: {creative_direction}
+Creative direction:
+{creative_direction}
 
-VARIATION CONTEXT (use these to make this image UNIQUE):
-- Camera angle: {angle}
-- Composition: {composition}
-- Surface/setting: {surface}
-- Lighting: {lighting}
+Product analysis:
+{product_analysis}
 
-Generate a GPT Image 2 prompt. NO TEXT in the image. Under 300 characters. Use the variation context above to make this image different from previous generations."""
+Variation cues:
+- camera angle: {angle}
+- composition: {composition}
+- surface/background: {surface}
+- lighting: {lighting}
 
-USER_TEMPLATE_UGC = """Product: {product_name}
-Description: {description}
-Format: {aspect_ratio}
-Creative direction: {creative_direction}
+OUTPUT REQUIREMENTS
+- Make it a photorealistic product photo / real photograph.
+- Scene first, then subject, then product-specific preservation details.
+- The product reference image is the source of truth for packaging and shape.
+- Use the variation cues to avoid repetitive generations.
+- Keep the mood premium, believable, ecommerce-ready, and useful for paid marketing.
+- No person unless the user request clearly calls for hands or human context.
+"""
 
-UGC VARIATION CONTEXT (use these for authentic imperfect look):
-- Setting: {setting}
-- Imperfection: {imperfection}
-- Camera angle: {angle}
 
-IMPORTANT: This must look like a REAL phone photo taken by a regular person, NOT a professional studio photo. Include visual imperfections: grain, slight blur, uneven lighting, phone camera quality. The person should look like a real customer, not a model. No retouching, no perfect lighting, no studio setup.
+USER_TEMPLATE_UGC = """DELIVERABLE
+Create a GPT Image 2 prompt for an Instagram-style UGC selfie that still sells the product clearly.
 
-Generate a GPT Image 2 prompt. NO TEXT in the image. Under 300 characters. Must look like authentic UGC content, not AI-generated."""
+INPUTS
+Product name: {product_name}
+Use case: {use_case}
+Aspect ratio: {aspect_ratio}
+User request:
+{description}
+
+Creative direction:
+{creative_direction}
+
+Product analysis:
+{product_analysis}
+
+Buyer persona / casting brief:
+{buyer_persona}
+
+UGC realism cues:
+- setting: {setting}
+- imperfection: {imperfection}
+- camera angle: {angle}
+- lighting: {lighting}
+
+OUTPUT REQUIREMENTS
+- Make it explicitly photorealistic, candid, and captured like a real phone selfie or front-camera Instagram photo.
+- The person must feel like the buyer persona, not a fashion model or studio actor.
+- Show clear hand interaction with the product and believable product scale using the product analysis.
+- Mention gaze, framing, pose, and how the product is held.
+- Keep natural skin texture, lived-in background context, and mild phone-camera imperfections.
+- Avoid ultra-polished beauty-ad language, HDR gloss, or studio perfection.
+"""
+
+
+USER_TEMPLATE_FIRST_FRAME = """DELIVERABLE
+Create a GPT Image 2 prompt for the FIRST FRAME of a vertical UGC video seed for VEO 3.1.
+
+INPUTS
+Product name: {product_name}
+Use case: {use_case}
+Aspect ratio: {aspect_ratio}
+User request:
+{description}
+
+Creative direction:
+{creative_direction}
+
+Product analysis:
+{product_analysis}
+
+Buyer persona / casting brief:
+{buyer_persona}
+
+UGC realism cues:
+- setting: {setting}
+- imperfection: {imperfection}
+- camera angle: {angle}
+- lighting: {lighting}
+
+OUTPUT REQUIREMENTS
+- Make it photorealistic and feel like a real front-camera selfie captured mid-moment.
+- Vertical 9:16-style framing, arm's-length composition, authentic phone-photo realism.
+- The person must match the buyer persona and hold the product naturally with believable size, materials, and packaging based on the product analysis.
+- Optimize for a strong first frame for a UGC ad: clear face, clear product, natural expression, believable motion-ready pose.
+- Keep the phone out of frame unless explicitly requested.
+- Avoid studio polish, CGI sharpness, glam retouching, or cinematic overproduction.
+"""
+
+
+USER_TEMPLATE_LANDING = """DELIVERABLE
+Create a GPT Image 2 prompt for a landing-page gallery image.
+
+INPUTS
+Product name: {product_name}
+Use case: {use_case}
+Aspect ratio: {aspect_ratio}
+Shot brief:
+{shot_brief}
+
+User request:
+{description}
+
+Style preference:
+{creative_direction}
+
+Product analysis:
+{product_analysis}
+
+Buyer persona / audience:
+{buyer_persona}
+
+Variation cues:
+- camera angle: {angle}
+- composition: {composition}
+- surface/background: {surface}
+- lighting: {lighting}
+
+OUTPUT REQUIREMENTS
+- Make it a photorealistic landing-page asset, useful for ecommerce conversion.
+- Follow the shot brief exactly and preserve the product identity from the reference image.
+- If a person appears, cast them from the buyer persona and describe their interaction with the product.
+- Keep the background and props supportive, never more important than the product.
+- Leave clean visual breathing room when the brief suggests hero/banner use.
+"""
