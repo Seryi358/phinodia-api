@@ -4,9 +4,9 @@ Plataforma de generacion de contenido de marketing con IA para productos colombi
 
 ## Servicios
 
-- **Videos UGC** — Videos de producto estilo UGC con acento colombiano (VEO 3.1 + Nano Banana 2 first frame)
-- **Imagenes de Producto** — Fotos profesionales estilo Instagram (Nano Banana 2)
-- **Landing Pages** — Paginas de venta con framework AIDA y neuromarketing (GPT-4o)
+- **Videos UGC** — Videos de producto estilo UGC con acento colombiano (VEO 3.1 + GPT Image 2 first frame)
+- **Imagenes de Producto** — Fotos profesionales estilo Instagram (GPT Image 2)
+- **Landing Pages** — Paginas de venta con framework AIDA y neuromarketing (Claude Opus 4.7)
 
 ## Stack
 
@@ -14,8 +14,9 @@ Plataforma de generacion de contenido de marketing con IA para productos colombi
 |-----------|-----------|
 | Backend | FastAPI + Python 3.12 |
 | AI Video | VEO 3.1 via KIE AI |
-| AI Images | Nano Banana 2 via KIE AI |
+| AI Images | GPT Image 2 via KIE AI |
 | AI Scripts | GPT-4o (OpenAI) |
+| AI Landing Pages | Claude Opus 4.7 (Anthropic API) |
 | Pagos | Wompi (Colombia) |
 | Email | Gmail OAuth2 |
 | Database | SQLite + aiosqlite |
@@ -26,7 +27,7 @@ Plataforma de generacion de contenido de marketing con IA para productos colombi
 1. Usuario sube imagen de producto + descripcion
 2. **Product Analyzer** (GPT-4o) — analisis detallado del producto
 3. **Buyer Persona** (GPT-4o) — perfil del creador UGC ideal
-4. **First Frame** (Nano Banana 2) — genera primer frame del video
+4. **First Frame** (GPT Image 2) — genera primer frame del video
 5. **Video Script** (GPT-4o) — guion AIDA con acento colombiano
 6. **Video Generation** (VEO 3.1) — genera video base 8s
 7. **Extensions** (VEO 3.1) — extiende a 15s/22s/30s si aplica

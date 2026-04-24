@@ -90,8 +90,8 @@ async def test_generate_image_prompt():
         assert "cream jar" in prompt.lower() or "marble" in prompt.lower()
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
-        # New image prompt uses Nano Banana 2 (not iPhone-specific)
-        assert "Nano Banana" in messages[0]["content"]
+        # New image prompt uses GPT Image 2 (not iPhone-specific)
+        assert "GPT Image 2" in messages[0]["content"]
 
 
 @pytest.mark.asyncio

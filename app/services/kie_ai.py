@@ -6,6 +6,8 @@ import httpx
 logger = logging.getLogger(__name__)
 
 KIE_BASE_URL = "https://api.kie.ai/api/v1"
+GPT_IMAGE_2_TEXT_MODEL = "gpt-image-2-text-to-image"
+GPT_IMAGE_2_EDIT_MODEL = "gpt-image-2-image-to-image"
 
 
 def _safe_result_url(u: str | None) -> str:
@@ -131,7 +133,7 @@ class KieAIClient:
             data = resp.json().get("data", {})
             return data.get("videoUrl")
 
-    # ── Images (Nano Banana Pro — unchanged) ──────────────────────────
+    # ── Images (GPT Image 2) ──────────────────────────────────────────
 
     async def create_image_task(
         self,
@@ -139,16 +141,16 @@ class KieAIClient:
         image_url: str,
         aspect_ratio: str = "1:1",
     ) -> str:
-        body = {
-            "model": "nano-banana-pro",
-            "input": {
-                "prompt": prompt,
-                "image_input": [image_url],
-                "aspect_ratio": aspect_ratio,
-                "resolution": "2K",
-                "output_format": "jpg",
-            },
+        input_payload = {
+            "prompt": prompt,
+            "aspect_ratio": aspect_ratio,
+            "nsfw_checker": False,
         }
+        model = GPT_IMAGE_2_TEXT_MODEL
+        if image_url:
+            model = GPT_IMAGE_2_EDIT_MODEL
+            input_payload["input_urls"] = [image_url]
+        body = {"model": model, "input": input_payload}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{KIE_BASE_URL}/jobs/createTask",
@@ -177,7 +179,7 @@ class KieAIClient:
         if data.get("resultJson"):
             try:
                 parsed = json.loads(data["resultJson"])
-                raw_urls = parsed.get("resultUrls", []) or []
+                raw_urls = parsed.get("resultUrls") or parsed.get("urls") or []
             except (json.JSONDecodeError, KeyError):
                 pass
         result_urls = [u for u in (_safe_result_url(x) for x in raw_urls) if u]

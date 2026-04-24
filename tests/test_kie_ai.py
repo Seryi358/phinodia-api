@@ -230,9 +230,39 @@ async def test_create_image_task():
 
         call_args = MockClient.return_value.post.call_args
         body = call_args.kwargs["json"]
-        assert body["model"] == "nano-banana-pro"
-        assert body["input"]["image_input"] == ["https://example.com/product.jpg"]
-        assert body["input"]["resolution"] == "2K"
+        assert body["model"] == "gpt-image-2-image-to-image"
+        assert body["input"]["input_urls"] == ["https://example.com/product.jpg"]
+        assert body["input"]["aspect_ratio"] == "1:1"
+        assert body["input"]["nsfw_checker"] is False
+
+
+@pytest.mark.asyncio
+async def test_create_image_task_text_to_image_when_reference_missing():
+    from app.services.kie_ai import KieAIClient
+
+    mock_response = httpx.Response(
+        200,
+        json={"code": 200, "msg": "success", "data": {"taskId": "task_img_txt_123"}},
+    )
+    with patch("app.services.kie_ai.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__ = AsyncMock(return_value=MockClient.return_value)
+        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value.post = AsyncMock(return_value=mock_response)
+
+        client = KieAIClient(api_key="test-key")
+        task_id = await client.create_image_task(
+            prompt="Premium skincare product on a marble vanity",
+            image_url="",
+            aspect_ratio="4:5",
+        )
+        assert task_id == "task_img_txt_123"
+
+        call_args = MockClient.return_value.post.call_args
+        body = call_args.kwargs["json"]
+        assert body["model"] == "gpt-image-2-text-to-image"
+        assert "input_urls" not in body["input"]
+        assert body["input"]["aspect_ratio"] == "4:5"
+        assert body["input"]["nsfw_checker"] is False
 
 
 @pytest.mark.asyncio
@@ -291,3 +321,31 @@ async def test_get_task_status_generating():
         assert status["state"] == "generating"
         assert status["result_urls"] == []
         assert status["progress"] == 45
+
+
+@pytest.mark.asyncio
+async def test_get_task_status_supports_urls_alias():
+    from app.services.kie_ai import KieAIClient
+
+    mock_response = httpx.Response(
+        200,
+        json={
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "taskId": "task_123",
+                "state": "success",
+                "resultJson": '{"urls":["https://cdn.kie.ai/result-alt.jpg"]}',
+                "progress": 100,
+            },
+        },
+    )
+    with patch("app.services.kie_ai.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__ = AsyncMock(return_value=MockClient.return_value)
+        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value.get = AsyncMock(return_value=mock_response)
+
+        client = KieAIClient(api_key="test-key")
+        status = await client.get_task_status("task_123")
+        assert status["state"] == "success"
+        assert status["result_urls"] == ["https://cdn.kie.ai/result-alt.jpg"]
