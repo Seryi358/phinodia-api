@@ -128,6 +128,8 @@ async def test_generate_image_prompt_ugc_uses_buyer_persona_and_realism_cues():
         assert "Valentina, 27" in messages[1]["content"]
         assert "50ml glass jar" in messages[1]["content"]
         assert "captured like a real phone selfie" in messages[1]["content"]
+        assert "not a fashion model" in messages[1]["content"]
+        assert "do not rewrite" in messages[1]["content"]
 
 
 @pytest.mark.asyncio
@@ -160,6 +162,7 @@ async def test_generate_image_prompt_first_frame_uses_video_seed_mode():
         assert "FIRST FRAME" in messages[1]["content"]
         assert "Sofia, 28" in messages[1]["content"]
         assert "phone out of frame" in messages[1]["content"]
+        assert "everyday customer" in messages[1]["content"]
 
 
 @pytest.mark.asyncio

@@ -98,6 +98,7 @@ CONSTRAINTS:
    - packaging/jar/bottle geometry
    - cap, pump, lid, and label placement
    - materials, finish, and main color palette
+   - visible brand wordmark and packaging copy when legible in the reference image
    - believable physical scale from the product analysis
 5. Always forbid extra text, watermarks, packaging redesigns, duplicate products, anatomy glitches, and unrelated props overpowering the product.
 6. When the target style is candid or UGC, make it feel like a real phone photo captured in the moment. Favor realism, natural texture, and small imperfections over polished ad perfection.
@@ -132,6 +133,7 @@ OUTPUT REQUIREMENTS
 - Make it a photorealistic product photo / real photograph.
 - Scene first, then subject, then product-specific preservation details.
 - The product reference image is the source of truth for packaging and shape.
+- Preserve visible brand text and label copy from the reference image when it is legible.
 - Use the variation cues to avoid repetitive generations.
 - Keep the mood premium, believable, ecommerce-ready, and useful for paid marketing.
 - No person unless the user request clearly calls for hands or human context.
@@ -165,10 +167,11 @@ UGC realism cues:
 
 OUTPUT REQUIREMENTS
 - Make it explicitly photorealistic, candid, and captured like a real phone selfie or front-camera Instagram photo.
-- The person must feel like the buyer persona, not a fashion model or studio actor.
+- The person must feel like the buyer persona, not a fashion model, luxury influencer, or studio actor. Prefer everyday attractiveness, minimal makeup, relaxed styling, and normal at-home realism.
 - Show clear hand interaction with the product and believable product scale using the product analysis.
 - Mention gaze, framing, pose, and how the product is held.
 - Keep natural skin texture, lived-in background context, and mild phone-camera imperfections.
+- Preserve the visible brand name and label copy from the reference image as faithfully as possible; do not rewrite, paraphrase, or invent packaging text.
 - Avoid ultra-polished beauty-ad language, HDR gloss, or studio perfection.
 """
 
@@ -202,7 +205,9 @@ OUTPUT REQUIREMENTS
 - Make it photorealistic and feel like a real front-camera selfie captured mid-moment.
 - Vertical 9:16-style framing, arm's-length composition, authentic phone-photo realism.
 - The person must match the buyer persona and hold the product naturally with believable size, materials, and packaging based on the product analysis.
+- The person should read as a believable everyday customer, not a polished campaign model. Favor casual grooming, natural skin texture, and relaxed styling.
 - Optimize for a strong first frame for a UGC ad: clear face, clear product, natural expression, believable motion-ready pose.
+- Preserve the visible brand name and label copy from the reference image as faithfully as possible; do not rewrite, paraphrase, or invent packaging text.
 - Keep the phone out of frame unless explicitly requested.
 - Avoid studio polish, CGI sharpness, glam retouching, or cinematic overproduction.
 """
@@ -239,6 +244,7 @@ Variation cues:
 OUTPUT REQUIREMENTS
 - Make it a photorealistic landing-page asset, useful for ecommerce conversion.
 - Follow the shot brief exactly and preserve the product identity from the reference image.
+- Preserve visible brand text and label copy from the reference image when it is legible.
 - If a person appears, cast them from the buyer persona and describe their interaction with the product.
 - Keep the background and props supportive, never more important than the product.
 - Leave clean visual breathing room when the brief suggests hero/banner use.
