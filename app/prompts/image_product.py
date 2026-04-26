@@ -81,6 +81,7 @@ Apply OpenAI's official GPT Image prompting guidance:
 - for photorealism, explicitly say photorealistic / real photo and use photography language
 - describe people, gaze, hands, framing, and object interaction when humans appear
 - state invariants and exclusions explicitly, especially what must be preserved from the reference product image
+- treat the reference image as the primary source of truth because GPT Image 2 preserves image inputs at high fidelity
 - keep the prompt skimmable with short labeled lines instead of one dense paragraph when the request is complex
 </source_of_truth>
 
@@ -103,6 +104,7 @@ CONSTRAINTS:
 5. Always forbid extra text, watermarks, packaging redesigns, duplicate products, anatomy glitches, and unrelated props overpowering the product.
 6. When the target style is candid or UGC, make it feel like a real phone photo captured in the moment. Favor realism, natural texture, and small imperfections over polished ad perfection.
 7. When the target style is studio/product marketing, keep it photorealistic, premium, and commercially useful without looking fake or overprocessed.
+8. Creative variation must never outweigh reference fidelity.
 </global_rules>
 """
 
@@ -167,10 +169,10 @@ UGC realism cues:
 
 OUTPUT REQUIREMENTS
 - Make it explicitly photorealistic, candid, and captured like a real phone selfie or front-camera Instagram photo.
-- The person must feel like the buyer persona, not a fashion model, luxury influencer, or studio actor. Prefer everyday attractiveness, minimal makeup, relaxed styling, and normal at-home realism.
+- The person must feel like the buyer persona and read as a believable Colombian everyday creator, not a fashion model, luxury influencer, or studio actor. Prefer everyday attractiveness, minimal makeup, relaxed styling, and normal at-home realism.
 - Show clear hand interaction with the product and believable product scale using the product analysis.
 - Mention gaze, framing, pose, and how the product is held.
-- Keep natural skin texture, lived-in background context, and mild phone-camera imperfections.
+- Keep natural skin texture, lived-in background context, and mild phone-camera imperfections such as slight motion softness, minor exposure unevenness, or light smartphone grain.
 - Preserve the visible brand name and label copy from the reference image as faithfully as possible; do not rewrite, paraphrase, or invent packaging text.
 - Avoid ultra-polished beauty-ad language, HDR gloss, or studio perfection.
 """
@@ -205,7 +207,7 @@ OUTPUT REQUIREMENTS
 - Make it photorealistic and feel like a real front-camera selfie captured mid-moment.
 - Vertical 9:16-style framing, arm's-length composition, authentic phone-photo realism.
 - The person must match the buyer persona and hold the product naturally with believable size, materials, and packaging based on the product analysis.
-- The person should read as a believable everyday customer, not a polished campaign model. Favor casual grooming, natural skin texture, and relaxed styling.
+- The person should read as a believable Colombian everyday customer, not a polished campaign model. Favor casual grooming, natural skin texture, and relaxed styling.
 - Optimize for a strong first frame for a UGC ad: clear face, clear product, natural expression, believable motion-ready pose.
 - Preserve the visible brand name and label copy from the reference image as faithfully as possible; do not rewrite, paraphrase, or invent packaging text.
 - Keep the phone out of frame unless explicitly requested.

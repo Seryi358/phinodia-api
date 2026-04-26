@@ -268,13 +268,19 @@ async def test_analyze_product():
         analysis = await gen.analyze_product(
             product_name="Crema Facial Glow",
             description="Crema hidratante con vitamina C",
+            image_url="https://example.com/product.jpg",
         )
 
         assert "50ml" in analysis
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
         assert "product intelligence analyst" in messages[0]["content"].lower()
-        assert "Crema Facial Glow" in messages[1]["content"]
+        user_content = messages[1]["content"]
+        assert isinstance(user_content, list)
+        assert user_content[0]["type"] == "text"
+        assert "Crema Facial Glow" in user_content[0]["text"]
+        assert user_content[1]["type"] == "image_url"
+        assert user_content[1]["image_url"]["url"] == "https://example.com/product.jpg"
 
 
 @pytest.mark.asyncio

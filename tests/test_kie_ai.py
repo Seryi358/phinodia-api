@@ -29,7 +29,7 @@ async def test_create_video_task():
         assert "/veo/generate" in url
         body = call_args.kwargs["json"]
         assert body["model"] == "veo3"  # Quality mode default
-        assert body["generationType"] == "IMAGE_2_VIDEO"
+        assert body["generationType"] == "FIRST_AND_LAST_FRAMES_2_VIDEO"
         assert body["aspect_ratio"] == "9:16"
         assert body["imageUrls"] == ["https://example.com/product.jpg"]
         assert body["enableTranslation"] is False
@@ -122,6 +122,38 @@ async def test_get_video_status_success():
 
         assert status["state"] == "success"
         assert status["result_urls"] == ["https://cdn.kie.ai/result.mp4"]
+        assert status["progress"] == 100
+
+
+@pytest.mark.asyncio
+async def test_get_video_status_prefers_full_result_urls():
+    from app.services.kie_ai import KieAIClient
+
+    mock_response = httpx.Response(
+        200,
+        json={
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "taskId": "task_123",
+                "successFlag": 1,
+                "response": {
+                    "resultUrls": ["https://cdn.kie.ai/base-8s.mp4"],
+                    "fullResultUrls": ["https://cdn.kie.ai/full-15s.mp4"],
+                },
+            },
+        },
+    )
+    with patch("app.services.kie_ai.httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__ = AsyncMock(return_value=MockClient.return_value)
+        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value.get = AsyncMock(return_value=mock_response)
+
+        client = KieAIClient(api_key="test-key")
+        status = await client.get_video_status("task_123")
+
+        assert status["state"] == "success"
+        assert status["result_urls"] == ["https://cdn.kie.ai/full-15s.mp4"]
         assert status["progress"] == 100
 
 

@@ -255,7 +255,7 @@ async def _process_video(job_id: str, req: VideoRequest):
     try:
         # Step 1: Deep product analysis
         product_analysis = await script_gen.analyze_product(
-            product_name=req.product_name, description=rich_description,
+            product_name=req.product_name, description=rich_description, image_url=req.image_url,
         )
 
         # Step 2: Buyer persona (Colombian UGC creator)
@@ -312,12 +312,12 @@ async def _process_video(job_id: str, req: VideoRequest):
         async def _create_video_text_only():
             return await kie.create_video_task(prompt=prompt, image_url="", aspect_ratio=aspect, use_image=False)
 
-        # Try IMAGE_2_VIDEO with retries
+        # Try image-seeded Veo generation first
         task_id, base_status = await _retry_kie_task(kie, _create_video_with_image, poll_is_video=True, max_retries=2)
 
-        # If IMAGE_2_VIDEO failed, fallback to TEXT_2_VIDEO with retries
+        # If image-seeded generation failed, fallback to text-only retries
         if base_status["state"] != "success":
-            logger.info("IMAGE_2_VIDEO failed for job %s, falling back to TEXT_2_VIDEO", job_id)
+            logger.info("Image-seeded Veo generation failed for job %s, falling back to TEXT_2_VIDEO", job_id)
             task_id, base_status = await _retry_kie_task(kie, _create_video_text_only, poll_is_video=True, max_retries=2)
 
         if base_status["state"] != "success":
@@ -488,7 +488,7 @@ async def _process_image(job_id: str, req: ImageRequest):
     try:
         # Product analysis for better prompts
         product_analysis = await script_gen.analyze_product(
-            product_name=req.product_name, description=rich_description,
+            product_name=req.product_name, description=rich_description, image_url=req.image_url,
         )
 
         # Build creative direction based on style
@@ -587,7 +587,7 @@ async def _process_landing(job_id: str, req: LandingRequest):
     try:
         # Step 1: Product analysis (same as videos)
         product_analysis = await script_gen.analyze_product(
-            product_name=req.product_name, description=rich_description,
+            product_name=req.product_name, description=rich_description, image_url=req.image_url,
         )
 
         # Step 2: Buyer persona

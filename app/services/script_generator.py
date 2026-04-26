@@ -34,7 +34,7 @@ class ScriptGenerator:
             timeout=httpx.Timeout(120.0, connect=10.0),
         )
 
-    async def _call_gpt(self, system: str, user: str, max_tokens: int = 2000) -> str:
+    async def _call_gpt(self, system: str, user: str | list[dict], max_tokens: int = 2000) -> str:
         response = await self.client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -46,11 +46,17 @@ class ScriptGenerator:
         )
         return response.choices[0].message.content.strip()
 
-    async def analyze_product(self, product_name: str, description: str) -> str:
-        """Step 1: Deep product analysis from image description."""
+    async def analyze_product(self, product_name: str, description: str, image_url: str = "") -> str:
+        """Step 1: Deep product analysis from user context + optional image."""
         from app.prompts.product_analyzer import SYSTEM_PROMPT, USER_TEMPLATE
         user_msg = USER_TEMPLATE.format(product_name=_esc(product_name), description=_esc(description))
-        return await self._call_gpt(SYSTEM_PROMPT, user_msg)
+        user_content: str | list[dict] = user_msg
+        if image_url:
+            user_content = [
+                {"type": "text", "text": user_msg},
+                {"type": "image_url", "image_url": {"url": image_url}},
+            ]
+        return await self._call_gpt(SYSTEM_PROMPT, user_content)
 
     async def generate_buyer_persona(self, product_name: str, product_analysis: str) -> str:
         """Step 2: Generate ideal UGC creator persona."""

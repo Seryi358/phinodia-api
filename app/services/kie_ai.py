@@ -52,7 +52,9 @@ class KieAIClient:
                 "prompt": prompt,
                 "imageUrls": [image_url],
                 "model": model,
-                "generationType": "IMAGE_2_VIDEO",
+                # KIE's current Veo API uses FIRST_AND_LAST_FRAMES_2_VIDEO for
+                # both single-image seeding and first+last-frame transitions.
+                "generationType": "FIRST_AND_LAST_FRAMES_2_VIDEO",
                 "aspect_ratio": aspect_ratio,
                 "quality": "high",
                 "enableTranslation": False,
@@ -107,12 +109,18 @@ class KieAIClient:
         state_map = {0: "generating", 1: "success", 2: "failed", 3: "failed"}
         state = state_map.get(success_flag, "generating")
 
-        # Video URL can be in data.videoUrl or data.response.resultUrls
-        video_url = data.get("videoUrl", "")
+        # KIE may return the fully stitched extended video under
+        # response.fullResultUrls. Falling back to resultUrls/videoUrl would
+        # silently ship the base 8s clip for a paid 15s/22s/30s purchase.
+        response = data.get("response") or {}
+        video_url = ""
+        for key in ("fullResultUrls", "resultUrls", "originUrls"):
+            urls = response.get(key) or []
+            if urls:
+                video_url = urls[0]
+                break
         if not video_url:
-            response = data.get("response") or {}
-            result_urls = response.get("resultUrls") or []
-            video_url = result_urls[0] if result_urls else ""
+            video_url = data.get("videoUrl", "")
         video_url = _safe_result_url(video_url)
 
         return {
