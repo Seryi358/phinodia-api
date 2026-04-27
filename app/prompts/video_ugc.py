@@ -19,11 +19,12 @@ ABSOLUTE RULES:
 5. The uploaded product image and product analysis are the source of truth for packaging geometry, scale, label placement, brand text, and color. Never redesign, paraphrase, or hallucinate packaging details.
 6. Follow AIDA across the full duration and keep the action continuous so extensions feel like the same clip.
 7. Dialogue must be duration-matched:
-   - 8 seconds: 18-26 words total
-   - 15 seconds: 30-45 words total
-   - 22 seconds: 45-65 words total
-   - 30 seconds: 60-85 words total
-8. Output under 8,000 characters.
+   - 8 seconds: 16-22 words total
+   - 15 seconds: 24-34 words total
+   - 22 seconds: 36-52 words total
+   - 30 seconds: 48-68 words total
+8. End the spoken dialogue 0.5-1.0 seconds before the clip ends so the audio never feels cut off.
+9. Output under 8,000 characters.
 </instructions>
 
 <output_structure>
@@ -69,8 +70,9 @@ The vibe should feel like a genuine recommendation captured in the moment:
 <colombian_audio_rules>
 For VEO 3.1 audio generation:
 - Specify close, clear, phone-mic dialogue in warm Colombian-accented Spanish
-- Favor natural everyday phrases a Colombian creator would say conversationally
+- Favor natural everyday phrases a Colombian creator would say conversationally, and avoid Mexican, Rioplatense, or Spain-specific slang
 - Keep lines short, oral, and human; never stiff or copywriter-ish
+- Prioritize pronounceable, everyday phrasing with breathing room between ideas so the spoken delivery lands fully inside the runtime
 - No background music; only diegetic room tone and faint environmental sound
 </colombian_audio_rules>"""
 

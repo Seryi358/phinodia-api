@@ -229,16 +229,26 @@ async def _poll_until_done(kie: KieAIClient, task_id: str, is_video: bool, max_p
     return {"state": "failed", "progress": 0, "result_urls": []}
 
 
-async def _retry_kie_task(kie: KieAIClient, create_fn, poll_is_video: bool, max_retries: int = MAX_RETRIES) -> tuple[str, dict]:
+async def _retry_kie_task(
+    kie: KieAIClient,
+    create_fn,
+    poll_is_video: bool,
+    max_retries: int = MAX_RETRIES,
+    require_result_url: bool = True,
+) -> tuple[str, dict]:
     """Retry KIE AI task creation + polling up to max_retries times."""
     last_error = None
     for attempt in range(max_retries):
         try:
             task_id = await create_fn()
             status = await _poll_until_done(kie, task_id, is_video=poll_is_video, max_polls=90)
-            if status["state"] == "success":
+            if status["state"] == "success" and (status.get("result_urls") or not require_result_url):
                 return task_id, status
-            last_error = f"Attempt {attempt + 1} failed"
+            if status["state"] == "success":
+                last_error = "KIE task completed without result URLs"
+                logger.warning("KIE task %s completed without result URLs on attempt %d", task_id, attempt + 1)
+            else:
+                last_error = f"Attempt {attempt + 1} failed"
             logger.warning("KIE task %s failed on attempt %d", task_id, attempt + 1)
         except Exception as e:
             last_error = str(e)
@@ -263,7 +273,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             product_name=req.product_name, product_analysis=product_analysis,
         )
 
-        # Step 3: Generate first frame with GPT Image 2 (POV selfie, no phone visible)
+        # Step 3: Generate first frame with Nano Banana 2 (POV selfie, no phone visible)
         first_frame_prompt = await script_gen.generate_image_prompt(
             product_name=req.product_name, description=rich_description,
             aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
@@ -281,7 +291,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
         ff_task_id, ff_status = await _retry_kie_task(
             kie,
-            lambda: kie.create_image_task(prompt=first_frame_prompt, image_url=req.image_url, aspect_ratio=aspect),
+            lambda: kie.create_nano_banana_task(prompt=first_frame_prompt, image_url=req.image_url, aspect_ratio=aspect),
             poll_is_video=False, max_retries=2,
         )
         first_frame_url = ff_status["result_urls"][0] if ff_status["state"] == "success" and ff_status["result_urls"] else req.image_url
@@ -359,10 +369,11 @@ async def _process_video(job_id: str, req: VideoRequest):
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
         current_task_id = task_id
         final_result_url = base_result_url
-        seconds_so_far = 8
+        partial_ready_message = "La extension fallo. Tu video parcial esta listo."
         for ext_num in range(1, num_extensions + 1):
             ext_prompt = await script_gen.generate_extension_prompt(
                 original_prompt=prompt, extension_number=ext_num, duration=req.duration,
+                product_name=req.product_name, product_analysis=product_analysis, buyer_persona=buyer_persona,
             )
             try:
                 current_task_id = await kie.extend_video(task_id=current_task_id, prompt=ext_prompt)
@@ -395,12 +406,22 @@ async def _process_video(job_id: str, req: VideoRequest):
                         {
                             "status": "completed", "result_url": final_result_url, "result_type": "mp4",
                             "completed_at": datetime.now(timezone.utc).isoformat(),
-                            "error_message": f"La extension fallo. Tu video de {seconds_so_far} segundos esta listo.",
+                            "error_message": partial_ready_message,
                         },
                     )
                     return
                 final_result_url = ext_url
-                seconds_so_far += 7
+                # Persist the latest successful extension immediately so a
+                # worker crash or auto-promote later serves the longest clip
+                # already produced instead of falling back to the base 8s URL.
+                saved = await db.update(
+                    "jobs",
+                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                    {"kie_task_id": current_task_id, "result_url": final_result_url, "result_type": "mp4"},
+                )
+                if not saved:
+                    logger.info("Video job %s terminated after successful extension — aborting", job_id)
+                    return
             except Exception as e:
                 logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
                 final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
@@ -410,7 +431,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                     {
                         "status": "completed", "result_url": final_result_url, "result_type": "mp4",
                         "completed_at": datetime.now(timezone.utc).isoformat(),
-                        "error_message": f"La extension fallo. Tu video de {seconds_so_far} segundos esta listo.",
+                        "error_message": partial_ready_message,
                     },
                 )
                 return
