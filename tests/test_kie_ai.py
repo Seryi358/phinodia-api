@@ -80,7 +80,7 @@ async def test_extend_video():
         task_id = await client.extend_video(
             task_id="task_veo_123",
             prompt="Continue showing the product application",
-            model="fast",
+            model="quality",
         )
         assert task_id == "task_ext_456"
 
@@ -89,7 +89,7 @@ async def test_extend_video():
         assert "/veo/extend" in url
         body = call_args.kwargs["json"]
         assert body["taskId"] == "task_veo_123"
-        assert body["model"] == "fast"
+        assert body["model"] == "quality"
 
 
 @pytest.mark.asyncio

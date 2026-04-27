@@ -95,8 +95,8 @@ class KieAIClient:
             self._check_status(resp)
             return self._extract_task_id(resp)
 
-    async def extend_video(self, task_id: str, prompt: str, model: str = "fast") -> str:
-        """Extend video by +7 seconds"""
+    async def extend_video(self, task_id: str, prompt: str, model: str = "quality") -> str:
+        """Extend video by +7 seconds using KIE's quality extension mode."""
         body = {
             "taskId": task_id,
             "prompt": prompt,

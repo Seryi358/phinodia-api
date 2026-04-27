@@ -376,7 +376,11 @@ async def _process_video(job_id: str, req: VideoRequest):
                 product_name=req.product_name, product_analysis=product_analysis, buyer_persona=buyer_persona,
             )
             try:
-                current_task_id = await kie.extend_video(task_id=current_task_id, prompt=ext_prompt)
+                current_task_id = await kie.extend_video(
+                    task_id=current_task_id,
+                    prompt=ext_prompt,
+                    model="quality",
+                )
                 # CAS-guard the kie_task_id update so we don't overwrite the
                 # task_id on an already-failed-and-refunded row (would burn
                 # KIE poll quota chasing the wrong taskId on operator replay).

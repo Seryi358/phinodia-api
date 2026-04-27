@@ -81,3 +81,4 @@ async def test_process_video_checkpoints_extended_result_url():
     assert any(call.get("result_url") == "https://cdn.kie.ai/full-15s.mp4" for call in update_calls)
     assert mock_script.generate_extension_prompt.await_count == 1
     assert mock_kie.extend_video.await_count == 1
+    assert mock_kie.extend_video.await_args.kwargs["model"] == "quality"
