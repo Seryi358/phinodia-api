@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 KIE_BASE_URL = "https://api.kie.ai/api/v1"
 GPT_IMAGE_2_TEXT_MODEL = "gpt-image-2-text-to-image"
 GPT_IMAGE_2_EDIT_MODEL = "gpt-image-2-image-to-image"
-NANO_BANANA_2_MODEL = "nano-banana-2"
 
 
 def _safe_result_url(u: str | None) -> str:
@@ -161,31 +160,6 @@ class KieAIClient:
             return data.get("resultUrl") or data.get("videoUrl")
 
     # ── Images (GPT Image 2) ──────────────────────────────────────────
-
-    async def create_nano_banana_task(
-        self,
-        prompt: str,
-        image_url: str,
-        aspect_ratio: str = "9:16",
-        resolution: str = "2K",
-        output_format: str = "png",
-    ) -> str:
-        input_payload = {
-            "prompt": prompt,
-            "image_input": [image_url] if image_url else [],
-            "aspect_ratio": aspect_ratio,
-            "resolution": resolution,
-            "output_format": output_format,
-        }
-        body = {"model": NANO_BANANA_2_MODEL, "input": input_payload}
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{KIE_BASE_URL}/jobs/createTask",
-                json=body,
-                headers=self.headers,
-            )
-            self._check_status(resp)
-            return self._extract_task_id(resp)
 
     async def create_image_task(
         self,

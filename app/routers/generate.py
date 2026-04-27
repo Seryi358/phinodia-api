@@ -273,7 +273,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             product_name=req.product_name, product_analysis=product_analysis,
         )
 
-        # Step 3: Generate first frame with Nano Banana 2 (POV selfie, no phone visible)
+        # Step 3: Generate first frame with GPT Image 2 (POV selfie, no phone visible)
         first_frame_prompt = await script_gen.generate_image_prompt(
             product_name=req.product_name, description=rich_description,
             aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
@@ -291,7 +291,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
         ff_task_id, ff_status = await _retry_kie_task(
             kie,
-            lambda: kie.create_nano_banana_task(prompt=first_frame_prompt, image_url=req.image_url, aspect_ratio=aspect),
+            lambda: kie.create_image_task(prompt=first_frame_prompt, image_url=req.image_url, aspect_ratio=aspect),
             poll_is_video=False, max_retries=2,
         )
         first_frame_url = ff_status["result_urls"][0] if ff_status["state"] == "success" and ff_status["result_urls"] else req.image_url

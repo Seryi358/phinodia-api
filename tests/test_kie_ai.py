@@ -238,37 +238,6 @@ async def test_get_hd_video():
         req_url = call_args.args[0] if call_args.args else call_args.kwargs.get("url", "")
         assert "/veo/get-1080p-video" in req_url
 
-
-@pytest.mark.asyncio
-async def test_create_nano_banana_task():
-    from app.services.kie_ai import KieAIClient
-
-    mock_response = httpx.Response(
-        200,
-        json={"code": 200, "msg": "success", "data": {"taskId": "task_nb_123"}},
-    )
-    with patch("app.services.kie_ai.httpx.AsyncClient") as MockClient:
-        MockClient.return_value.__aenter__ = AsyncMock(return_value=MockClient.return_value)
-        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
-        MockClient.return_value.post = AsyncMock(return_value=mock_response)
-
-        client = KieAIClient(api_key="test-key")
-        task_id = await client.create_nano_banana_task(
-            prompt="Photorealistic selfie first frame with exact product packaging",
-            image_url="https://example.com/product.jpg",
-            aspect_ratio="9:16",
-        )
-
-        assert task_id == "task_nb_123"
-        call_args = MockClient.return_value.post.call_args
-        body = call_args.kwargs["json"]
-        assert body["model"] == "nano-banana-2"
-        assert body["input"]["image_input"] == ["https://example.com/product.jpg"]
-        assert body["input"]["aspect_ratio"] == "9:16"
-        assert body["input"]["resolution"] == "2K"
-        assert body["input"]["output_format"] == "png"
-
-
 @pytest.mark.asyncio
 async def test_create_image_task():
     from app.services.kie_ai import KieAIClient
