@@ -23,7 +23,7 @@ def _send_delivery_email_safe(email: str, product_name: str, service_type: str, 
         if service_type == "landing_page":
             link = f"https://app.phinodia.com/estado/?job_id={job_id}"
         else:
-            link = result_url
+            link = f"{settings.api_base_url.rstrip('/')}/api/v1/jobs/download/{job_id}"
         subject, html = build_delivery_email(product_name, service_type, link)
         sender = GmailSender(
             client_id=settings.gmail_client_id, client_secret=settings.gmail_client_secret,

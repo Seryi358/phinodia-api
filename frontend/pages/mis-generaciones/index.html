@@ -170,18 +170,19 @@
         return `<a class="gen-btn gen-btn-secondary" href="/estado/?job_id=${encodeURIComponent(job.job_id)}">Ver estado</a>`;
       }
       const cleanResult = safeUrl(job.result_url);
+      const cleanDownload = safeUrl(job.download_url || job.result_url);
       if (job.result_type === 'html') {
         // Landings always link to /estado/?job_id=… even if the URL was tampered.
         const fallback = `/estado/?job_id=${encodeURIComponent(job.job_id)}`;
         const href = cleanResult || fallback;
         return `<a class="gen-btn gen-btn-primary" href="${escapeHtml(href)}">Abrir landing</a>`;
       }
-      if (!cleanResult) {
+      if (!cleanDownload) {
         return `<a class="gen-btn gen-btn-secondary" href="/estado/?job_id=${encodeURIComponent(job.job_id)}">Ver detalles</a>`;
       }
       const label = job.result_type === 'mp4' ? 'Descargar video' : 'Descargar';
       return `
-        <a class="gen-btn gen-btn-primary" href="${escapeHtml(cleanResult)}" target="_blank" rel="noopener">${label}</a>
+        <a class="gen-btn gen-btn-primary" href="${escapeHtml(cleanDownload)}" download>${label}</a>
         <a class="gen-btn gen-btn-secondary" href="/estado/?job_id=${encodeURIComponent(job.job_id)}">Detalles</a>
       `;
     }

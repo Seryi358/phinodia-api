@@ -1,8 +1,10 @@
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, EmailStr
 from app.config import get_settings
 from app.database import db
@@ -23,6 +25,7 @@ class JobStatusResponse(BaseModel):
     status: str
     progress: int = 0
     result_url: str | None = None
+    download_url: str | None = None
     result_type: str | None = None
     error_message: str | None = None
 
@@ -182,6 +185,7 @@ async def get_job_status(job_id: UUID, request: Request):
                 job_id=job["id"], status=job["status"],
                 progress=100 if job["status"] == "completed" else 0,
                 result_url=job.get("result_url"), result_type=job.get("result_type"),
+                download_url=_download_url(job["id"], job.get("result_url")),
                 error_message=job.get("error_message"),
             )
 
@@ -226,6 +230,7 @@ async def get_job_status(job_id: UUID, request: Request):
             job_id=job["id"], status=job["status"],
             progress=kie_status.get("progress", 0),
             result_url=_normalize_result(job.get("result_url"), job.get("result_type")),
+            download_url=_download_url(job["id"], job.get("result_url")),
             result_type=job.get("result_type"),
             error_message=job.get("error_message"),
         )
@@ -234,6 +239,7 @@ async def get_job_status(job_id: UUID, request: Request):
         job_id=job["id"], status=job["status"],
         progress=100 if job["status"] == "completed" else 0,
         result_url=_normalize_result(job.get("result_url"), job.get("result_type")),
+        download_url=_download_url(job["id"], job.get("result_url")),
         result_type=job.get("result_type"),
         error_message=job.get("error_message"),
     )
@@ -245,11 +251,85 @@ async def get_job_status(job_id: UUID, request: Request):
 _INTERNAL_HOST_RE = __import__('re').compile(
     r'https://(?:[a-z0-9-]+\.)?zb12wf\.easypanel\.host', __import__('re').I
 )
+_RESULTS_DIR = Path("data/uploads/results").resolve()
+
+
 def _normalize_result(value: str | None, result_type: str | None) -> str | None:
     if not value:
         return value
     public = (settings.api_base_url or "https://app.phinodia.com").rstrip("/")
     return _INTERNAL_HOST_RE.sub(public, value)
+
+
+def _download_url(job_id: str, result_url: str | None) -> str | None:
+    if not result_url:
+        return None
+    return f"/api/v1/jobs/download/{job_id}"
+
+
+def _local_result_path(value: str | None) -> Path | None:
+    if not value:
+        return None
+    parsed = urlparse(value)
+    path = unquote(parsed.path if parsed.scheme else value)
+    if not path.startswith("/uploads/results/"):
+        return None
+    rel = path[len("/uploads/results/"):].lstrip("/")
+    if not rel:
+        return None
+    candidate = (_RESULTS_DIR / rel).resolve()
+    try:
+        candidate.relative_to(_RESULTS_DIR)
+    except ValueError:
+        return None
+    return candidate
+
+
+def _download_filename(job_id: str, result_type: str | None, result_url: str | None) -> str:
+    ext_map = {"mp4": ".mp4", "jpg": ".jpg", "html": ".html"}
+    ext = ext_map.get((result_type or "").lower())
+    if not ext and result_url:
+        parsed = urlparse(result_url)
+        ext = Path(unquote(parsed.path)).suffix.lower()
+    if not ext:
+        ext = ".bin"
+    return f"phinodia-{job_id}{ext}"
+
+
+@router.get("/download/{job_id}")
+async def download_job_result(job_id: UUID):
+    job_id_str = str(job_id)
+    job = await db.select_one("jobs", {"id": f"eq.{job_id_str}"})
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job.get("status") != "completed" or not job.get("result_url"):
+        raise HTTPException(409, "Job result is not ready yet")
+
+    result_type = job.get("result_type") or _infer_type(job.get("service_type", ""))
+    filename = _download_filename(job_id_str, result_type, job.get("result_url"))
+
+    if result_type == "html":
+        return Response(
+            content=job.get("result_url", ""),
+            media_type="text/html; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    normalized = _normalize_result(job.get("result_url"), result_type)
+    local_path = _local_result_path(normalized)
+    if not local_path or not local_path.exists():
+        raise HTTPException(404, "Result file not found")
+
+    media_types = {"mp4": "video/mp4", "jpg": "image/jpeg"}
+    return FileResponse(
+        path=local_path,
+        media_type=media_types.get(result_type or "", "application/octet-stream"),
+        filename=filename,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 # Last-resort layout safety net injected into every landing response.
@@ -433,6 +513,7 @@ class JobSummary(BaseModel):
     status: str
     result_type: str | None = None
     result_url: str | None = None
+    download_url: str | None = None
     input_image_url: str | None = None
     input_description: str | None = None
     created_at: str | None = None
@@ -480,6 +561,7 @@ async def list_jobs_by_email(
             status=job.get("status", "unknown"),
             result_type=rt,
             result_url=result_url,
+            download_url=_download_url(job["id"], job.get("result_url")),
             input_image_url=_normalize_result(job.get("input_image_url"), "url"),
             input_description=job.get("input_description"),
             created_at=job.get("created_at"),

@@ -139,7 +139,7 @@
           <span class="status-badge processing" id="image-status-badge">Procesando</span>
           <div id="image-download" class="hidden mt-24">
             <img id="image-result-preview" src="" alt="Resultado" style="max-width: 100%; border-radius: 12px; margin-bottom: 16px;">
-            <a id="image-download-link" href="#" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Descargar imagen</a>
+            <a id="image-download-link" href="#" download class="btn btn-primary btn-lg">Descargar imagen</a>
           </div>
         </div>
       </div>
@@ -196,7 +196,7 @@
               text.textContent = 'Descargala ahora.';
               document.getElementById('image-download').classList.remove('hidden');
               document.getElementById('image-result-preview').src = status.result_url;
-              document.getElementById('image-download-link').href = status.result_url;
+              document.getElementById('image-download-link').href = status.download_url || status.result_url;
             } else {
               title.textContent = 'No se recibio la imagen';
               text.textContent = 'Intenta de nuevo o contactanos.';

@@ -145,7 +145,7 @@
           <span class="status-badge processing" id="video-status-badge">Procesando</span>
           <div id="video-download" class="hidden mt-24">
             <video id="video-result-preview" controls preload="metadata" playsinline style="width: 100%; border-radius: 12px; margin-bottom: 16px; background: #000;"></video>
-            <a id="video-download-link" href="#" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Descargar video</a>
+            <a id="video-download-link" href="#" download class="btn btn-primary btn-lg">Descargar video</a>
           </div>
         </div>
       </div>
@@ -206,7 +206,7 @@
               title.textContent = 'Tu video esta listo.';
               text.textContent = 'Descargalo ahora.';
               document.getElementById('video-download').classList.remove('hidden');
-              document.getElementById('video-download-link').href = status.result_url;
+              document.getElementById('video-download-link').href = status.download_url || status.result_url;
               document.getElementById('video-result-preview').src = status.result_url;
             } else {
               title.textContent = 'No se recibio el video';
