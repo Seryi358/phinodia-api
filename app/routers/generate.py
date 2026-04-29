@@ -453,20 +453,28 @@ async def _render_video_with_extensions(
     current_task_id = task_id
     final_result_url = base_result_url
     for ext_num in range(1, num_extensions + 1):
-        ext_prompt = await script_gen.generate_extension_prompt(
-            original_prompt=active_prompt,
-            extension_number=ext_num,
-            duration=req.duration,
-            product_name=req.product_name,
-            product_analysis=product_analysis,
-            buyer_persona=buyer_persona,
-        )
-        if len(ext_prompt) > 500:
-            ext_prompt = await script_gen.compress_for_veo(ext_prompt)
         safe_ext_prompt = _build_safe_extension_prompt(req, ext_num)
         ext_prompt_variants = [safe_ext_prompt]
-        if ext_prompt != safe_ext_prompt:
-            ext_prompt_variants.append(ext_prompt)
+        try:
+            ext_prompt = await script_gen.generate_extension_prompt(
+                original_prompt=active_prompt,
+                extension_number=ext_num,
+                duration=req.duration,
+                product_name=req.product_name,
+                product_analysis=product_analysis,
+                buyer_persona=buyer_persona,
+            )
+            if len(ext_prompt) > 500:
+                ext_prompt = await script_gen.compress_for_veo(ext_prompt)
+            if ext_prompt != safe_ext_prompt:
+                ext_prompt_variants.append(ext_prompt)
+        except Exception as e:
+            logger.warning(
+                "Extension prompt generation failed for job %s ext %d; using safe prompt: %s",
+                job_id,
+                ext_num,
+                type(e).__name__,
+            )
         ext_succeeded = False
         for ext_variant in ext_prompt_variants:
             try:
@@ -537,14 +545,18 @@ async def _process_video(job_id: str, req: VideoRequest):
         first_frame_url = ff_status["result_urls"][0] if ff_status["state"] == "success" and ff_status["result_urls"] else req.image_url
 
         # Step 4: Generate video prompt (AIDA, Colombian Spanish, raw/imperfect)
-        prompt = await script_gen.generate_video_prompt(
-            product_name=req.product_name, description=rich_description,
-            duration=req.duration, format_type=req.format,
-            creative_direction=req.creative_direction,
-            product_analysis=product_analysis, buyer_persona=buyer_persona,
-        )
-        if len(prompt) > 500:
-            prompt = await script_gen.compress_for_veo(prompt)
+        try:
+            prompt = await script_gen.generate_video_prompt(
+                product_name=req.product_name, description=rich_description,
+                duration=req.duration, format_type=req.format,
+                creative_direction=req.creative_direction,
+                product_analysis=product_analysis, buyer_persona=buyer_persona,
+            )
+            if len(prompt) > 500:
+                prompt = await script_gen.compress_for_veo(prompt)
+        except Exception as e:
+            logger.warning("Base video prompt generation failed for job %s; using safe prompt: %s", job_id, type(e).__name__)
+            prompt = _build_safe_veo_prompt(req)
         # CAS: only flip processing→generating. If auto-fail already moved
         # the job to "failed", abort the pipeline so we don't re-arm a
         # refunded job (which would also expose us to a 2nd auto-refund).
