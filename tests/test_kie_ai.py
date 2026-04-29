@@ -37,6 +37,28 @@ async def test_create_video_task():
 
 
 @pytest.mark.asyncio
+async def test_create_video_task_surfaces_http_error_body():
+    from app.services.kie_ai import KieAIClient
+
+    error_response = httpx.Response(
+        400,
+        json={"code": 400, "msg": "failed to fetch image due to access limits"},
+    )
+    with patch("app.services.kie_ai.httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__ = AsyncMock(return_value=MockClient.return_value)
+        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value.post = AsyncMock(return_value=error_response)
+
+        client = KieAIClient(api_key="test-key")
+        with pytest.raises(httpx.HTTPError, match="failed to fetch image due to access limits"):
+            await client.create_video_task(
+                prompt="A woman holds a cream jar showing the label",
+                image_url="https://example.com/product.jpg",
+                aspect_ratio="9:16",
+            )
+
+
+@pytest.mark.asyncio
 async def test_create_video_task_quality_model():
     from app.services.kie_ai import KieAIClient
 

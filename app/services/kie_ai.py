@@ -33,17 +33,18 @@ class KieAIClient:
         }
 
     def _check_status(self, resp: httpx.Response) -> None:
-        if resp.status_code >= 400:
-            raise httpx.HTTPError(f"KIE AI HTTP error {resp.status_code}")
         try:
             payload = resp.json()
         except ValueError:
             payload = {}
+        msg = ""
+        if isinstance(payload, dict):
+            msg = payload.get("msg") or payload.get("message") or ""
+        if resp.status_code >= 400:
+            detail = msg or resp.text[:200] or "unknown error"
+            raise httpx.HTTPError(f"KIE AI HTTP error {resp.status_code}: {detail}")
         code = payload.get("code") if isinstance(payload, dict) else None
         if code not in (None, 200, "200"):
-            msg = ""
-            if isinstance(payload, dict):
-                msg = payload.get("msg") or payload.get("message") or ""
             raise httpx.HTTPError(f"KIE AI API error {code}: {msg or 'unknown error'}")
 
     @staticmethod
