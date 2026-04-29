@@ -198,6 +198,8 @@ async def test_get_video_status_failed():
                 "taskId": "task_123",
                 "successFlag": 2,
                 "videoUrl": "",
+                "errorCode": "CLIENT_ERROR",
+                "errorMessage": "non-English prompt detected",
             },
         },
     )
@@ -211,6 +213,38 @@ async def test_get_video_status_failed():
         assert status["state"] == "failed"
         assert status["result_urls"] == []
         assert status["progress"] == 0
+        assert status["error"] == "CLIENT_ERROR: non-English prompt detected"
+
+
+@pytest.mark.asyncio
+async def test_get_task_status_includes_fail_message():
+    from app.services.kie_ai import KieAIClient
+
+    mock_response = httpx.Response(
+        200,
+        json={
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "taskId": "task_123",
+                "state": "fail",
+                "resultJson": "",
+                "progress": 0,
+                "failCode": "FETCH_ERROR",
+                "failMsg": "failed to fetch image due to access limits",
+            },
+        },
+    )
+    with patch("app.services.kie_ai.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__ = AsyncMock(return_value=MockClient.return_value)
+        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value.get = AsyncMock(return_value=mock_response)
+
+        client = KieAIClient(api_key="test-key")
+        status = await client.get_task_status("task_123")
+        assert status["state"] == "fail"
+        assert status["result_urls"] == []
+        assert status["error"] == "FETCH_ERROR: failed to fetch image due to access limits"
 
 
 @pytest.mark.asyncio

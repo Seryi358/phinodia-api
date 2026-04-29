@@ -82,6 +82,14 @@ def _friendly_error(raw_error: str) -> str:
     for key, msg in ERROR_MESSAGES.items():
         if key in lower:
             return msg
+    if "non-english" in lower or "only english prompts are supported" in lower:
+        return "El proveedor de video rechazo el prompt por idioma. Tu credito fue restaurado."
+    if "failed to fetch image" in lower or "access limit" in lower:
+        return "No pudimos usar la imagen de referencia para generar el video. Tu credito fue restaurado."
+    if "unsafe image upload" in lower:
+        return "La imagen de referencia fue rechazada por seguridad. Tu credito fue restaurado."
+    if "content polic" in lower:
+        return "El proveedor de video rechazo el contenido por politicas. Tu credito fue restaurado."
     return f"Hubo un error en la generacion. Por favor intenta de nuevo. Si el problema persiste, contactanos a scastellanos@phinodia.com"
 
 
@@ -359,7 +367,7 @@ async def _retry_kie_task(
                 last_error = "KIE task completed without result URLs"
                 logger.warning("KIE task %s completed without result URLs on attempt %d", task_id, attempt + 1)
             else:
-                last_error = f"Attempt {attempt + 1} failed"
+                last_error = status.get("error") or f"Attempt {attempt + 1} failed"
             logger.warning("KIE task %s failed on attempt %d", task_id, attempt + 1)
         except Exception as e:
             last_error = str(e)
@@ -411,7 +419,7 @@ async def _retry_video_extension(
                     job_id,
                 )
             else:
-                last_error = f"extension attempt {attempt + 1} failed"
+                last_error = status.get("error") or f"extension attempt {attempt + 1} failed"
                 logger.warning(
                     "Extension task %s failed on attempt %d for job %s",
                     ext_task_id,

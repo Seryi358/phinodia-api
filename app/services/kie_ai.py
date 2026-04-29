@@ -126,6 +126,11 @@ class KieAIClient:
         success_flag = data.get("successFlag", 0)
         state_map = {0: "generating", 1: "success", 2: "failed", 3: "failed"}
         state = state_map.get(success_flag, "generating")
+        error_message = data.get("errorMessage") or data.get("failMsg") or ""
+        error_code = data.get("errorCode") or data.get("failCode") or ""
+        error = ""
+        if state == "failed":
+            error = f"{error_code}: {error_message}".strip(": ").strip()
 
         # KIE may return the fully stitched extended video under
         # response.fullResultUrls. Falling back to resultUrls/videoUrl would
@@ -145,6 +150,7 @@ class KieAIClient:
             "state": state,
             "progress": 100 if state == "success" else (50 if state == "generating" else 0),
             "result_urls": [video_url] if video_url else [],
+            "error": error,
         }
 
     async def get_hd_video(self, task_id: str) -> str | None:
@@ -208,9 +214,13 @@ class KieAIClient:
             except (json.JSONDecodeError, KeyError):
                 pass
         result_urls = [u for u in (_safe_result_url(x) for x in raw_urls) if u]
+        error = ""
+        if data.get("state") in ("fail", "failed"):
+            error = f"{data.get('failCode') or ''}: {data.get('failMsg') or ''}".strip(": ").strip()
 
         return {
             "state": data.get("state", "unknown"),
             "progress": data.get("progress", 0),
             "result_urls": result_urls,
+            "error": error,
         }

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 settings = get_settings()
+APP_RELEASE = "2026-04-29-kie-debug-1"
 
 
 @asynccontextmanager
@@ -320,7 +321,7 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "release": APP_RELEASE}
 
 
 # Public, cache-safe config consumed by the frontend Pixel snippet.
