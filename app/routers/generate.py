@@ -108,6 +108,45 @@ def _build_description(req) -> str:
     return "\n".join(parts) if parts else req.description
 
 
+def _compact_text(value: str, *, max_chars: int) -> str:
+    text = " ".join((value or "").split())
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _build_safe_veo_prompt(req: "VideoRequest") -> str:
+    pain = _compact_text(req.pain_point or "the routine takes too long", max_chars=60)
+    product = _compact_text(req.product_name or "the product", max_chars=40)
+    category = _compact_text(req.product_category or "beauty product", max_chars=40)
+    spoken = _compact_text(
+        f"Antes esto me quitaba tiempo, pero con {req.product_name} lo hago rapido y sin dolor. "
+        f"Yo ya no vuelvo a lo de antes.",
+        max_chars=120,
+    )
+    return (
+        f"Vertical 9:16 front-camera selfie UGC. Real Colombian woman at home using the exact {product} "
+        f"from the reference image. Raw smartphone footage, natural micro-shake, mild compression, warm home light, "
+        f"no text overlays, no music, not cinematic. Show the problem '{pain}', a quick believable {category} demo, "
+        f"clear product close-up, relief, satisfied smile, and soft CTA. Preserve exact packaging, label colors, shape, and size from the reference image. "
+        f"Spoken line in natural Colombian Spanish: \"{spoken}\""
+    )
+
+
+def _build_safe_extension_prompt(req: "VideoRequest", extension_number: int) -> str:
+    product = _compact_text(req.product_name or "the product", max_chars=40)
+    spoken = _compact_text(
+        f"Con {req.product_name} termino rapido, sin enredarme, y la recomiendo totalmente.",
+        max_chars=100,
+    )
+    return (
+        f"Continue the same vertical selfie UGC clip with the same Colombian creator, same room, same handheld phone realism, "
+        f"and exact {product} packaging from the reference image. Keep the motion continuous, add one short product demo beat, "
+        f"then end with a warm satisfied reaction and a soft CTA. Continuation segment {extension_number}. "
+        f"Spoken line in natural Colombian Spanish: \"{spoken}\""
+    )
+
+
 def _strip_required(v: str) -> str:
     """Reject whitespace-only required text fields. min_length=1 alone passes
     "   " which then sends a useless prompt to OpenAI and burns a credit on
@@ -362,17 +401,38 @@ async def _render_video_with_extensions(
       (None, "terminated") if the job was already failed/cancelled elsewhere
       (None, user_facing_error_message) on failure
     """
+    active_prompt = prompt
+    prompt_variants = [prompt]
+    safe_prompt = _build_safe_veo_prompt(req)
+    if safe_prompt != prompt:
+        prompt_variants.append(safe_prompt)
 
-    async def _create_video_with_image():
-        return await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect, use_image=True)
+    task_id = ""
+    base_status: dict = {"state": "failed", "result_urls": [], "error": "unknown"}
+    for idx, prompt_variant in enumerate(prompt_variants, start=1):
+        async def _create_video_with_image():
+            return await kie.create_video_task(prompt=prompt_variant, image_url=first_frame_url, aspect_ratio=aspect, use_image=True)
 
-    async def _create_video_text_only():
-        return await kie.create_video_task(prompt=prompt, image_url="", aspect_ratio=aspect, use_image=False)
+        async def _create_video_text_only():
+            return await kie.create_video_task(prompt=prompt_variant, image_url="", aspect_ratio=aspect, use_image=False)
 
-    task_id, base_status = await _retry_kie_task(kie, _create_video_with_image, poll_is_video=True, max_retries=2)
-    if base_status["state"] != "success":
-        logger.info("Image-seeded Veo generation failed for job %s, falling back to TEXT_2_VIDEO", job_id)
-        task_id, base_status = await _retry_kie_task(kie, _create_video_text_only, poll_is_video=True, max_retries=2)
+        task_id, base_status = await _retry_kie_task(kie, _create_video_with_image, poll_is_video=True, max_retries=2)
+        if base_status["state"] != "success":
+            logger.info(
+                "Image-seeded Veo generation failed for job %s with prompt variant %d, falling back to TEXT_2_VIDEO",
+                job_id,
+                idx,
+            )
+            task_id, base_status = await _retry_kie_task(kie, _create_video_text_only, poll_is_video=True, max_retries=2)
+        if base_status["state"] == "success":
+            active_prompt = prompt_variant
+            break
+        logger.warning(
+            "Base Veo generation failed for job %s with prompt variant %d: %s",
+            job_id,
+            idx,
+            base_status.get("error", "unknown"),
+        )
     if base_status["state"] != "success":
         return None, _friendly_error(base_status.get("error", "unknown"))
 
@@ -394,7 +454,7 @@ async def _render_video_with_extensions(
     final_result_url = base_result_url
     for ext_num in range(1, num_extensions + 1):
         ext_prompt = await script_gen.generate_extension_prompt(
-            original_prompt=prompt,
+            original_prompt=active_prompt,
             extension_number=ext_num,
             duration=req.duration,
             product_name=req.product_name,
@@ -403,23 +463,31 @@ async def _render_video_with_extensions(
         )
         if len(ext_prompt) > 500:
             ext_prompt = await script_gen.compress_for_veo(ext_prompt)
-        try:
-            ext_task_id, ext_status = await _retry_video_extension(
-                kie=kie,
-                parent_task_id=current_task_id,
-                prompt=ext_prompt,
-                job_id=job_id,
-                max_retries=2,
-            )
-            if ext_status["state"] == "terminated":
-                return None, "terminated"
-            ext_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else None
-            if ext_status["state"] != "success" or not ext_url:
-                return None, "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
-            current_task_id = ext_task_id
-            final_result_url = ext_url
-        except Exception as e:
-            logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
+        safe_ext_prompt = _build_safe_extension_prompt(req, ext_num)
+        ext_prompt_variants = [ext_prompt]
+        if safe_ext_prompt != ext_prompt:
+            ext_prompt_variants.append(safe_ext_prompt)
+        ext_succeeded = False
+        for ext_variant in ext_prompt_variants:
+            try:
+                ext_task_id, ext_status = await _retry_video_extension(
+                    kie=kie,
+                    parent_task_id=current_task_id,
+                    prompt=ext_variant,
+                    job_id=job_id,
+                    max_retries=2,
+                )
+                if ext_status["state"] == "terminated":
+                    return None, "terminated"
+                ext_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else None
+                if ext_status["state"] == "success" and ext_url:
+                    current_task_id = ext_task_id
+                    final_result_url = ext_url
+                    ext_succeeded = True
+                    break
+            except Exception as e:
+                logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
+        if not ext_succeeded:
             return None, "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
 
     final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
