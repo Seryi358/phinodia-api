@@ -212,3 +212,40 @@ async def test_process_video_15s_short_final_video_marks_failed_and_refunds():
     assert any(call.get("status") == "failed" for call in update_calls)
     assert not any(call.get("status") == "completed" for call in update_calls)
     mock_credit.refund_credit.assert_awaited_once_with("user-1", "video_15s")
+
+
+@pytest.mark.asyncio
+async def test_retry_video_extension_retries_and_succeeds_on_second_attempt():
+    from app.routers.generate import _retry_video_extension
+
+    mock_kie = MagicMock()
+    mock_kie.extend_video = AsyncMock(side_effect=["ext-task-1", "ext-task-2"])
+
+    update_calls = []
+
+    async def fake_update(_table, _params, data):
+        update_calls.append(data)
+        return [data]
+
+    with patch(
+        "app.routers.generate.db.update",
+        side_effect=fake_update,
+    ), patch(
+        "app.routers.generate._poll_until_done",
+        AsyncMock(side_effect=[
+            {"state": "success", "result_urls": []},
+            {"state": "success", "result_urls": ["https://cdn.kie.ai/full-15s.mp4"]},
+        ]),
+    ), patch("app.routers.generate.asyncio.sleep", AsyncMock()):
+        task_id, status = await _retry_video_extension(
+            kie=mock_kie,
+            parent_task_id="base-task",
+            prompt="extend prompt",
+            job_id="job-999",
+            max_retries=2,
+        )
+
+    assert task_id == "ext-task-2"
+    assert status["result_urls"] == ["https://cdn.kie.ai/full-15s.mp4"]
+    assert mock_kie.extend_video.await_count == 2
+    assert update_calls[-1]["kie_task_id"] == "ext-task-2"

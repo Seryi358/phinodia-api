@@ -278,6 +278,68 @@ async def _retry_kie_task(
     return "", {"state": "failed", "result_urls": [], "error": last_error}
 
 
+async def _retry_video_extension(
+    *,
+    kie: KieAIClient,
+    parent_task_id: str,
+    prompt: str,
+    job_id: str,
+    max_retries: int = 2,
+) -> tuple[str, dict]:
+    """Retry a Veo extension from the same parent task before failing.
+
+    KIE's extension docs explicitly call out multi-minute processing times
+    and recommend retry/error handling in production. A single extension
+    miss should not immediately fail a paid 15s/22s/30s job.
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            ext_task_id = await kie.extend_video(
+                task_id=parent_task_id,
+                prompt=prompt,
+                model="quality",
+            )
+            still_active = await db.update(
+                "jobs",
+                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                {"kie_task_id": ext_task_id},
+            )
+            if not still_active:
+                logger.info("Video job %s terminated mid-extension retry — aborting", job_id)
+                return "", {"state": "terminated", "result_urls": []}
+            status = await _poll_until_done(kie, ext_task_id, is_video=True)
+            if status["state"] == "success" and status.get("result_urls"):
+                return ext_task_id, status
+            if status["state"] == "success":
+                last_error = "extension completed without result URLs"
+                logger.warning(
+                    "Extension task %s completed without result URLs on attempt %d for job %s",
+                    ext_task_id,
+                    attempt + 1,
+                    job_id,
+                )
+            else:
+                last_error = f"extension attempt {attempt + 1} failed"
+                logger.warning(
+                    "Extension task %s failed on attempt %d for job %s",
+                    ext_task_id,
+                    attempt + 1,
+                    job_id,
+                )
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(
+                "Extension creation failed on attempt %d for job %s: %s",
+                attempt + 1,
+                job_id,
+                e,
+            )
+        if attempt < max_retries - 1:
+            await asyncio.sleep(5)
+    return "", {"state": "failed", "result_urls": [], "error": last_error}
+
+
 async def _process_video(job_id: str, req: VideoRequest):
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
     kie = KieAIClient(api_key=settings.kie_api_key)
@@ -382,23 +444,15 @@ async def _process_video(job_id: str, req: VideoRequest):
                 product_name=req.product_name, product_analysis=product_analysis, buyer_persona=buyer_persona,
             )
             try:
-                current_task_id = await kie.extend_video(
-                    task_id=current_task_id,
+                ext_task_id, ext_status = await _retry_video_extension(
+                    kie=kie,
+                    parent_task_id=current_task_id,
                     prompt=ext_prompt,
-                    model="quality",
+                    job_id=job_id,
+                    max_retries=2,
                 )
-                # CAS-guard the kie_task_id update so we don't overwrite the
-                # task_id on an already-failed-and-refunded row (would burn
-                # KIE poll quota chasing the wrong taskId on operator replay).
-                still_active = await db.update(
-                    "jobs",
-                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                    {"kie_task_id": current_task_id},
-                )
-                if not still_active:
-                    logger.info("Video job %s terminated mid-extension — aborting", job_id)
+                if ext_status["state"] == "terminated":
                     return
-                ext_status = await _poll_until_done(kie, current_task_id, is_video=True)
                 # Treat success-with-empty-result_urls as a hard failure too.
                 # KIE occasionally returns state=success with no URLs on extend;
                 # silently keeping the previous URL would ship an 8s video for a
@@ -411,6 +465,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                         "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado.",
                     )
                     return
+                current_task_id = ext_task_id
                 final_result_url = ext_url
             except Exception as e:
                 logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
