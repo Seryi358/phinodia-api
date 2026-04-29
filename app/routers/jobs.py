@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr
 from app.config import get_settings
 from app.database import db
 from app.services.kie_ai import KieAIClient
+from app.services.media_probe import is_multi_step_video_service, is_video_duration_sufficient
 
 router = APIRouter()
 settings = get_settings()
@@ -46,10 +47,7 @@ async def get_job_status(job_id: UUID, request: Request):
 
     # Auto-fail stuck jobs (older than 30 minutes still in processing/generating).
     # CAS-guarded: only the first writer wins, so concurrent polls and the
-    # worker can't both refund. Critically: if the row already has a partial
-    # result_url (e.g. base 8s saved while extensions slow), mark it
-    # completed-with-warning instead of failing+refunding — otherwise the
-    # user gets the partial deliverable AND a refund (free product).
+    # worker can't both refund.
     if not head_only and job["status"] in ("generating", "processing") and job.get("created_at"):
         try:
             created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
@@ -59,13 +57,44 @@ async def get_job_status(job_id: UUID, request: Request):
             # gate AND the promote/refund threshold — refunding at 30min while
             # the worker is still extending would drop the deliverable entirely
             # (the worker's later CAS save would miss against status=failed).
-            multi_step = job.get("service_type") in ("video_15s", "video_22s", "video_30s")
+            multi_step = is_multi_step_video_service(job.get("service_type"))
             threshold = 60 if multi_step else 30
             if age_minutes > threshold:
-                if job.get("result_url"):
-                    # Partial deliverable already saved AND worker has had
-                    # ample time to finish — promote to completed-with-warning
-                    # instead of refunding.
+                if job.get("result_url") and multi_step:
+                    duration_ok = await is_video_duration_sufficient(job.get("result_url"), job.get("service_type"))
+                    if duration_ok:
+                        promoted = await db.update(
+                            "jobs",
+                            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                            {
+                                "status": "completed",
+                                "completed_at": datetime.now(timezone.utc).isoformat(),
+                                "error_message": None,
+                            },
+                        )
+                        if promoted:
+                            logger.info("Auto-promoted stale multi-step video job %s after duration validation", job_id)
+                            job["status"] = "completed"
+                            job["error_message"] = None
+                    else:
+                        updated = await db.update(
+                            "jobs",
+                            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                            {
+                                "status": "failed",
+                                "result_url": None,
+                                "result_type": None,
+                                "error_message": "El video no alcanzo la duracion solicitada. Tu credito fue restaurado.",
+                            },
+                        )
+                        if updated:
+                            from app.services.credits import CreditService
+                            credit_svc = CreditService()
+                            await credit_svc.refund_credit(job["user_id"], job["service_type"])
+                            logger.info("Auto-failed stale multi-step video job %s after duration validation", job_id)
+                            job["status"] = "failed"
+                            job["error_message"] = "El video no alcanzo la duracion solicitada. Tu credito fue restaurado."
+                elif job.get("result_url"):
                     partial_msg = "La generacion tomo mas tiempo del esperado pero tu resultado parcial esta listo."
                     promoted = await db.update(
                         "jobs",
@@ -80,27 +109,6 @@ async def get_job_status(job_id: UUID, request: Request):
                         logger.info("Auto-promoted long-running job %s to completed (partial result existed)", job_id)
                         job["status"] = "completed"
                         job["error_message"] = partial_msg
-                        # Notify the user — the worker's CAS will miss
-                        # ("status in (processing,generating)" no longer
-                        # matches), so without this email the user has a
-                        # completed job they never hear about. Look up the
-                        # user's email since jobs only stores user_id.
-                        try:
-                            user_row = await db.select_one("users", {"id": f"eq.{job.get('user_id')}"})
-                            user_email = user_row.get("email") if user_row else None
-                            if user_email:
-                                from app.routers.generate import _send_delivery_email_safe
-                                import asyncio as _aio
-                                await _aio.to_thread(
-                                    _send_delivery_email_safe,
-                                    user_email,
-                                    job.get("input_description", "tu producto") or "tu producto",
-                                    job.get("service_type", "video_8s"),
-                                    job_id,
-                                    job.get("result_url", "") or "",
-                                )
-                        except Exception as _e:
-                            logger.warning("Auto-promote email send failed for %s: %s", job_id, _e)
                 else:
                     updated = await db.update(
                         "jobs",
@@ -129,15 +137,12 @@ async def get_job_status(job_id: UUID, request: Request):
         except (ValueError, TypeError):
             # Force-fail jobs whose created_at is malformed — otherwise they
             # stay "processing" forever and the credit is never refunded.
-            # CAS-guard so we don't double-refund a row a worker just finished
-            # OR refund a row that already has a partial result_url (would
-            # gift the user both refund and product).
             logger.error("Auto-fail timestamp parse failed for job %s: %r — forcing failed", job_id, job.get("created_at"))
             from app.services.credits import CreditService
             credit_svc = CreditService()
             service_type = job.get("service_type")
             uid = job.get("user_id")
-            if job.get("result_url"):
+            if job.get("result_url") and not is_multi_step_video_service(service_type):
                 # Partial deliverable exists — promote instead of fail+refund.
                 partial_msg = "Tu resultado parcial esta listo."
                 promoted = await db.update(
@@ -154,7 +159,7 @@ async def get_job_status(job_id: UUID, request: Request):
                 forced = await db.update(
                     "jobs",
                     {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                    {"status": "failed", "error_message": fail_msg},
+                    {"status": "failed", "result_url": None, "result_type": None, "error_message": fail_msg},
                 )
                 if forced and service_type and uid:
                     await credit_svc.refund_credit(uid, service_type)
@@ -164,13 +169,16 @@ async def get_job_status(job_id: UUID, request: Request):
                     job["status"] = "failed"
                     job["error_message"] = fail_msg
 
-    # Don't auto-poll-and-complete if a partial result_url is already saved.
-    # For multi-step pipelines (video extensions), the worker stores the base
-    # URL + base task_id mid-chain, then continues extending. A poll here
-    # would see the base task as "success", CAS-complete the job, and silently
-    # truncate a paid 30s video to 8s — the worker's later extension writes
-    # would all CAS-miss against the now-completed status.
-    if not head_only and job.get("kie_task_id") and job["status"] in ("generating", "processing") and not job.get("result_url"):
+    # Skip KIE auto-completion for multi-step videos. The worker owns the
+    # extension chain; a public poll must not conclude "completed" from an
+    # intermediate extension task.
+    if (
+        not head_only
+        and job.get("kie_task_id")
+        and job["status"] in ("generating", "processing")
+        and not job.get("result_url")
+        and not is_multi_step_video_service(job.get("service_type"))
+    ):
         kie = KieAIClient(api_key=settings.kie_api_key)
         # KIE upstream can be slow/flaky; don't 500 the user — fall back to
         # whatever DB row we have. The worker will keep its own progress.

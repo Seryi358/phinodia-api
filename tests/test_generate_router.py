@@ -29,7 +29,7 @@ async def test_retry_kie_task_retries_when_success_has_no_result_urls():
 
 
 @pytest.mark.asyncio
-async def test_process_video_checkpoints_extended_result_url():
+async def test_process_video_15s_completes_with_final_result_only():
     from app.routers.generate import VideoRequest, _process_video
 
     req = VideoRequest(
@@ -73,12 +73,142 @@ async def test_process_video_checkpoints_extended_result_url():
         "app.routers.generate._poll_until_done",
         AsyncMock(return_value={"state": "success", "result_urls": ["https://cdn.kie.ai/full-15s.mp4"]}),
     ), patch("app.routers.generate.db.update", side_effect=fake_update), patch(
+        "app.routers.generate.is_video_duration_sufficient",
+        AsyncMock(return_value=True),
+    ), patch(
         "app.routers.generate.persist_external_url",
         AsyncMock(side_effect=lambda url, *_args: url),
     ), patch("app.routers.generate.asyncio.to_thread", AsyncMock(return_value=None)):
         await _process_video("job-123", req)
 
     assert any(call.get("result_url") == "https://cdn.kie.ai/full-15s.mp4" for call in update_calls)
+    assert not any(call.get("result_url") == "https://cdn.kie.ai/base.mp4" for call in update_calls)
     assert mock_script.generate_extension_prompt.await_count == 1
     assert mock_kie.extend_video.await_count == 1
     assert mock_kie.extend_video.await_args.kwargs["model"] == "quality"
+
+
+@pytest.mark.asyncio
+async def test_process_video_15s_extension_failure_marks_failed_and_refunds():
+    from app.routers.generate import VideoRequest, _process_video
+
+    req = VideoRequest(
+        email="test@example.com",
+        image_url="https://app.phinodia.com/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+        description="Video UGC para depiladora",
+        format="portrait",
+        duration=15,
+        product_name="Depiladora Flash",
+        product_category="Belleza",
+        pain_point="Poco tiempo",
+        creative_direction="UGC selfie real",
+        data_consent=True,
+    )
+
+    mock_script = MagicMock()
+    mock_script.analyze_product = AsyncMock(return_value="analysis")
+    mock_script.generate_buyer_persona = AsyncMock(return_value="persona")
+    mock_script.generate_image_prompt = AsyncMock(return_value="first frame")
+    mock_script.generate_video_prompt = AsyncMock(return_value="base prompt")
+    mock_script.generate_extension_prompt = AsyncMock(return_value="extension prompt")
+
+    mock_kie = MagicMock()
+    mock_kie.extend_video = AsyncMock(return_value="ext-task")
+
+    mock_credit = MagicMock()
+    mock_credit.get_or_create_user = AsyncMock(return_value={"id": "user-1"})
+    mock_credit.refund_credit = AsyncMock(return_value=True)
+
+    update_calls = []
+
+    async def fake_update(_table, _params, data):
+        update_calls.append(data)
+        return [data]
+
+    with patch("app.routers.generate.ScriptGenerator", return_value=mock_script), patch(
+        "app.routers.generate.KieAIClient", return_value=mock_kie
+    ), patch(
+        "app.routers.generate.CreditService", return_value=mock_credit
+    ), patch(
+        "app.routers.generate._retry_kie_task",
+        AsyncMock(side_effect=[
+            ("ff-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/frame.png"]}),
+            ("base-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/base.mp4"]}),
+        ]),
+    ), patch(
+        "app.routers.generate._poll_until_done",
+        AsyncMock(return_value={"state": "success", "result_urls": []}),
+    ), patch(
+        "app.routers.generate.db.update", side_effect=fake_update
+    ), patch(
+        "app.routers.generate.persist_external_url", AsyncMock(side_effect=lambda url, *_args: url)
+    ):
+        await _process_video("job-456", req)
+
+    assert any(call.get("status") == "failed" for call in update_calls)
+    assert not any(call.get("status") == "completed" for call in update_calls)
+    mock_credit.refund_credit.assert_awaited_once_with("user-1", "video_15s")
+
+
+@pytest.mark.asyncio
+async def test_process_video_15s_short_final_video_marks_failed_and_refunds():
+    from app.routers.generate import VideoRequest, _process_video
+
+    req = VideoRequest(
+        email="test@example.com",
+        image_url="https://app.phinodia.com/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+        description="Video largo con producto exacto",
+        format="portrait",
+        duration=15,
+        product_name="Crema Glow",
+        product_category="Skincare",
+        pain_point="Piel reseca",
+        creative_direction="UGC selfie",
+        data_consent=True,
+    )
+
+    mock_script = MagicMock()
+    mock_script.analyze_product = AsyncMock(return_value="analysis")
+    mock_script.generate_buyer_persona = AsyncMock(return_value="persona")
+    mock_script.generate_image_prompt = AsyncMock(return_value="first frame")
+    mock_script.generate_video_prompt = AsyncMock(return_value="base prompt")
+    mock_script.generate_extension_prompt = AsyncMock(return_value="extension prompt")
+
+    mock_kie = MagicMock()
+    mock_kie.extend_video = AsyncMock(return_value="ext-task")
+
+    mock_credit = MagicMock()
+    mock_credit.get_or_create_user = AsyncMock(return_value={"id": "user-1"})
+    mock_credit.refund_credit = AsyncMock(return_value=True)
+
+    update_calls = []
+
+    async def fake_update(_table, _params, data):
+        update_calls.append(data)
+        return [data]
+
+    with patch("app.routers.generate.ScriptGenerator", return_value=mock_script), patch(
+        "app.routers.generate.KieAIClient", return_value=mock_kie
+    ), patch(
+        "app.routers.generate.CreditService", return_value=mock_credit
+    ), patch(
+        "app.routers.generate._retry_kie_task",
+        AsyncMock(side_effect=[
+            ("ff-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/frame.png"]}),
+            ("base-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/base.mp4"]}),
+        ]),
+    ), patch(
+        "app.routers.generate._poll_until_done",
+        AsyncMock(return_value={"state": "success", "result_urls": ["https://cdn.kie.ai/full-15s.mp4"]}),
+    ), patch(
+        "app.routers.generate.db.update", side_effect=fake_update
+    ), patch(
+        "app.routers.generate.persist_external_url", AsyncMock(side_effect=lambda url, *_args: url)
+    ), patch(
+        "app.routers.generate.is_video_duration_sufficient", AsyncMock(return_value=False)
+    ):
+        await _process_video("job-789", req)
+
+    assert any(call.get("status") == "failed" for call in update_calls)
+    assert not any(call.get("status") == "completed" for call in update_calls)
+    mock_credit.refund_credit.assert_awaited_once_with("user-1", "video_15s")

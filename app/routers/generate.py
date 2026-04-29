@@ -10,6 +10,7 @@ from app.services.kie_ai import KieAIClient
 from app.services.script_generator import ScriptGenerator
 from app.services.credits import CreditService
 from app.services.gmail import GmailSender, build_delivery_email
+from app.services.media_probe import is_multi_step_video_service, is_video_duration_sufficient
 from app.services.result_storage import persist_external_url
 
 router = APIRouter()
@@ -34,6 +35,25 @@ def _send_delivery_email_safe(email: str, product_name: str, service_type: str, 
         logger.info("Delivery email sent for job %s", job_id)
     except Exception as e:
         logger.warning("Failed to send delivery email for job %s: %s", job_id, type(e).__name__)
+
+
+async def _fail_video_job(job_id: str, req, message: str) -> bool:
+    credit_svc = CreditService()
+    service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
+    user = await credit_svc.get_or_create_user(req.email)
+    failed_now = await db.update(
+        "jobs",
+        {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+        {
+            "status": "failed",
+            "result_url": None,
+            "result_type": None,
+            "error_message": message,
+        },
+    )
+    if failed_now:
+        await credit_svc.refund_credit(user["id"], service_type)
+    return bool(failed_now)
 
 # Hold references to background tasks to prevent GC collection
 _background_tasks: set = set()
@@ -262,6 +282,8 @@ async def _process_video(job_id: str, req: VideoRequest):
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
     kie = KieAIClient(api_key=settings.kie_api_key)
     rich_description = _build_description(req)
+    service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
+    multi_step_video = is_multi_step_video_service(service_type)
     try:
         # Step 1: Deep product analysis
         product_analysis = await script_gen.analyze_product(
@@ -334,42 +356,26 @@ async def _process_video(job_id: str, req: VideoRequest):
             # All retries exhausted — CAS-guarded refund. If /jobs/status auto-fail
             # already failed and refunded the job, the CAS misses → we don't
             # double-refund. Mirrors the landing pipeline pattern.
-            credit_svc = CreditService()
-            service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
-            user = await credit_svc.get_or_create_user(req.email)
-            failed_now = await db.update(
-                "jobs",
-                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                {"status": "failed", "error_message": _friendly_error(base_status.get("error", "unknown"))},
-            )
-            if failed_now:
-                await credit_svc.refund_credit(user["id"], service_type)
+            await _fail_video_job(job_id, req, _friendly_error(base_status.get("error", "unknown")))
             return
 
-        # Save base video result URL — write it IMMEDIATELY so a mid-extension
-        # worker crash leaves the user with a recoverable 8s video. CAS-guarded
-        # so an auto-fail that beat us doesn't end up with a "failed" row that
-        # also has a populated result_url (would expose a deliverable on a
-        # refunded job, gifting the user a free video).
         base_result_url = base_status["result_urls"][0] if base_status.get("result_urls") else ""
         saved = await db.update(
             "jobs",
             {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
             {
                 "kie_task_id": task_id,
-                "result_url": base_result_url,
                 "result_type": "mp4",
             },
         )
         if not saved:
-            logger.info("Video job %s already terminated; not saving partial result_url", job_id)
+            logger.info("Video job %s already terminated; not saving state", job_id)
             return
 
         # Step 6: Extend video for durations > 8s
         num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
         current_task_id = task_id
         final_result_url = base_result_url
-        partial_ready_message = "La extension fallo. Tu video parcial esta listo."
         for ext_num in range(1, num_extensions + 1):
             ext_prompt = await script_gen.generate_extension_prompt(
                 original_prompt=prompt, extension_number=ext_num, duration=req.duration,
@@ -393,50 +399,25 @@ async def _process_video(job_id: str, req: VideoRequest):
                     logger.info("Video job %s terminated mid-extension — aborting", job_id)
                     return
                 ext_status = await _poll_until_done(kie, current_task_id, is_video=True)
-                # Treat success-with-empty-result_urls as a soft failure too.
+                # Treat success-with-empty-result_urls as a hard failure too.
                 # KIE occasionally returns state=success with no URLs on extend;
                 # silently keeping the previous URL would ship an 8s video for a
-                # 30s purchase with no warning to the user.
+                # 15s/22s/30s purchase.
                 ext_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else None
                 if ext_status["state"] != "success" or not ext_url:
-                    # CAS-guarded partial success. Don't overwrite an already-
-                    # failed-and-refunded row (would gift the user a free video
-                    # plus refund). Also clear stale error_message from the
-                    # auto-fail path on a true success.
-                    final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
-                    await db.update(
-                        "jobs",
-                        {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                        {
-                            "status": "completed", "result_url": final_result_url, "result_type": "mp4",
-                            "completed_at": datetime.now(timezone.utc).isoformat(),
-                            "error_message": partial_ready_message,
-                        },
+                    await _fail_video_job(
+                        job_id,
+                        req,
+                        "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado.",
                     )
                     return
                 final_result_url = ext_url
-                # Persist the latest successful extension immediately so a
-                # worker crash or auto-promote later serves the longest clip
-                # already produced instead of falling back to the base 8s URL.
-                saved = await db.update(
-                    "jobs",
-                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                    {"kie_task_id": current_task_id, "result_url": final_result_url, "result_type": "mp4"},
-                )
-                if not saved:
-                    logger.info("Video job %s terminated after successful extension — aborting", job_id)
-                    return
             except Exception as e:
                 logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
-                final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
-                await db.update(
-                    "jobs",
-                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                    {
-                        "status": "completed", "result_url": final_result_url, "result_type": "mp4",
-                        "completed_at": datetime.now(timezone.utc).isoformat(),
-                        "error_message": partial_ready_message,
-                    },
+                await _fail_video_job(
+                    job_id,
+                    req,
+                    "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado.",
                 )
                 return
 
@@ -446,6 +427,13 @@ async def _process_video(job_id: str, req: VideoRequest):
         # tempfile expires. On any download failure, persist_external_url
         # returns the original URL — user still gets the video today.
         final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
+        if multi_step_video and not await is_video_duration_sufficient(final_result_url, service_type):
+            await _fail_video_job(
+                job_id,
+                req,
+                "El video generado no alcanzo la duracion solicitada. Tu credito fue restaurado.",
+            )
+            return
         # CAS-guarded so an auto-failed-and-refunded row can't be resurrected
         # to "completed" (which would leave the user with both a video and a
         # refund). Clear error_message in case auto-fail had set one.
@@ -470,15 +458,12 @@ async def _process_video(job_id: str, req: VideoRequest):
         # cancellations skip the refund/checkpoint and leave the user's
         # credit trapped on a "generating" row until the auto-fail sweep.
         logger.exception("Video pipeline failed for job %s: %s", job_id, type(e).__name__)
-        credit_svc = CreditService()
-        service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
-        user = await credit_svc.get_or_create_user(req.email)
         # Re-read the job to see if a partial result_url was already saved
-        # (e.g. base 8s succeeded, extension N raised mid-flight). Refunding
-        # AND leaving the URL accessible would gift a free video — instead,
-        # mark completed-with-warning and keep the partial as the deliverable.
+        # (e.g. 8s flow completed before a cancellation landed). Multi-step
+        # videos intentionally do NOT ship partials: if the requested duration
+        # wasn't completed, the credit must be restored.
         current = await db.select_one("jobs", {"id": f"eq.{job_id}"})
-        if current and current.get("result_url"):
+        if current and current.get("result_url") and not multi_step_video:
             # Mirror the partial KIE URL onto our own /uploads/results/ so
             # the user can still access it after KIE's tempfile expires.
             mirrored = await persist_external_url(current["result_url"], job_id, "mp4")
@@ -495,13 +480,24 @@ async def _process_video(job_id: str, req: VideoRequest):
             if isinstance(e, asyncio.CancelledError):
                 raise  # re-raise after checkpoint so asyncio task state is correct
             return
-        failed_now = await db.update(
-            "jobs",
-            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-            {"status": "failed", "error_message": _friendly_error(str(e))},
-        )
-        if failed_now:
-            await credit_svc.refund_credit(user["id"], service_type)
+        if current and current.get("result_url") and multi_step_video:
+            enough = await is_video_duration_sufficient(current["result_url"], service_type)
+            if enough:
+                mirrored = await persist_external_url(current["result_url"], job_id, "mp4")
+                await db.update(
+                    "jobs",
+                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+                    {
+                        "status": "completed",
+                        "result_url": mirrored,
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "error_message": None,
+                    },
+                )
+                if isinstance(e, asyncio.CancelledError):
+                    raise
+                return
+        await _fail_video_job(job_id, req, _friendly_error(str(e)))
         if isinstance(e, asyncio.CancelledError):
             raise
 
