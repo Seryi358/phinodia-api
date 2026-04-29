@@ -32,7 +32,7 @@ async def test_create_video_task():
         assert body["generationType"] == "FIRST_AND_LAST_FRAMES_2_VIDEO"
         assert body["aspect_ratio"] == "9:16"
         assert body["imageUrls"] == ["https://example.com/product.jpg"]
-        assert body["enableTranslation"] is False
+        assert body["enableTranslation"] is True
         assert body["quality"] == "high"
 
 

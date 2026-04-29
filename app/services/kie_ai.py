@@ -75,7 +75,7 @@ class KieAIClient:
                 "generationType": "FIRST_AND_LAST_FRAMES_2_VIDEO",
                 "aspect_ratio": aspect_ratio,
                 "quality": "high",
-                "enableTranslation": False,
+                "enableTranslation": True,
             }
         else:
             body = {
@@ -84,7 +84,7 @@ class KieAIClient:
                 "generationType": "TEXT_2_VIDEO",
                 "aspect_ratio": aspect_ratio,
                 "quality": "high",
-                "enableTranslation": False,
+                "enableTranslation": True,
             }
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(

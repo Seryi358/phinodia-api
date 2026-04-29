@@ -505,3 +505,84 @@ async def test_process_video_completes_when_early_openai_steps_raise():
         await _process_video("job-all-openai-fallbacks", req)
 
     assert any(call.get("status") == "completed" for call in update_calls)
+
+
+def test_sanitize_veo_prompt_rewrites_non_english_dialogue_sections():
+    from app.routers.generate import _sanitize_veo_prompt
+
+    prompt = (
+        "Format & Style:\nSelfie UGC\n"
+        "Dialogue Block:\n"
+        "\"Hola, con esto termino rapido y sin dolor\""
+    )
+
+    sanitized = _sanitize_veo_prompt(prompt)
+
+    assert "Hola" not in sanitized
+    assert "Dialogue Block:" in sanitized
+    assert "described in English only" in sanitized
+
+
+@pytest.mark.asyncio
+async def test_process_video_sanitizes_veo_prompts_before_generation():
+    from app.routers.generate import VideoRequest, _process_video
+
+    req = VideoRequest(
+        email="test@example.com",
+        image_url="https://app.phinodia.com/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+        description="UGC selfie para rasuradora",
+        format="portrait",
+        duration=15,
+        product_name="Rasuradora",
+        product_category="Belleza",
+        pain_point="Depilarse toma tiempo",
+        creative_direction="UGC selfie natural",
+        data_consent=True,
+    )
+
+    mock_script = MagicMock()
+    mock_script.analyze_product = AsyncMock(return_value="analysis")
+    mock_script.generate_buyer_persona = AsyncMock(return_value="persona")
+    mock_script.generate_image_prompt = AsyncMock(return_value="first frame")
+    mock_script.generate_video_prompt = AsyncMock(
+        return_value="Format & Style:\nSelfie UGC\nDialogue Block:\n\"Hola, ya no uso cuchilla\""
+    )
+    mock_script.compress_for_veo = AsyncMock(side_effect=lambda text: text)
+    mock_script.generate_extension_prompt = AsyncMock(return_value='Spoken line: "Yo no vuelvo a la cuchilla."')
+
+    mock_kie = MagicMock()
+    mock_kie.extend_video = AsyncMock(return_value="ext-task")
+
+    update_calls = []
+
+    async def fake_update(_table, _params, data):
+        update_calls.append(data)
+        return [data]
+
+    with patch("app.routers.generate.ScriptGenerator", return_value=mock_script), patch(
+        "app.routers.generate.KieAIClient", return_value=mock_kie
+    ), patch(
+        "app.routers.generate.VIDEO_RENDER_RETRIES", 1
+    ), patch(
+        "app.routers.generate._retry_kie_task",
+        AsyncMock(side_effect=[
+            ("ff-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/frame.png"]}),
+            ("base-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/base.mp4"]}),
+        ]),
+    ), patch(
+        "app.routers.generate._poll_until_done",
+        AsyncMock(return_value={"state": "success", "result_urls": ["https://cdn.kie.ai/full-15s.mp4"]}),
+    ), patch(
+        "app.routers.generate.db.update", side_effect=fake_update
+    ), patch(
+        "app.routers.generate.is_video_duration_sufficient", AsyncMock(return_value=True)
+    ), patch(
+        "app.routers.generate.persist_external_url", AsyncMock(side_effect=lambda url, *_args: url)
+    ), patch("app.routers.generate.asyncio.to_thread", AsyncMock(return_value=None)):
+        await _process_video("job-sanitize", req)
+
+    generating_call = next(call for call in update_calls if call.get("status") == "generating")
+    assert "Hola" not in generating_call["generated_prompt"]
+    assert "described in English only" in generating_call["generated_prompt"]
+    assert mock_kie.extend_video.await_count == 1
+    assert "Yo no vuelvo" not in mock_kie.extend_video.await_args.kwargs["prompt"]

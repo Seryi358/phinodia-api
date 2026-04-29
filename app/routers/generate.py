@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Literal
 from fastapi import APIRouter, HTTPException
@@ -119,32 +120,54 @@ def _build_safe_veo_prompt(req: "VideoRequest") -> str:
     pain = _compact_text(req.pain_point or "the routine takes too long", max_chars=60)
     product = _compact_text(req.product_name or "the product", max_chars=40)
     category = _compact_text(req.product_category or "beauty product", max_chars=40)
-    spoken = _compact_text(
-        f"Antes esto me quitaba tiempo, pero con {req.product_name} lo hago rapido y sin dolor. "
-        f"Yo ya no vuelvo a lo de antes.",
-        max_chars=120,
-    )
     return (
         f"Vertical 9:16 front-camera selfie UGC. Real Colombian woman at home using the exact {product} "
         f"from the reference image. Raw smartphone footage, natural micro-shake, mild compression, warm home light, "
         f"no text overlays, no music, not cinematic. Show the problem '{pain}', a quick believable {category} demo, "
         f"clear product close-up, relief, satisfied smile, and soft CTA. Preserve exact packaging, label colors, shape, and size from the reference image. "
-        f"Spoken line in natural Colombian Spanish: \"{spoken}\""
+        "Audio stays close and natural, and the creator briefly says one short line in warm Colombian Spanish about faster, irritation-free results. "
+        "Describe that speech in English only."
     )
 
 
 def _build_safe_extension_prompt(req: "VideoRequest", extension_number: int) -> str:
     product = _compact_text(req.product_name or "the product", max_chars=40)
-    spoken = _compact_text(
-        f"Con {req.product_name} termino rapido, sin enredarme, y la recomiendo totalmente.",
-        max_chars=100,
-    )
     return (
         f"Continue the same vertical selfie UGC clip with the same Colombian creator, same room, same handheld phone realism, "
         f"and exact {product} packaging from the reference image. Keep the motion continuous, add one short product demo beat, "
         f"then end with a warm satisfied reaction and a soft CTA. Continuation segment {extension_number}. "
-        f"Spoken line in natural Colombian Spanish: \"{spoken}\""
+        "If speech is needed, describe in English that she says one brief natural Colombian-Spanish line about quick, painless results."
     )
+
+
+def _sanitize_veo_prompt(prompt: str) -> str:
+    """Keep VEO prompts English-only per current KIE guidance.
+
+    The upstream docs explicitly warn that non-English prompt text can trigger
+    client-side rejections. We still want Colombian-Spanish delivery in the
+    generated audio, but we describe that intent in English instead of sending
+    literal Spanish dialogue.
+    """
+    text = (prompt or "").strip()
+    if not text:
+        return text
+    text = (
+        text.replace("“", "\"")
+        .replace("”", "\"")
+        .replace("’", "'")
+        .replace("‘", "'")
+    )
+    text = re.sub(
+        r"(?is)(Dialogue Block:\s*)(.*)$",
+        r"\1One brief spoken beat in natural Colombian Spanish about quick, irritation-free results, described in English only. End the speech before the final beat.",
+        text,
+    )
+    text = re.sub(
+        r"(?im)^\s*(Spoken line|L[ií]nea hablada)\s*:\s*.*$",
+        "Spoken line: One brief spoken beat in natural Colombian Spanish about quick, irritation-free results, described in English only.",
+        text,
+    )
+    return text
 
 
 def _default_product_analysis(req: "VideoRequest") -> str:
@@ -429,11 +452,11 @@ async def _render_video_with_extensions(
       (None, "terminated") if the job was already failed/cancelled elsewhere
       (None, user_facing_error_message) on failure
     """
-    safe_prompt = _build_safe_veo_prompt(req)
+    safe_prompt = _sanitize_veo_prompt(_build_safe_veo_prompt(req))
     active_prompt = safe_prompt
     prompt_variants = [safe_prompt]
     if prompt != safe_prompt:
-        prompt_variants.append(prompt)
+        prompt_variants.append(_sanitize_veo_prompt(prompt))
 
     task_id = ""
     base_status: dict = {"state": "failed", "result_urls": [], "error": "unknown"}
@@ -481,7 +504,7 @@ async def _render_video_with_extensions(
     current_task_id = task_id
     final_result_url = base_result_url
     for ext_num in range(1, num_extensions + 1):
-        safe_ext_prompt = _build_safe_extension_prompt(req, ext_num)
+        safe_ext_prompt = _sanitize_veo_prompt(_build_safe_extension_prompt(req, ext_num))
         ext_prompt_variants = [safe_ext_prompt]
         try:
             ext_prompt = await script_gen.generate_extension_prompt(
@@ -494,6 +517,7 @@ async def _render_video_with_extensions(
             )
             if len(ext_prompt) > 500:
                 ext_prompt = await script_gen.compress_for_veo(ext_prompt)
+            ext_prompt = _sanitize_veo_prompt(ext_prompt)
             if ext_prompt != safe_ext_prompt:
                 ext_prompt_variants.append(ext_prompt)
         except Exception as e:
@@ -597,6 +621,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         except Exception as e:
             logger.warning("Base video prompt generation failed for job %s; using safe prompt: %s", job_id, type(e).__name__)
             prompt = _build_safe_veo_prompt(req)
+        prompt = _sanitize_veo_prompt(prompt)
         # CAS: only flip processing→generating. If auto-fail already moved
         # the job to "failed", abort the pipeline so we don't re-arm a
         # refunded job (which would also expose us to a 2nd auto-refund).
