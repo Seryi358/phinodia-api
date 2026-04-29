@@ -401,11 +401,11 @@ async def _render_video_with_extensions(
       (None, "terminated") if the job was already failed/cancelled elsewhere
       (None, user_facing_error_message) on failure
     """
-    active_prompt = prompt
-    prompt_variants = [prompt]
     safe_prompt = _build_safe_veo_prompt(req)
-    if safe_prompt != prompt:
-        prompt_variants.append(safe_prompt)
+    active_prompt = safe_prompt
+    prompt_variants = [safe_prompt]
+    if prompt != safe_prompt:
+        prompt_variants.append(prompt)
 
     task_id = ""
     base_status: dict = {"state": "failed", "result_urls": [], "error": "unknown"}
@@ -464,9 +464,9 @@ async def _render_video_with_extensions(
         if len(ext_prompt) > 500:
             ext_prompt = await script_gen.compress_for_veo(ext_prompt)
         safe_ext_prompt = _build_safe_extension_prompt(req, ext_num)
-        ext_prompt_variants = [ext_prompt]
-        if safe_ext_prompt != ext_prompt:
-            ext_prompt_variants.append(safe_ext_prompt)
+        ext_prompt_variants = [safe_ext_prompt]
+        if ext_prompt != safe_ext_prompt:
+            ext_prompt_variants.append(ext_prompt)
         ext_succeeded = False
         for ext_variant in ext_prompt_variants:
             try:
