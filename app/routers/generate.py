@@ -64,6 +64,7 @@ DURATION_EXTENSIONS = {8: 0, 15: 1, 22: 2, 30: 3}
 
 # Max retries for KIE AI generation failures
 MAX_RETRIES = 3
+VIDEO_RENDER_RETRIES = 2
 
 # User-friendly error messages based on KIE AI errors
 ERROR_MESSAGES = {
@@ -340,6 +341,91 @@ async def _retry_video_extension(
     return "", {"state": "failed", "result_urls": [], "error": last_error}
 
 
+async def _render_video_with_extensions(
+    *,
+    kie: KieAIClient,
+    script_gen: ScriptGenerator,
+    job_id: str,
+    req: VideoRequest,
+    prompt: str,
+    first_frame_url: str,
+    aspect: str,
+    product_analysis: str,
+    buyer_persona: str,
+    multi_step_video: bool,
+    service_type: str,
+) -> tuple[str | None, str | None]:
+    """Render base Veo video plus extensions, returning a final URL or an error.
+
+    Returns:
+      (url, None) on success
+      (None, "terminated") if the job was already failed/cancelled elsewhere
+      (None, user_facing_error_message) on failure
+    """
+
+    async def _create_video_with_image():
+        return await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect, use_image=True)
+
+    async def _create_video_text_only():
+        return await kie.create_video_task(prompt=prompt, image_url="", aspect_ratio=aspect, use_image=False)
+
+    task_id, base_status = await _retry_kie_task(kie, _create_video_with_image, poll_is_video=True, max_retries=2)
+    if base_status["state"] != "success":
+        logger.info("Image-seeded Veo generation failed for job %s, falling back to TEXT_2_VIDEO", job_id)
+        task_id, base_status = await _retry_kie_task(kie, _create_video_text_only, poll_is_video=True, max_retries=2)
+    if base_status["state"] != "success":
+        return None, _friendly_error(base_status.get("error", "unknown"))
+
+    base_result_url = base_status["result_urls"][0] if base_status.get("result_urls") else ""
+    saved = await db.update(
+        "jobs",
+        {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+        {
+            "kie_task_id": task_id,
+            "result_type": "mp4",
+        },
+    )
+    if not saved:
+        logger.info("Video job %s already terminated; not saving state", job_id)
+        return None, "terminated"
+
+    num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
+    current_task_id = task_id
+    final_result_url = base_result_url
+    for ext_num in range(1, num_extensions + 1):
+        ext_prompt = await script_gen.generate_extension_prompt(
+            original_prompt=prompt,
+            extension_number=ext_num,
+            duration=req.duration,
+            product_name=req.product_name,
+            product_analysis=product_analysis,
+            buyer_persona=buyer_persona,
+        )
+        try:
+            ext_task_id, ext_status = await _retry_video_extension(
+                kie=kie,
+                parent_task_id=current_task_id,
+                prompt=ext_prompt,
+                job_id=job_id,
+                max_retries=2,
+            )
+            if ext_status["state"] == "terminated":
+                return None, "terminated"
+            ext_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else None
+            if ext_status["state"] != "success" or not ext_url:
+                return None, "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
+            current_task_id = ext_task_id
+            final_result_url = ext_url
+        except Exception as e:
+            logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
+            return None, "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
+
+    final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
+    if multi_step_video and not await is_video_duration_sufficient(final_result_url, service_type):
+        return None, "El video generado no alcanzo la duracion solicitada. Tu credito fue restaurado."
+    return final_result_url, None
+
+
 async def _process_video(job_id: str, req: VideoRequest):
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
     kie = KieAIClient(api_key=settings.kie_api_key)
@@ -399,95 +485,40 @@ async def _process_video(job_id: str, req: VideoRequest):
             logger.info("Video job %s already terminated by auto-fail — aborting", job_id)
             return
 
-        # Step 5: Generate video with VEO 3.1 (retry with fallback)
-        async def _create_video_with_image():
-            return await kie.create_video_task(prompt=prompt, image_url=first_frame_url, aspect_ratio=aspect, use_image=True)
-
-        async def _create_video_text_only():
-            return await kie.create_video_task(prompt=prompt, image_url="", aspect_ratio=aspect, use_image=False)
-
-        # Try image-seeded Veo generation first
-        task_id, base_status = await _retry_kie_task(kie, _create_video_with_image, poll_is_video=True, max_retries=2)
-
-        # If image-seeded generation failed, fallback to text-only retries
-        if base_status["state"] != "success":
-            logger.info("Image-seeded Veo generation failed for job %s, falling back to TEXT_2_VIDEO", job_id)
-            task_id, base_status = await _retry_kie_task(kie, _create_video_text_only, poll_is_video=True, max_retries=2)
-
-        if base_status["state"] != "success":
-            # All retries exhausted — CAS-guarded refund. If /jobs/status auto-fail
-            # already failed and refunded the job, the CAS misses → we don't
-            # double-refund. Mirrors the landing pipeline pattern.
-            await _fail_video_job(job_id, req, _friendly_error(base_status.get("error", "unknown")))
-            return
-
-        base_result_url = base_status["result_urls"][0] if base_status.get("result_urls") else ""
-        saved = await db.update(
-            "jobs",
-            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-            {
-                "kie_task_id": task_id,
-                "result_type": "mp4",
-            },
-        )
-        if not saved:
-            logger.info("Video job %s already terminated; not saving state", job_id)
-            return
-
-        # Step 6: Extend video for durations > 8s
-        num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
-        current_task_id = task_id
-        final_result_url = base_result_url
-        for ext_num in range(1, num_extensions + 1):
-            ext_prompt = await script_gen.generate_extension_prompt(
-                original_prompt=prompt, extension_number=ext_num, duration=req.duration,
-                product_name=req.product_name, product_analysis=product_analysis, buyer_persona=buyer_persona,
+        # Step 5/6: Generate base video + extensions. If the final long-form
+        # asset still comes back short or an extension fails in a recoverable
+        # way, rerun the full long-video render once before refunding.
+        final_result_url = None
+        render_error = "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
+        for render_attempt in range(1, VIDEO_RENDER_RETRIES + 1):
+            final_result_url, render_error = await _render_video_with_extensions(
+                kie=kie,
+                script_gen=script_gen,
+                job_id=job_id,
+                req=req,
+                prompt=prompt,
+                first_frame_url=first_frame_url,
+                aspect=aspect,
+                product_analysis=product_analysis,
+                buyer_persona=buyer_persona,
+                multi_step_video=multi_step_video,
+                service_type=service_type,
             )
-            try:
-                ext_task_id, ext_status = await _retry_video_extension(
-                    kie=kie,
-                    parent_task_id=current_task_id,
-                    prompt=ext_prompt,
-                    job_id=job_id,
-                    max_retries=2,
-                )
-                if ext_status["state"] == "terminated":
-                    return
-                # Treat success-with-empty-result_urls as a hard failure too.
-                # KIE occasionally returns state=success with no URLs on extend;
-                # silently keeping the previous URL would ship an 8s video for a
-                # 15s/22s/30s purchase.
-                ext_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else None
-                if ext_status["state"] != "success" or not ext_url:
-                    await _fail_video_job(
-                        job_id,
-                        req,
-                        "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado.",
-                    )
-                    return
-                current_task_id = ext_task_id
-                final_result_url = ext_url
-            except Exception as e:
-                logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
-                await _fail_video_job(
-                    job_id,
-                    req,
-                    "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado.",
-                )
+            if final_result_url:
+                break
+            if render_error == "terminated":
                 return
-
-        # All extensions done (or no extensions needed) — save final result.
-        # Mirror the upstream URL onto our own /uploads/results/ so the
-        # tile/thumbnail in "Mis generaciones" doesn't 404 once KIE's
-        # tempfile expires. On any download failure, persist_external_url
-        # returns the original URL — user still gets the video today.
-        final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
-        if multi_step_video and not await is_video_duration_sufficient(final_result_url, service_type):
-            await _fail_video_job(
+            logger.warning(
+                "Video render attempt %d/%d failed for job %s: %s",
+                render_attempt,
+                VIDEO_RENDER_RETRIES,
                 job_id,
-                req,
-                "El video generado no alcanzo la duracion solicitada. Tu credito fue restaurado.",
+                render_error,
             )
+            if render_attempt < VIDEO_RENDER_RETRIES:
+                await asyncio.sleep(5)
+        if not final_result_url:
+            await _fail_video_job(job_id, req, render_error)
             return
         # CAS-guarded so an auto-failed-and-refunded row can't be resurrected
         # to "completed" (which would leave the user with both a video and a

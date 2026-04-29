@@ -130,6 +130,8 @@ async def test_process_video_15s_extension_failure_marks_failed_and_refunds():
     ), patch(
         "app.routers.generate.CreditService", return_value=mock_credit
     ), patch(
+        "app.routers.generate.VIDEO_RENDER_RETRIES", 1
+    ), patch(
         "app.routers.generate._retry_kie_task",
         AsyncMock(side_effect=[
             ("ff-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/frame.png"]}),
@@ -191,6 +193,8 @@ async def test_process_video_15s_short_final_video_marks_failed_and_refunds():
         "app.routers.generate.KieAIClient", return_value=mock_kie
     ), patch(
         "app.routers.generate.CreditService", return_value=mock_credit
+    ), patch(
+        "app.routers.generate.VIDEO_RENDER_RETRIES", 1
     ), patch(
         "app.routers.generate._retry_kie_task",
         AsyncMock(side_effect=[
