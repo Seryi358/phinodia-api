@@ -493,7 +493,7 @@ async def _render_video_with_extensions(
             base_status.get("error", "unknown"),
         )
     if base_status["state"] != "success":
-        return None, _friendly_error(base_status.get("error", "unknown"))
+        return None, f"Fallo en etapa base_render. {_friendly_error(base_status.get('error', 'unknown'))}"
 
     base_result_url = base_status["result_urls"][0] if base_status.get("result_urls") else ""
     saved = await db.update(
@@ -556,11 +556,11 @@ async def _render_video_with_extensions(
             except Exception as e:
                 logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
         if not ext_succeeded:
-            return None, "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
+            return None, f"Fallo en etapa extension_{ext_num}. No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
 
     final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
     if multi_step_video and not await is_video_duration_sufficient(final_result_url, service_type):
-        return None, "El video generado no alcanzo la duracion solicitada. Tu credito fue restaurado."
+        return None, "Fallo en etapa duration_check. El video generado no alcanzo la duracion solicitada. Tu credito fue restaurado."
     return final_result_url, None
 
 
@@ -570,8 +570,10 @@ async def _process_video(job_id: str, req: VideoRequest):
     rich_description = _build_description(req)
     service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
     multi_step_video = is_multi_step_video_service(service_type)
+    phase = "starting"
     try:
         # Step 1: Deep product analysis
+        phase = "product_analysis"
         try:
             product_analysis = await script_gen.analyze_product(
                 product_name=req.product_name, description=rich_description, image_url=req.image_url,
@@ -581,6 +583,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             product_analysis = _default_product_analysis(req)
 
         # Step 2: Buyer persona (Colombian UGC creator)
+        phase = "buyer_persona"
         try:
             buyer_persona = await script_gen.generate_buyer_persona(
                 product_name=req.product_name, product_analysis=product_analysis,
@@ -590,6 +593,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             buyer_persona = _default_buyer_persona(req)
 
         # Step 3: Generate first frame with GPT Image 2 (POV selfie, no phone visible)
+        phase = "first_frame_prompt"
         try:
             first_frame_prompt = await script_gen.generate_image_prompt(
                 product_name=req.product_name, description=rich_description,
@@ -608,6 +612,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             first_frame_prompt = _build_safe_first_frame_prompt(req)
 
         # Retry first frame generation
+        phase = "first_frame_render"
         aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
         ff_task_id, ff_status = await _retry_kie_task(
             kie,
@@ -617,6 +622,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         first_frame_url = ff_status["result_urls"][0] if ff_status["state"] == "success" and ff_status["result_urls"] else req.image_url
 
         # Step 4: Generate video prompt (AIDA, Colombian Spanish, raw/imperfect)
+        phase = "base_prompt"
         try:
             prompt = await script_gen.generate_video_prompt(
                 product_name=req.product_name, description=rich_description,
@@ -633,6 +639,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         # CAS: only flip processing→generating. If auto-fail already moved
         # the job to "failed", abort the pipeline so we don't re-arm a
         # refunded job (which would also expose us to a 2nd auto-refund).
+        phase = "activate_generating"
         still_active = await db.update(
             "jobs",
             {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
@@ -645,6 +652,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         # Step 5/6: Generate base video + extensions. If the final long-form
         # asset still comes back short or an extension fails in a recoverable
         # way, rerun the full long-video render once before refunding.
+        phase = "render_pipeline"
         final_result_url = None
         render_error = "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
         for render_attempt in range(1, VIDEO_RENDER_RETRIES + 1):
@@ -680,6 +688,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         # CAS-guarded so an auto-failed-and-refunded row can't be resurrected
         # to "completed" (which would leave the user with both a video and a
         # refund). Clear error_message in case auto-fail had set one.
+        phase = "complete_job"
         completed_now = await db.update(
             "jobs",
             {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
@@ -740,7 +749,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                 if isinstance(e, asyncio.CancelledError):
                     raise
                 return
-        await _fail_video_job(job_id, req, _friendly_error(str(e)))
+        await _fail_video_job(job_id, req, f"Fallo interno en etapa {phase}. {_friendly_error(str(e))}")
         if isinstance(e, asyncio.CancelledError):
             raise
 
