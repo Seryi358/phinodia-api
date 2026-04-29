@@ -446,3 +446,62 @@ async def test_process_video_completes_when_extension_prompt_generation_raises()
         await _process_video("job-ext-prompt-fallback", req)
 
     assert any(call.get("status") == "completed" for call in update_calls)
+
+
+@pytest.mark.asyncio
+async def test_process_video_completes_when_early_openai_steps_raise():
+    from app.routers.generate import VideoRequest, _process_video
+
+    req = VideoRequest(
+        email="test@example.com",
+        image_url="https://app.phinodia.com/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+        description="UGC selfie para rasuradora",
+        format="portrait",
+        duration=15,
+        product_name="Rasuradora",
+        product_category="Belleza",
+        pain_point="Depilarse toma tiempo",
+        creative_direction="UGC selfie natural",
+        data_consent=True,
+    )
+
+    mock_script = MagicMock()
+    mock_script.analyze_product = AsyncMock(side_effect=RuntimeError("analysis down"))
+    mock_script.generate_buyer_persona = AsyncMock(side_effect=RuntimeError("persona down"))
+    mock_script.generate_image_prompt = AsyncMock(side_effect=RuntimeError("image prompt down"))
+    mock_script.generate_video_prompt = AsyncMock(side_effect=RuntimeError("video prompt down"))
+    mock_script.compress_for_veo = AsyncMock(side_effect=lambda text: text)
+    mock_script.generate_extension_prompt = AsyncMock(side_effect=RuntimeError("extension prompt down"))
+
+    mock_kie = MagicMock()
+    mock_kie.extend_video = AsyncMock(return_value="ext-task")
+
+    update_calls = []
+
+    async def fake_update(_table, _params, data):
+        update_calls.append(data)
+        return [data]
+
+    with patch("app.routers.generate.ScriptGenerator", return_value=mock_script), patch(
+        "app.routers.generate.KieAIClient", return_value=mock_kie
+    ), patch(
+        "app.routers.generate.VIDEO_RENDER_RETRIES", 1
+    ), patch(
+        "app.routers.generate._retry_kie_task",
+        AsyncMock(side_effect=[
+            ("ff-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/frame.png"]}),
+            ("base-task", {"state": "success", "result_urls": ["https://cdn.kie.ai/base.mp4"]}),
+        ]),
+    ), patch(
+        "app.routers.generate._poll_until_done",
+        AsyncMock(return_value={"state": "success", "result_urls": ["https://cdn.kie.ai/full-15s.mp4"]}),
+    ), patch(
+        "app.routers.generate.db.update", side_effect=fake_update
+    ), patch(
+        "app.routers.generate.is_video_duration_sufficient", AsyncMock(return_value=True)
+    ), patch(
+        "app.routers.generate.persist_external_url", AsyncMock(side_effect=lambda url, *_args: url)
+    ), patch("app.routers.generate.asyncio.to_thread", AsyncMock(return_value=None)):
+        await _process_video("job-all-openai-fallbacks", req)
+
+    assert any(call.get("status") == "completed" for call in update_calls)

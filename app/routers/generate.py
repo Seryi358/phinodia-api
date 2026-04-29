@@ -147,6 +147,34 @@ def _build_safe_extension_prompt(req: "VideoRequest", extension_number: int) -> 
     )
 
 
+def _default_product_analysis(req: "VideoRequest") -> str:
+    return (
+        f"Product name: {req.product_name}. "
+        f"Category: {req.product_category or 'consumer product'}. "
+        f"Use the reference image as the exact source of truth for packaging, shape, colors, label placement, and scale. "
+        f"Primary pain point: {req.pain_point or 'the routine takes too long'}."
+    )
+
+
+def _default_buyer_persona(req: "VideoRequest") -> str:
+    return (
+        "Believable Colombian woman, 24-35, everyday home setting, relaxed styling, warm tone, "
+        "natural phone-camera confidence, not a polished actress or luxury influencer."
+    )
+
+
+def _build_safe_first_frame_prompt(req: "VideoRequest") -> str:
+    product = _compact_text(req.product_name or "the product", max_chars=40)
+    category = _compact_text(req.product_category or "consumer product", max_chars=40)
+    return (
+        f"SCENE: Real home interior with natural window light and authentic everyday background.\n"
+        f"SUBJECT: Believable Colombian woman, 24-35, front-camera selfie framing from chest up, natural expression, holding the exact {product} naturally near her chest.\n"
+        f"PRODUCT: Preserve the exact {category} packaging from the reference image, including shape, colors, label placement, and visible brand text.\n"
+        f"COMPOSITION: Vertical 9:16 first frame for UGC video, phone-camera realism, motion-ready pose, clear face and clear product, no visible phone.\n"
+        f"CONSTRAINTS: Photorealistic, raw smartphone aesthetic, no ultra-HD polish, no text overlay, no extra products, no packaging redesign, no anatomy glitches."
+    )
+
+
 def _strip_required(v: str) -> str:
     """Reject whitespace-only required text fields. min_length=1 alone passes
     "   " which then sends a useless prompt to OpenAI and burns a credit on
@@ -512,28 +540,40 @@ async def _process_video(job_id: str, req: VideoRequest):
     multi_step_video = is_multi_step_video_service(service_type)
     try:
         # Step 1: Deep product analysis
-        product_analysis = await script_gen.analyze_product(
-            product_name=req.product_name, description=rich_description, image_url=req.image_url,
-        )
+        try:
+            product_analysis = await script_gen.analyze_product(
+                product_name=req.product_name, description=rich_description, image_url=req.image_url,
+            )
+        except Exception as e:
+            logger.warning("Product analysis failed for job %s; using safe fallback: %s", job_id, type(e).__name__)
+            product_analysis = _default_product_analysis(req)
 
         # Step 2: Buyer persona (Colombian UGC creator)
-        buyer_persona = await script_gen.generate_buyer_persona(
-            product_name=req.product_name, product_analysis=product_analysis,
-        )
+        try:
+            buyer_persona = await script_gen.generate_buyer_persona(
+                product_name=req.product_name, product_analysis=product_analysis,
+            )
+        except Exception as e:
+            logger.warning("Buyer persona failed for job %s; using safe fallback: %s", job_id, type(e).__name__)
+            buyer_persona = _default_buyer_persona(req)
 
         # Step 3: Generate first frame with GPT Image 2 (POV selfie, no phone visible)
-        first_frame_prompt = await script_gen.generate_image_prompt(
-            product_name=req.product_name, description=rich_description,
-            aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
-            creative_direction=(
-                "Close-up arm's-length front-camera selfie. The creator matches the buyer persona, "
-                "looks into the lens, and holds the real product at chest level with the packaging clearly visible. "
-                "Natural home setting, candid phone-photo realism, slight imperfections, no visible phone in frame."
-            ),
-            product_analysis=product_analysis,
-            buyer_persona=buyer_persona,
-            prompt_mode="video_first_frame",
-        )
+        try:
+            first_frame_prompt = await script_gen.generate_image_prompt(
+                product_name=req.product_name, description=rich_description,
+                aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
+                creative_direction=(
+                    "Close-up arm's-length front-camera selfie. The creator matches the buyer persona, "
+                    "looks into the lens, and holds the real product at chest level with the packaging clearly visible. "
+                    "Natural home setting, candid phone-photo realism, slight imperfections, no visible phone in frame."
+                ),
+                product_analysis=product_analysis,
+                buyer_persona=buyer_persona,
+                prompt_mode="video_first_frame",
+            )
+        except Exception as e:
+            logger.warning("First-frame prompt failed for job %s; using safe fallback: %s", job_id, type(e).__name__)
+            first_frame_prompt = _build_safe_first_frame_prompt(req)
 
         # Retry first frame generation
         aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
