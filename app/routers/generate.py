@@ -72,6 +72,8 @@ ERROR_MESSAGES = {
     "timed out": "La generacion tomo demasiado tiempo. Por favor intenta de nuevo con una descripcion mas corta.",
     "content policy": "Tu solicitud fue rechazada por politicas de contenido. Intenta con una descripcion diferente que no incluya contenido sensible.",
     "rate limit": "El servicio esta saturado en este momento. Tu credito fue restaurado, intenta de nuevo en unos minutos.",
+    "credits insufficient": "No pudimos completar el video porque la cuenta de KIE AI no tiene creditos suficientes. Tu credito fue restaurado.",
+    "current balance isn't enough": "No pudimos completar el video porque la cuenta de KIE AI no tiene creditos suficientes. Tu credito fue restaurado.",
     "invalid": "Hubo un problema con los datos enviados. Verifica tu imagen y descripcion e intenta de nuevo.",
 }
 
