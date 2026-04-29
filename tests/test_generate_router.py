@@ -50,6 +50,7 @@ async def test_process_video_15s_completes_with_final_result_only():
     mock_script.generate_buyer_persona = AsyncMock(return_value="Valentina, 27, Bogota")
     mock_script.generate_image_prompt = AsyncMock(return_value="first frame prompt")
     mock_script.generate_video_prompt = AsyncMock(return_value="base veo prompt")
+    mock_script.compress_for_veo = AsyncMock(side_effect=lambda text: text)
     mock_script.generate_extension_prompt = AsyncMock(return_value="extension prompt")
 
     mock_kie = MagicMock()
@@ -110,6 +111,7 @@ async def test_process_video_15s_extension_failure_marks_failed_and_refunds():
     mock_script.generate_buyer_persona = AsyncMock(return_value="persona")
     mock_script.generate_image_prompt = AsyncMock(return_value="first frame")
     mock_script.generate_video_prompt = AsyncMock(return_value="base prompt")
+    mock_script.compress_for_veo = AsyncMock(side_effect=lambda text: text)
     mock_script.generate_extension_prompt = AsyncMock(return_value="extension prompt")
 
     mock_kie = MagicMock()
@@ -174,6 +176,7 @@ async def test_process_video_15s_short_final_video_marks_failed_and_refunds():
     mock_script.generate_buyer_persona = AsyncMock(return_value="persona")
     mock_script.generate_image_prompt = AsyncMock(return_value="first frame")
     mock_script.generate_video_prompt = AsyncMock(return_value="base prompt")
+    mock_script.compress_for_veo = AsyncMock(side_effect=lambda text: text)
     mock_script.generate_extension_prompt = AsyncMock(return_value="extension prompt")
 
     mock_kie = MagicMock()

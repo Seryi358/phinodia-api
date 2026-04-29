@@ -401,6 +401,8 @@ async def _render_video_with_extensions(
             product_analysis=product_analysis,
             buyer_persona=buyer_persona,
         )
+        if len(ext_prompt) > 500:
+            ext_prompt = await script_gen.compress_for_veo(ext_prompt)
         try:
             ext_task_id, ext_status = await _retry_video_extension(
                 kie=kie,
@@ -473,6 +475,8 @@ async def _process_video(job_id: str, req: VideoRequest):
             creative_direction=req.creative_direction,
             product_analysis=product_analysis, buyer_persona=buyer_persona,
         )
+        if len(prompt) > 500:
+            prompt = await script_gen.compress_for_veo(prompt)
         # CAS: only flip processing→generating. If auto-fail already moved
         # the job to "failed", abort the pipeline so we don't re-arm a
         # refunded job (which would also expose us to a 2nd auto-refund).
