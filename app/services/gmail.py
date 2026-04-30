@@ -4,6 +4,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from typing import Literal
 
 
 def _safe_url(u: str) -> str:
@@ -70,6 +71,70 @@ def _apple_email_base(content: str) -> str:
 </table>
 </body>
 </html>"""
+
+
+def build_ops_alert_email(
+    *,
+    subject: str,
+    title: str,
+    summary: str,
+    severity: Literal["info", "warning", "critical"] = "info",
+    facts: dict[str, str] | None = None,
+    items: list[str] | None = None,
+    raw_text: str = "",
+) -> tuple[str, str]:
+    """Render a polished operations email for bot alerts/reports."""
+    badge = {
+        "info": ("#1D1D1F", "#F5F5F7", "INFO"),
+        "warning": ("#9A6700", "#FFF7D6", "WARNING"),
+        "critical": ("#B42318", "#FEE4E2", "CRITICAL"),
+    }.get(severity, ("#1D1D1F", "#F5F5F7", severity.upper()))
+    badge_fg, badge_bg, badge_label = badge
+
+    safe_title = html.escape(title or "Alerta operativa")
+    safe_summary = html.escape(summary or "")
+
+    facts_html = ""
+    if facts:
+        rows = []
+        for key, value in facts.items():
+            rows.append(
+                f"""
+                <tr>
+                    <td style="padding:10px 0;color:#86868b;font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">{html.escape(str(key))}</td>
+                    <td style="padding:10px 0;color:#1d1d1f;font-size:14px;text-align:right;font-weight:600;">{html.escape(str(value))}</td>
+                </tr>"""
+            )
+        facts_html = f"""
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:24px 0 0;background:#f5f5f7;border-radius:12px;padding:0 18px;">
+            {''.join(rows)}
+        </table>"""
+
+    items_html = ""
+    clean_items = [str(item).strip() for item in (items or []) if str(item).strip()]
+    if clean_items:
+        items_html = "<ul style=\"margin:20px 0 0;padding-left:20px;color:#1d1d1f;font-size:14px;line-height:1.7;\">" + "".join(
+            f"<li style=\"margin:0 0 10px;\">{html.escape(item)}</li>"
+            for item in clean_items
+        ) + "</ul>"
+
+    raw_html = ""
+    if raw_text.strip():
+        raw_html = f"""
+        <div style="margin-top:24px;background:#0b1437;border-radius:12px;padding:18px 20px;">
+            <div style="font-size:11px;font-weight:600;color:#d0d5dd;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;">Detalle bruto</div>
+            <pre style="margin:0;white-space:pre-wrap;font-family:'SF Mono',Menlo,monospace;font-size:12px;line-height:1.65;color:#ffffff;">{html.escape(raw_text)}</pre>
+        </div>"""
+
+    content = f"""
+        <div style="display:inline-block;padding:6px 12px;border-radius:999px;background:{badge_bg};color:{badge_fg};font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:20px;">{badge_label}</div>
+        <h1 style="margin:0 0 8px;font-size:28px;font-weight:700;letter-spacing:-0.02em;color:#1d1d1f;">{safe_title}</h1>
+        <p style="margin:0;font-size:17px;color:#6e6e73;line-height:1.5;">{safe_summary}</p>
+        {facts_html}
+        {items_html}
+        {raw_html}
+    """
+    return subject, _apple_email_base(content)
 
 
 def build_delivery_email(product_name: str, service_type: str, download_url: str) -> tuple[str, str]:

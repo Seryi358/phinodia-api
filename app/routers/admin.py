@@ -11,14 +11,29 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime, timezone
+import asyncio
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
+from pydantic import BaseModel, EmailStr, Field
 
 from app.config import get_settings
 from app.database import db
+from app.services.gmail import GmailSender, build_ops_alert_email
 
 router = APIRouter()
+
+
+class OpsEmailRequest(BaseModel):
+    subject: str = Field(..., min_length=3, max_length=180)
+    title: str = Field(..., min_length=3, max_length=180)
+    summary: str = Field("", max_length=500)
+    severity: Literal["info", "warning", "critical"] = "info"
+    to: EmailStr | None = None
+    facts: dict[str, str] = Field(default_factory=dict)
+    items: list[str] = Field(default_factory=list)
+    raw_text: str = Field("", max_length=12000)
 
 
 def _check_token(token: str) -> None:
@@ -216,6 +231,41 @@ async def sales_dashboard(token: str = Query(...), days: int = Query(90, ge=1, l
 </body>
 </html>"""
     return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/ops-email")
+async def ops_email(req: OpsEmailRequest, token: str = Query(...)):
+    """Send a polished internal ops alert email through Gmail OAuth.
+
+    Shared-secret protected so companion services like the ads bot can
+    reuse PhinodIA's already-working Gmail integration without duplicating
+    OAuth secrets across multiple EasyPanel services.
+    """
+    _check_token(token)
+    settings = get_settings()
+    sender = GmailSender(
+        client_id=settings.gmail_client_id,
+        client_secret=settings.gmail_client_secret,
+        refresh_token=settings.gmail_refresh_token,
+        sender_email=settings.gmail_sender_email,
+    )
+    subject, html_body = build_ops_alert_email(
+        subject=req.subject,
+        title=req.title,
+        summary=req.summary,
+        severity=req.severity,
+        facts=req.facts,
+        items=req.items,
+        raw_text=req.raw_text,
+    )
+    recipient = req.to or settings.gmail_sender_email
+    await asyncio.to_thread(
+        sender.send_email,
+        to=recipient,
+        subject=subject,
+        html_body=html_body,
+    )
+    return {"status": "ok", "to": recipient, "subject": subject}
 
 
 # ── A/B test dashboard ───────────────────────────────────────────────
