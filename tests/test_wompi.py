@@ -41,55 +41,44 @@ def test_resolve_property_nested():
     assert _resolve_property(data, "missing.path") is None
 
 
-# Strict resolution: SKU and amount BOTH must match. Cases derived from the
-# 18 SKUs in PACKAGES_BY_SKU.
-@pytest.mark.parametrize("sku,amount,service,credits", [
-    ("video_8s_3", 6299000, "video_8s", 3),
-    ("video_8s_10", 18999000, "video_8s", 10),
-    ("video_8s_25", 39999000, "video_8s", 25),
-    ("video_15s_3", 11699000, "video_15s", 3),
-    ("video_15s_10", 33999000, "video_15s", 10),
-    ("video_22s_25", 104999000, "video_22s", 25),
-    ("video_30s_3", 21899000, "video_30s", 3),
-    ("image_3", 1199000, "image", 3),
-    ("image_10", 3499000, "image", 10),
-    ("image_25", 7499000, "image", 25),
-    ("landing_3", 4499000, "landing_page", 3),
-    ("landing_10", 12999000, "landing_page", 10),
-    ("landing_25", 27999000, "landing_page", 25),
+# Unified credit packs (one wallet). Strict resolution: SKU and amount BOTH match.
+@pytest.mark.parametrize("sku,amount,credits", [
+    ("credits_6", 1490000, 6),
+    ("credits_20", 4790000, 20),
+    ("credits_50", 10990000, 50),
 ])
-def test_resolve_package_strict_match(sku, amount, service, credits):
+def test_resolve_package_strict_match(sku, amount, credits):
     from app.services.wompi import resolve_package
     pkg = resolve_package(amount, sku=sku)
     assert pkg is not None
-    assert pkg["service"] == service
     assert pkg["credits"] == credits
 
 
 def test_resolve_package_unknown_sku_rejected():
     from app.services.wompi import resolve_package
     # Unknown SKU even if amount matches a real package
-    assert resolve_package(1199000, sku="fake_sku") is None
-    assert resolve_package(1199000, sku="image_99") is None
+    assert resolve_package(1490000, sku="fake_sku") is None
+    assert resolve_package(1490000, sku="credits_99") is None
 
 
 def test_resolve_package_amount_mismatch_rejected():
     from app.services.wompi import resolve_package
-    # Real SKU but wrong amount
-    assert resolve_package(999, sku="image_3") is None
-    assert resolve_package(1199001, sku="image_3") is None  # off-by-one
-    assert resolve_package(1199000, sku="image_10") is None  # right service, wrong tier
+    assert resolve_package(999, sku="credits_6") is None
+    assert resolve_package(1490001, sku="credits_6") is None       # off-by-one
+    assert resolve_package(1490000, sku="credits_20") is None      # right family, wrong pack
 
 
 def test_resolve_package_no_sku_rejected():
     from app.services.wompi import resolve_package
-    # No SKU = no resolution (strict mode after iter 50 fix)
-    assert resolve_package(1199000, sku=None) is None
-    assert resolve_package(1199000, sku="") is None
+    assert resolve_package(1490000, sku=None) is None
+    assert resolve_package(1490000, sku="") is None
 
 
-def test_packages_by_sku_has_18_unique_amounts():
+def test_packages_by_sku_unique_amounts():
     from app.services.wompi import PACKAGES_BY_SKU
-    assert len(PACKAGES_BY_SKU) == 18
+    assert len(PACKAGES_BY_SKU) == 3
     amounts = [p["amount"] for p in PACKAGES_BY_SKU.values()]
-    assert len(set(amounts)) == 18, "All package amounts must be unique"
+    assert len(set(amounts)) == len(amounts), "All package amounts must be unique"
+    # No per-service field in the unified model.
+    assert all("service" not in p for p in PACKAGES_BY_SKU.values())
+    assert all(p["credits"] > 0 and p["amount"] > 0 for p in PACKAGES_BY_SKU.values())

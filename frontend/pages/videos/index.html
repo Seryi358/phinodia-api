@@ -80,21 +80,31 @@
           <input type="text" id="video-product-name" name="product_name" class="form-input" placeholder="Ej: Serum Vitamina C GlowSkin" required>
         </div>
 
-        <div class="form-group">
-          <label for="video-category">De que es tu producto? Que hace?</label>
-          <input type="text" id="video-category" name="product_category" class="form-input" placeholder="Ej: Es un serum facial que ilumina la piel y reduce manchas">
-        </div>
 
-        <div class="form-group">
-          <label for="video-pain">Que problema resuelve tu producto?</label>
-          <input type="text" id="video-pain" name="pain_point" class="form-input" placeholder="Ej: Piel opaca, manchas en el rostro, falta de brillo">
-        </div>
 
         <div class="form-group">
           <label for="video-description">Que quieres que pase en el video?</label>
           <textarea id="video-description" name="description" class="form-textarea" placeholder="Ej: Quiero que salga una chica mostrando como se aplica el serum y recomendandolo a sus amigas. Que hable de como le cambio la piel." required></textarea>
           <p class="form-hint">Describe la escena, la emocion, y el mensaje principal del video.</p>
         </div>
+
+        <details class="form-group" style="border:1px solid var(--border,#e5e5e5);border-radius:10px;padding:0 14px;margin-bottom:16px">
+          <summary style="cursor:pointer;padding:14px 0;font-weight:600;color:var(--text-secondary,#666)">Personalizar (opcional)</summary>
+          <div style="padding-bottom:8px">
+            <div class="form-group">
+              <label for="video-category">De que es tu producto? Que hace?</label>
+              <input type="text" id="video-category" name="product_category" class="form-input" placeholder="Ej: Serum facial que ilumina la piel y reduce manchas">
+            </div>
+            <div class="form-group">
+              <label for="video-pain">Que problema resuelve?</label>
+              <input type="text" id="video-pain" name="pain_point" class="form-input" placeholder="Ej: Piel opaca, manchas, falta de brillo">
+            </div>
+            <div class="form-group" style="margin-bottom:4px">
+              <label for="video-creative">Direccion creativa</label>
+              <input type="text" id="video-creative" name="creative_direction" class="form-input" placeholder="Ej: Energia positiva, colores calidos, cocina">
+            </div>
+          </div>
+        </details>
 
         <div class="form-group">
           <label id="duration-picker-label">Duracion del video</label>
@@ -106,19 +116,8 @@
           <input type="hidden" id="video-duration" name="duration" value="20">
         </div>
 
-        <div class="form-group">
-          <label id="format-picker-label">Formato</label>
-          <div class="option-grid" id="format-picker" style="grid-template-columns: 1fr 1fr;" role="radiogroup" aria-labelledby="format-picker-label">
-            <button type="button" class="option-btn selected" data-value="portrait">Vertical (9:16)<br><small>Instagram, TikTok</small></button>
-            <button type="button" class="option-btn" data-value="landscape">Horizontal (16:9)<br><small>YouTube, Web</small></button>
-          </div>
-          <input type="hidden" id="video-format" name="format" value="portrait">
-        </div>
+        <input type="hidden" id="video-format" name="format" value="portrait">
 
-        <div class="form-group">
-          <label for="video-creative">Direccion creativa (opcional)</label>
-          <input type="text" id="video-creative" name="creative_direction" class="form-input" placeholder="Ej: Energia positiva, colores calidos, setting de cocina">
-        </div>
 
         <div class="form-group">
           <label for="video-email">Tu correo electronico</label>
@@ -167,7 +166,6 @@
   <script>
     initFileUpload('video-dropzone', 'video-preview', 'video-image-url');
     initOptionPicker('duration-picker', 'video-duration');
-    initOptionPicker('format-picker', 'video-format');
 
     async function submitVideo() {
       // Block re-entry FIRST so a double-click can't fire two POSTs (and
