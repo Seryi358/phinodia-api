@@ -236,7 +236,7 @@ async def wompi_webhook(event: dict):
     #   image_3         (no variant — control group in flight tests)
     #   image_3__ab_b   (variant B)
     # Parsing on the dashboard side: split on "__ab_" to recover variant.
-    plan_name_with_ab = f"{package['service']}_{package['credits']}"
+    plan_name_with_ab = f"credits_{package['credits']}"
     if ab_variant:
         plan_name_with_ab = f"{plan_name_with_ab}__ab_{ab_variant}"
     if not existing:
@@ -272,7 +272,7 @@ async def wompi_webhook(event: dict):
         return {"status": "ok", "action": "already_processed"}
 
     try:
-        await credit_svc.grant_credits(user["id"], package["service"], package["credits"])
+        await credit_svc.grant_credits(user["id"], package["credits"])
     except Exception as e:
         # Catch ALL exceptions (not just CreditContention) so a Supabase
         # 5xx between SELECT and UPDATE doesn't bubble up — that would
@@ -296,7 +296,7 @@ async def wompi_webhook(event: dict):
     # forever. Running it first means retries naturally re-trigger it; the
     # PENDING_BONUS lock inside process_referral_bonus prevents double-grant.
     try:
-        await process_referral_bonus(customer_email, package["service"])
+        await process_referral_bonus(customer_email)
     except Exception as e:
         # Don't log the customer email — Habeas Data. tx id suffices for ops.
         # We DO NOT roll back the main grant: grant_credits already succeeded
@@ -321,7 +321,7 @@ async def wompi_webhook(event: dict):
     # blocking the event loop while Wompi waits for our 200 OK.
     def _send_purchase_email():
         try:
-            subject, html = build_purchase_email(customer_email, package["service"], package["credits"], package["service"])
+            subject, html = build_purchase_email(customer_email, "credits", package["credits"], "credits")
             sender = GmailSender(
                 client_id=settings.gmail_client_id, client_secret=settings.gmail_client_secret,
                 refresh_token=settings.gmail_refresh_token, sender_email=settings.gmail_sender_email,
@@ -370,5 +370,5 @@ async def wompi_webhook(event: dict):
         _background_tasks.add(purchase_task)
         purchase_task.add_done_callback(_background_tasks.discard)
 
-    logger.info("Granted %d %s credits (tx: %s)", package["credits"], package["service"], reference)
+    logger.info("Granted %d credits (tx: %s)", package["credits"], reference)
     return {"status": "ok", "action": "credits_granted", "credits": package["credits"]}

@@ -13,6 +13,8 @@ from app.services.credits import CreditService
 from app.services.gmail import GmailSender, build_delivery_email
 from app.services.media_probe import is_multi_step_video_service, is_video_duration_sufficient
 from app.services.result_storage import persist_external_url
+from app.services import video_stitch
+from app.prompts.video_ugc import num_clips_for, assemble_omni_prompt, safe_omni_prompt
 
 router = APIRouter()
 settings = get_settings()
@@ -40,7 +42,7 @@ def _send_delivery_email_safe(email: str, product_name: str, service_type: str, 
 
 async def _fail_video_job(job_id: str, req, message: str) -> bool:
     credit_svc = CreditService()
-    service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
+    service_type = _video_service(req.duration)
     user = await credit_svc.get_or_create_user(req.email)
     failed_now = await db.update(
         "jobs",
@@ -59,9 +61,17 @@ async def _fail_video_job(job_id: str, req, message: str) -> bool:
 # Hold references to background tasks to prevent GC collection
 _background_tasks: set = set()
 
-DURATION_TO_SERVICE = {8: "video_8s", 15: "video_15s", 22: "video_22s", 30: "video_30s"}
 FORMAT_TO_ASPECT = {"portrait": "9:16", "landscape": "16:9"}
-DURATION_EXTENSIONS = {8: 0, 15: 1, 22: 2, 30: 3}
+# Fixed seed reused across a video's stitched clips — a soft consistency lever
+# paired with the gpt-image-2 first frame + last-frame relay (the real backbone).
+OMNI_SEED = 778899
+
+
+def _video_service(duration: int) -> str:
+    """Job label for a video of N seconds, e.g. 20 -> 'video_20s'. The credit
+    cost is derived from this label by credits.credits_for_service_label
+    (3 credits per 10s)."""
+    return f"video_{int(duration)}s"
 
 # Max retries for KIE AI generation failures
 MAX_RETRIES = 3
@@ -124,60 +134,6 @@ def _compact_text(value: str, *, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1].rstrip() + "…"
-
-
-def _build_safe_veo_prompt(req: "VideoRequest") -> str:
-    pain = _compact_text(req.pain_point or "the routine takes too long", max_chars=60)
-    product = _compact_text(req.product_name or "the product", max_chars=40)
-    category = _compact_text(req.product_category or "beauty product", max_chars=40)
-    return (
-        f"Vertical 9:16 front-camera selfie UGC. Real Colombian woman at home using the exact {product} "
-        f"from the reference image. Raw smartphone footage, natural micro-shake, mild compression, warm home light, "
-        f"no text overlays, no music, not cinematic. Show the problem '{pain}', a quick believable {category} demo, "
-        f"clear product close-up, relief, satisfied smile, and soft CTA. Preserve exact packaging, label colors, shape, and size from the reference image. "
-        "Audio stays close and natural, and the creator briefly says one short line in warm Colombian Spanish about faster, irritation-free results. "
-        "Describe that speech in English only."
-    )
-
-
-def _build_safe_extension_prompt(req: "VideoRequest", extension_number: int) -> str:
-    product = _compact_text(req.product_name or "the product", max_chars=40)
-    return (
-        f"Continue the same vertical selfie UGC clip with the same Colombian creator, same room, same handheld phone realism, "
-        f"and exact {product} packaging from the reference image. Keep the motion continuous, add one short product demo beat, "
-        f"then end with a warm satisfied reaction and a soft CTA. Continuation segment {extension_number}. "
-        "If speech is needed, describe in English that she says one brief natural Colombian-Spanish line about quick, painless results."
-    )
-
-
-def _sanitize_veo_prompt(prompt: str) -> str:
-    """Keep VEO prompts English-only per current KIE guidance.
-
-    The upstream docs explicitly warn that non-English prompt text can trigger
-    client-side rejections. We still want Colombian-Spanish delivery in the
-    generated audio, but we describe that intent in English instead of sending
-    literal Spanish dialogue.
-    """
-    text = (prompt or "").strip()
-    if not text:
-        return text
-    text = (
-        text.replace("“", "\"")
-        .replace("”", "\"")
-        .replace("’", "'")
-        .replace("‘", "'")
-    )
-    text = re.sub(
-        r"(?is)(Dialogue Block:\s*)(.*)$",
-        r"\1One brief spoken beat in natural Colombian Spanish about quick, irritation-free results, described in English only. End the speech before the final beat.",
-        text,
-    )
-    text = re.sub(
-        r"(?im)^\s*(Spoken line|L[ií]nea hablada)\s*:\s*.*$",
-        "Spoken line: One brief spoken beat in natural Colombian Spanish about quick, irritation-free results, described in English only.",
-        text,
-    )
-    return text
 
 
 def _default_product_analysis(req: "VideoRequest") -> str:
@@ -274,7 +230,7 @@ class VideoRequest(BaseModel):
     # Locked to UI choices — prevents tier-hopping (charging 8s credits while
     # claiming 22s) and silent format defaults via tampered hidden inputs.
     format: Literal["portrait", "landscape"]
-    duration: Literal[8, 15, 22, 30]
+    duration: Literal[10, 20, 30]
     product_name: str = Field(..., min_length=1, max_length=200)
     product_category: str = Field("", max_length=300)
     pain_point: str = Field("", max_length=300)
@@ -339,11 +295,10 @@ class GenerateResponse(BaseModel):
 
 
 async def _poll_until_done(kie: KieAIClient, task_id: str, is_video: bool, max_polls: int = 120, interval: float = 5.0) -> dict:
+    # Omni video AND gpt-image-2 images both run on the unified /jobs endpoint,
+    # so polling always uses get_task_status (is_video kept for call-site compat).
     for _ in range(max_polls):
-        if is_video:
-            status = await kie.get_video_status(task_id)
-        else:
-            status = await kie.get_task_status(task_id)
+        status = await kie.get_task_status(task_id)
         if status["state"] in ("success", "failed", "fail"):
             return status
         await asyncio.sleep(interval)
@@ -379,378 +334,206 @@ async def _retry_kie_task(
     return "", {"state": "failed", "result_urls": [], "error": last_error}
 
 
-async def _retry_video_extension(
-    *,
-    kie: KieAIClient,
-    parent_task_id: str,
-    prompt: str,
-    job_id: str,
-    max_retries: int = 2,
-) -> tuple[str, dict]:
-    """Retry a Veo extension from the same parent task before failing.
-
-    KIE's extension docs explicitly call out multi-minute processing times
-    and recommend retry/error handling in production. A single extension
-    miss should not immediately fail a paid 15s/22s/30s job.
-    """
-    last_error = None
-    for attempt in range(max_retries):
+async def _omni_generate_clip(kie, rich_prompt, safe_prompt, frames, aspect):
+    # Produce ONE <=10s omni clip with graceful fallbacks. For each candidate
+    # first frame (relay/gpt-image-2 frame, then the original product image) try
+    # the rich prompt then the short safe prompt; finally text-only. Omni 500s on
+    # long bracketed prompts, so the safe prompt is the proven short shape.
+    candidates = []
+    for fr in frames:
+        if fr:
+            candidates.append((rich_prompt, fr))
+            candidates.append((safe_prompt, fr))
+    candidates.append((safe_prompt, ""))
+    for pr, fr in candidates:
         try:
-            ext_task_id = await kie.extend_video(
-                task_id=parent_task_id,
-                prompt=prompt,
-                model="quality",
+            _task_id, status = await _retry_kie_task(
+                kie,
+                (lambda pr=pr, fr=fr: kie.create_omni_video_task(
+                    prompt=pr, image_url=fr, seed=OMNI_SEED,
+                    duration="10", aspect_ratio=aspect, resolution="720p")),
+                poll_is_video=False, max_retries=2,
             )
-            still_active = await db.update(
-                "jobs",
-                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                {"kie_task_id": ext_task_id},
-            )
-            if not still_active:
-                logger.info("Video job %s terminated mid-extension retry — aborting", job_id)
-                return "", {"state": "terminated", "result_urls": []}
-            status = await _poll_until_done(kie, ext_task_id, is_video=True)
             if status["state"] == "success" and status.get("result_urls"):
-                return ext_task_id, status
-            if status["state"] == "success":
-                last_error = "extension completed without result URLs"
-                logger.warning(
-                    "Extension task %s completed without result URLs on attempt %d for job %s",
-                    ext_task_id,
-                    attempt + 1,
-                    job_id,
-                )
-            else:
-                last_error = status.get("error") or f"extension attempt {attempt + 1} failed"
-                logger.warning(
-                    "Extension task %s failed on attempt %d for job %s",
-                    ext_task_id,
-                    attempt + 1,
-                    job_id,
-                )
+                return status["result_urls"][0]
         except Exception as e:
-            last_error = str(e)
-            logger.warning(
-                "Extension creation failed on attempt %d for job %s: %s",
-                attempt + 1,
-                job_id,
-                e,
-            )
-        if attempt < max_retries - 1:
-            await asyncio.sleep(5)
-    return "", {"state": "failed", "result_urls": [], "error": last_error}
+            logger.warning("omni clip attempt failed: %s", type(e).__name__)
+    return ""
 
 
-async def _render_video_with_extensions(
-    *,
-    kie: KieAIClient,
-    script_gen: ScriptGenerator,
-    job_id: str,
-    req: VideoRequest,
-    prompt: str,
-    first_frame_url: str,
-    aspect: str,
-    product_analysis: str,
-    buyer_persona: str,
-    multi_step_video: bool,
-    service_type: str,
-) -> tuple[str | None, str | None]:
-    """Render base Veo video plus extensions, returning a final URL or an error.
-
-    Returns:
-      (url, None) on success
-      (None, "terminated") if the job was already failed/cancelled elsewhere
-      (None, user_facing_error_message) on failure
-    """
-    safe_prompt = _sanitize_veo_prompt(_build_safe_veo_prompt(req))
-    active_prompt = safe_prompt
-    prompt_variants = [safe_prompt]
-    if prompt != safe_prompt:
-        prompt_variants.append(_sanitize_veo_prompt(prompt))
-
-    task_id = ""
-    base_status: dict = {"state": "failed", "result_urls": [], "error": "unknown"}
-    for idx, prompt_variant in enumerate(prompt_variants, start=1):
-        async def _create_video_with_image():
-            return await kie.create_video_task(prompt=prompt_variant, image_url=first_frame_url, aspect_ratio=aspect, use_image=True)
-
-        async def _create_video_text_only():
-            return await kie.create_video_task(prompt=prompt_variant, image_url="", aspect_ratio=aspect, use_image=False)
-
-        task_id, base_status = await _retry_kie_task(kie, _create_video_with_image, poll_is_video=True, max_retries=2)
-        if base_status["state"] != "success":
-            logger.info(
-                "Image-seeded Veo generation failed for job %s with prompt variant %d, falling back to TEXT_2_VIDEO",
-                job_id,
-                idx,
-            )
-            task_id, base_status = await _retry_kie_task(kie, _create_video_text_only, poll_is_video=True, max_retries=2)
-        if base_status["state"] == "success":
-            active_prompt = prompt_variant
-            break
-        logger.warning(
-            "Base Veo generation failed for job %s with prompt variant %d: %s",
-            job_id,
-            idx,
-            base_status.get("error", "unknown"),
+async def _omni_render_video(kie, job_id, req, first_frame_url, plan, num_clips, aspect):
+    # Generate each <=10s clip (last-frame relay between clips for continuity)
+    # and concat into one mp4. Returns (final_local_path, None) or (None, error).
+    work = video_stitch.WORK_DIR
+    work.mkdir(parents=True, exist_ok=True)
+    product_hint = (req.product_name or "the product")[:60]
+    identity = plan.get("identity_block", "")
+    clips = plan.get("clips") or [{"action": "", "dialogue_es": ""}]
+    current_frame = first_frame_url
+    clip_files = []
+    for i in range(num_clips):
+        clip = clips[i] if i < len(clips) else clips[-1]
+        rich = assemble_omni_prompt(identity, clip.get("action", ""), clip.get("dialogue_es", ""))
+        safe = safe_omni_prompt(product_hint, clip.get("dialogue_es", ""))
+        # Try the relay/first frame, then fall back to the original product image.
+        frames = [current_frame, req.image_url]
+        clip_url = await _omni_generate_clip(kie, rich, safe, frames, aspect)
+        if not clip_url:
+            return None, f"Fallo en etapa clip_{i + 1}. {_friendly_error('omni internal error')}"
+        local = str(work / f"{job_id}_clip{i}.mp4")
+        if not await video_stitch.download_to(clip_url, local):
+            return None, f"No pudimos descargar el clip {i + 1} del video."
+        clip_files.append(local)
+        # Keep the job alive (abort if auto-fail already terminated it).
+        still = await db.update(
+            "jobs",
+            {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
+            {"result_type": "mp4"},
         )
-    if base_status["state"] != "success":
-        return None, f"Fallo en etapa base_render. {_friendly_error(base_status.get('error', 'unknown'))}"
-
-    base_result_url = base_status["result_urls"][0] if base_status.get("result_urls") else ""
-    saved = await db.update(
-        "jobs",
-        {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-        {
-            "kie_task_id": task_id,
-            "result_type": "mp4",
-        },
-    )
-    if not saved:
-        logger.info("Video job %s already terminated; not saving state", job_id)
-        return None, "terminated"
-
-    num_extensions = DURATION_EXTENSIONS.get(req.duration, 0)
-    current_task_id = task_id
-    final_result_url = base_result_url
-    for ext_num in range(1, num_extensions + 1):
-        safe_ext_prompt = _sanitize_veo_prompt(_build_safe_extension_prompt(req, ext_num))
-        ext_prompt_variants = [safe_ext_prompt]
-        try:
-            ext_prompt = await script_gen.generate_extension_prompt(
-                original_prompt=active_prompt,
-                extension_number=ext_num,
-                duration=req.duration,
-                product_name=req.product_name,
-                product_analysis=product_analysis,
-                buyer_persona=buyer_persona,
-            )
-            if len(ext_prompt) > 500:
-                ext_prompt = await script_gen.compress_for_veo(ext_prompt)
-            ext_prompt = _sanitize_veo_prompt(ext_prompt)
-            if ext_prompt != safe_ext_prompt:
-                ext_prompt_variants.append(ext_prompt)
-        except Exception as e:
-            logger.warning(
-                "Extension prompt generation failed for job %s ext %d; using safe prompt: %s",
-                job_id,
-                ext_num,
-                type(e).__name__,
-            )
-        ext_succeeded = False
-        for ext_variant in ext_prompt_variants:
-            try:
-                ext_task_id, ext_status = await _retry_video_extension(
-                    kie=kie,
-                    parent_task_id=current_task_id,
-                    prompt=ext_variant,
-                    job_id=job_id,
-                    max_retries=2,
-                )
-                if ext_status["state"] == "terminated":
-                    return None, "terminated"
-                ext_url = ext_status["result_urls"][0] if ext_status.get("result_urls") else None
-                if ext_status["state"] == "success" and ext_url:
-                    current_task_id = ext_task_id
-                    final_result_url = ext_url
-                    ext_succeeded = True
-                    break
-            except Exception as e:
-                logger.exception("Extension %d failed for job %s: %s", ext_num, job_id, e)
-        if not ext_succeeded:
-            return None, f"Fallo en etapa extension_{ext_num}. No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
-
-    final_result_url = await persist_external_url(final_result_url, job_id, "mp4")
-    if multi_step_video and not await is_video_duration_sufficient(final_result_url, service_type):
-        return None, "Fallo en etapa duration_check. El video generado no alcanzo la duracion solicitada. Tu credito fue restaurado."
-    return final_result_url, None
+        if not still:
+            return None, "terminated"
+        # Extract this clip's last frame to seed the next clip (last-frame relay).
+        if i < num_clips - 1:
+            current_frame = req.image_url
+            lf = str(work / f"{job_id}_clip{i}_last.png")
+            if await video_stitch.extract_last_frame(local, lf):
+                pub = video_stitch.publish_local(lf, f"{job_id}-relay{i}.png")
+                if pub:
+                    current_frame = pub
+    final_local = str(work / f"{job_id}_final.mp4")
+    if not await video_stitch.concat_clips(clip_files, final_local):
+        return None, "No pudimos unir los clips del video."
+    return final_local, None
 
 
-async def _process_video(job_id: str, req: VideoRequest):
+def _safe_omni_plan(req, num_clips):
+    # Fallback plan if LLM script generation fails -- generic but valid
+    # Colombian-Spanish AIDA lines so a paid job still ships a real video.
+    product = req.product_name or "el producto"
+    identity = ("An everyday Colombian woman, late 20s, natural relatable look, casual clothes, "
+                "in a simple home with natural daylight, holding " + product + ".")
+    lines = [
+        ("She greets warmly and shows the product to the camera.",
+         "Hola, les quiero mostrar " + product + ", de verdad me encanto."),
+        ("She shows how she uses it and reacts happily.",
+         "Miren que facil, y el resultado se nota de una."),
+        ("She smiles and gives a soft, friendly call to action.",
+         "Si la quieren, pidanla ya en la pagina, vale la pena."),
+    ]
+    clips = []
+    for i in range(num_clips):
+        a, d = lines[i] if i < len(lines) else lines[-1]
+        clips.append({"action": a, "dialogue_es": d})
+    return {"identity_block": identity, "clips": clips}
+
+
+async def _process_video(job_id: str, req: "VideoRequest"):
     script_gen = ScriptGenerator(api_key=settings.openai_api_key)
     kie = KieAIClient(api_key=settings.kie_api_key)
     rich_description = _build_description(req)
-    service_type = DURATION_TO_SERVICE.get(req.duration, "video_8s")
-    multi_step_video = is_multi_step_video_service(service_type)
+    service_type = _video_service(req.duration)
+    num_clips = num_clips_for(req.duration)
+    aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
     phase = "starting"
     try:
-        # Step 1: Deep product analysis
+        # Step 1: deep product analysis (vision)
         phase = "product_analysis"
         try:
             product_analysis = await script_gen.analyze_product(
-                product_name=req.product_name, description=rich_description, image_url=req.image_url,
-            )
+                product_name=req.product_name, description=rich_description, image_url=req.image_url)
         except Exception as e:
-            logger.warning("Product analysis failed for job %s; using safe fallback: %s", job_id, type(e).__name__)
+            logger.warning("Product analysis failed for job %s; fallback: %s", job_id, type(e).__name__)
             product_analysis = _default_product_analysis(req)
 
-        # Step 2: Buyer persona (Colombian UGC creator)
+        # Step 2: buyer persona (the Colombian UGC creator)
         phase = "buyer_persona"
         try:
             buyer_persona = await script_gen.generate_buyer_persona(
-                product_name=req.product_name, product_analysis=product_analysis,
-            )
+                product_name=req.product_name, product_analysis=product_analysis)
         except Exception as e:
-            logger.warning("Buyer persona failed for job %s; using safe fallback: %s", job_id, type(e).__name__)
+            logger.warning("Buyer persona failed for job %s; fallback: %s", job_id, type(e).__name__)
             buyer_persona = _default_buyer_persona(req)
 
-        # Step 3: Generate first frame with GPT Image 2 (POV selfie, no phone visible)
+        # Step 3: gpt-image-2 first frame (vertical selfie UGC, product in hand)
         phase = "first_frame_prompt"
         try:
             first_frame_prompt = await script_gen.generate_image_prompt(
-                product_name=req.product_name, description=rich_description,
-                aspect_ratio=FORMAT_TO_ASPECT.get(req.format, "9:16"),
-                creative_direction=(
-                    "Close-up arm's-length front-camera selfie. The creator matches the buyer persona, "
-                    "looks into the lens, and holds the real product at chest level with the packaging clearly visible. "
-                    "Natural home setting, candid phone-photo realism, slight imperfections, no visible phone in frame."
-                ),
-                product_analysis=product_analysis,
-                buyer_persona=buyer_persona,
-                prompt_mode="video_first_frame",
-            )
+                product_name=req.product_name, description=rich_description, aspect_ratio=aspect,
+                creative_direction=("Front-camera selfie first frame. The creator matches the buyer persona, "
+                                    "looks into the lens, and holds the real product at chest level with the "
+                                    "packaging clearly visible. Natural home setting, candid phone-photo realism, "
+                                    "no visible phone in frame."),
+                product_analysis=product_analysis, buyer_persona=buyer_persona,
+                prompt_mode="video_first_frame")
         except Exception as e:
-            logger.warning("First-frame prompt failed for job %s; using safe fallback: %s", job_id, type(e).__name__)
+            logger.warning("First-frame prompt failed for job %s; fallback: %s", job_id, type(e).__name__)
             first_frame_prompt = _build_safe_first_frame_prompt(req)
 
-        # Retry first frame generation
         phase = "first_frame_render"
-        aspect = FORMAT_TO_ASPECT.get(req.format, "9:16")
-        ff_task_id, ff_status = await _retry_kie_task(
+        _ff_task, ff_status = await _retry_kie_task(
             kie,
-            lambda: kie.create_image_task(prompt=first_frame_prompt, image_url=req.image_url, aspect_ratio=aspect),
-            poll_is_video=False, max_retries=2,
-        )
-        first_frame_url = ff_status["result_urls"][0] if ff_status["state"] == "success" and ff_status["result_urls"] else req.image_url
+            (lambda: kie.create_image_task(prompt=first_frame_prompt, image_url=req.image_url,
+                                           aspect_ratio=aspect, resolution="1K")),
+            poll_is_video=False, max_retries=2)
+        first_frame_url = (ff_status["result_urls"][0]
+                           if ff_status["state"] == "success" and ff_status.get("result_urls")
+                           else req.image_url)
 
-        # Step 4: Generate video prompt (AIDA, Colombian Spanish, raw/imperfect)
-        phase = "base_prompt"
+        # Step 4: multi-clip omni script plan (AIDA + Colombian Spanish)
+        phase = "script_plan"
         try:
-            prompt = await script_gen.generate_video_prompt(
+            plan = await script_gen.generate_omni_plan(
                 product_name=req.product_name, description=rich_description,
-                duration=req.duration, format_type=req.format,
-                creative_direction=req.creative_direction,
-                product_analysis=product_analysis, buyer_persona=buyer_persona,
-            )
-            if len(prompt) > 500:
-                prompt = await script_gen.compress_for_veo(prompt)
+                duration=req.duration, num_clips=num_clips,
+                product_analysis=product_analysis, buyer_persona=buyer_persona)
         except Exception as e:
-            logger.warning("Base video prompt generation failed for job %s; using safe prompt: %s", job_id, type(e).__name__)
-            prompt = _build_safe_veo_prompt(req)
-        prompt = _sanitize_veo_prompt(prompt)
-        # CAS: only flip processing→generating. If auto-fail already moved
-        # the job to "failed", abort the pipeline so we don't re-arm a
-        # refunded job (which would also expose us to a 2nd auto-refund).
+            logger.warning("Omni plan failed for job %s; using safe plan: %s", job_id, type(e).__name__)
+            plan = _safe_omni_plan(req, num_clips)
+
+        # Flip processing -> generating (CAS); abort if auto-fail already ran.
         phase = "activate_generating"
+        prompt_summary = ((plan.get("identity_block", "") + " | "
+                           + " || ".join(c.get("dialogue_es", "") for c in plan.get("clips", [])))[:1500])
         still_active = await db.update(
             "jobs",
             {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-            {"generated_prompt": prompt, "status": "generating"},
-        )
+            {"generated_prompt": prompt_summary, "status": "generating"})
         if not still_active:
-            logger.info("Video job %s already terminated by auto-fail — aborting", job_id)
+            logger.info("Video job %s already terminated by auto-fail -- aborting", job_id)
             return
 
-        # Step 5/6: Generate base video + extensions. If the final long-form
-        # asset still comes back short or an extension fails in a recoverable
-        # way, rerun the full long-video render once before refunding.
-        phase = "render_pipeline"
-        final_result_url = None
-        render_error = "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado."
-        for render_attempt in range(1, VIDEO_RENDER_RETRIES + 1):
-            final_result_url, render_error = await _render_video_with_extensions(
-                kie=kie,
-                script_gen=script_gen,
-                job_id=job_id,
-                req=req,
-                prompt=prompt,
-                first_frame_url=first_frame_url,
-                aspect=aspect,
-                product_analysis=product_analysis,
-                buyer_persona=buyer_persona,
-                multi_step_video=multi_step_video,
-                service_type=service_type,
-            )
-            if final_result_url:
-                break
-            if render_error == "terminated":
-                return
-            logger.warning(
-                "Video render attempt %d/%d failed for job %s: %s",
-                render_attempt,
-                VIDEO_RENDER_RETRIES,
-                job_id,
-                render_error,
-            )
-            if render_attempt < VIDEO_RENDER_RETRIES:
-                await asyncio.sleep(5)
-        if not final_result_url:
-            await _fail_video_job(job_id, req, render_error)
+        # Step 5: render each clip + stitch into the final video
+        phase = "render"
+        final_local, render_error = await _omni_render_video(
+            kie, job_id, req, first_frame_url, plan, num_clips, aspect)
+        if render_error == "terminated":
             return
-        # CAS-guarded so an auto-failed-and-refunded row can't be resurrected
-        # to "completed" (which would leave the user with both a video and a
-        # refund). Clear error_message in case auto-fail had set one.
+        if not final_local:
+            await _fail_video_job(job_id, req, render_error or
+                                  "No pudimos completar el video con la duracion solicitada. Tu credito fue restaurado.")
+            return
+
+        # Publish the final mp4 to our own /uploads/results/ (served + downloadable)
+        phase = "publish"
+        result_url = video_stitch.publish_local(final_local, f"{job_id}.mp4")
+        if not result_url:
+            await _fail_video_job(job_id, req,
+                                  "No pudimos guardar el video final. Tu credito fue restaurado.")
+            return
+
+        # CAS-guarded completion so an auto-failed-and-refunded row can't be resurrected.
         phase = "complete_job"
         completed_now = await db.update(
             "jobs",
             {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-            {
-                "status": "completed", "result_url": final_result_url, "result_type": "mp4",
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "error_message": None,
-            },
-        )
-        # Only send the delivery email if WE actually flipped to completed.
-        # Otherwise the auto-fail or another path already terminated the job
-        # and may have already messaged the user (or refunded).
+            {"status": "completed", "result_url": result_url, "result_type": "mp4",
+             "completed_at": datetime.now(timezone.utc).isoformat(), "error_message": None})
         if completed_now:
-            await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name, DURATION_TO_SERVICE.get(req.duration, "video_8s"), job_id, final_result_url)
+            await asyncio.to_thread(_send_delivery_email_safe, req.email, req.product_name,
+                                    service_type, job_id, result_url)
 
     except (Exception, asyncio.CancelledError) as e:
-        # CancelledError must be caught explicitly — it's BaseException, not
-        # Exception, so a bare `except Exception` would let lifespan-drain
-        # cancellations skip the refund/checkpoint and leave the user's
-        # credit trapped on a "generating" row until the auto-fail sweep.
         logger.exception("Video pipeline failed for job %s: %s", job_id, type(e).__name__)
-        # Re-read the job to see if a partial result_url was already saved
-        # (e.g. 8s flow completed before a cancellation landed). Multi-step
-        # videos intentionally do NOT ship partials: if the requested duration
-        # wasn't completed, the credit must be restored.
-        current = await db.select_one("jobs", {"id": f"eq.{job_id}"})
-        if current and current.get("result_url") and not multi_step_video:
-            # Mirror the partial KIE URL onto our own /uploads/results/ so
-            # the user can still access it after KIE's tempfile expires.
-            mirrored = await persist_external_url(current["result_url"], job_id, "mp4")
-            await db.update(
-                "jobs",
-                {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                {
-                    "status": "completed",
-                    "result_url": mirrored,
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
-                    "error_message": "La generacion fue interrumpida pero tu video parcial esta listo.",
-                },
-            )
-            if isinstance(e, asyncio.CancelledError):
-                raise  # re-raise after checkpoint so asyncio task state is correct
-            return
-        if current and current.get("result_url") and multi_step_video:
-            enough = await is_video_duration_sufficient(current["result_url"], service_type)
-            if enough:
-                mirrored = await persist_external_url(current["result_url"], job_id, "mp4")
-                await db.update(
-                    "jobs",
-                    {"id": f"eq.{job_id}", "status": "in.(processing,generating)"},
-                    {
-                        "status": "completed",
-                        "result_url": mirrored,
-                        "completed_at": datetime.now(timezone.utc).isoformat(),
-                        "error_message": None,
-                    },
-                )
-                if isinstance(e, asyncio.CancelledError):
-                    raise
-                return
         await _fail_video_job(job_id, req, f"Fallo interno en etapa {phase}. {_friendly_error(str(e))}")
         if isinstance(e, asyncio.CancelledError):
             raise
@@ -1054,13 +837,12 @@ async def _process_landing(job_id: str, req: LandingRequest):
 async def generate_video(req: VideoRequest):
     if not req.data_consent:
         raise HTTPException(400, "Data processing consent is required")
-    service_type = DURATION_TO_SERVICE.get(req.duration)
-    if not service_type:
-        raise HTTPException(400, f"Invalid duration: {req.duration}. Must be 8, 15, 22, or 30.")
+    service_type = _video_service(req.duration)  # video_10s | video_20s | video_30s
     credit_svc = CreditService()
     user = await credit_svc.get_or_create_user(req.email)
+    # deduct_credit derives the cost from the label (3 credits per 10s segment).
     if not await credit_svc.deduct_credit(user["id"], service_type):
-        raise HTTPException(402, "No tienes creditos suficientes para este servicio. Compra mas creditos en la seccion de precios.")
+        raise HTTPException(402, "No tienes creditos suficientes. Compra mas creditos en la seccion de precios.")
     job = await db.insert("jobs", {
         "user_id": user["id"], "service_type": service_type,
         "input_image_url": req.image_url, "input_description": req.description,

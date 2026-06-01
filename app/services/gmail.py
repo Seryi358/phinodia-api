@@ -139,8 +139,10 @@ def build_ops_alert_email(
 
 def build_delivery_email(product_name: str, service_type: str, download_url: str) -> tuple[str, str]:
     service_labels = {
+        "video_10s": "Video de 10 segundos", "video_20s": "Video de 20 segundos",
+        "video_30s": "Video de 30 segundos",
         "video_8s": "Video de 8 segundos", "video_15s": "Video de 15 segundos",
-        "video_22s": "Video de 22 segundos", "video_30s": "Video de 30 segundos",
+        "video_22s": "Video de 22 segundos",
         "image": "Imagen de producto", "landing_page": "Landing Page",
     }
     label = service_labels.get(service_type, "Contenido")
@@ -176,12 +178,12 @@ def build_delivery_email(product_name: str, service_type: str, download_url: str
 def build_purchase_email(email: str, plan_name: str, credits: int, service_type: str) -> tuple[str, str]:
     """Build purchase confirmation email in Apple style."""
     service_labels = {
+        "credits": "PhinodIA", "image": "Imagenes de producto", "landing_page": "Landing Pages",
         "video_8s": "Videos de 8 segundos", "video_15s": "Videos de 15 segundos",
         "video_22s": "Videos de 22 segundos", "video_30s": "Videos de 30 segundos",
-        "image": "Imagenes de producto", "landing_page": "Landing Pages",
     }
-    label = service_labels.get(service_type, "Créditos")
-    subject = f"Compra confirmada — {credits} créditos de {label}"
+    label = service_labels.get(service_type, "PhinodIA")
+    subject = f"Compra confirmada — {credits} créditos PhinodIA"
     app_url = "https://app.phinodia.com"
     content = f"""
         <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; letter-spacing: -0.005em; color: #1d1d1f;">Compra confirmada.</h1>

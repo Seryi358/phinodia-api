@@ -15,12 +15,12 @@ MAX_BYTES = 50 * 1024 * 1024
 DOWNLOAD_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 
 VIDEO_DURATIONS = {
-    "video_8s": 8.0,
-    "video_15s": 15.0,
-    "video_22s": 22.0,
+    "video_10s": 10.0,
+    "video_20s": 20.0,
     "video_30s": 30.0,
 }
-MULTI_STEP_VIDEO_SERVICES = {"video_15s", "video_22s", "video_30s"}
+# Anything longer than one 10s omni clip is built by stitching multiple clips.
+MULTI_STEP_VIDEO_SERVICES = {"video_20s", "video_30s"}
 CONTAINER_TYPES = {
     b"moov",
     b"trak",

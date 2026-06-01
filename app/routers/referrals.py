@@ -314,7 +314,7 @@ async def register_referral(req: RegisterReferralRequest, request: Request):
     return {"status": "ok", "message": "Referido registrado exitosamente"}
 
 
-async def process_referral_bonus(customer_email: str, service_type: str):
+async def process_referral_bonus(customer_email: str):
     """Check if a purchasing user was referred and grant bonus to referrer.
 
     Called from the payments webhook after a successful purchase.
@@ -386,7 +386,7 @@ async def process_referral_bonus(customer_email: str, service_type: str):
     try:
         await db.insert("transactions", {
             "user_id": referrer_user["id"],
-            "plan_name": f"referral_bonus_{service_type}",
+            "plan_name": "referral_bonus",
             "credits_added": 1,
             "amount_cop": 0,
             "wompi_transaction_id": bonus_tx_id,
@@ -416,7 +416,7 @@ async def process_referral_bonus(customer_email: str, service_type: str):
         return
 
     try:
-        await credit_svc.grant_credits(referrer_user["id"], service_type, 1)
+        await credit_svc.grant_credits(referrer_user["id"], 1)
     except Exception as e:
         # Catch ALL exceptions (not just CreditContention) — a Supabase 5xx
         # bubbling out would leave the row stuck at GRANTING_BONUS and any
@@ -439,4 +439,4 @@ async def process_referral_bonus(customer_email: str, service_type: str):
 
     # Don't log either email — would build a referrer→referee social graph
     # in plain logs. bonus_tx_id encodes the linkage non-readably.
-    logger.info("Referral bonus granted: service=%s bonus_tx=%s", service_type, bonus_tx_id)
+    logger.info("Referral bonus granted: bonus_tx=%s", bonus_tx_id)

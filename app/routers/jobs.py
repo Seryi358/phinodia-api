@@ -183,10 +183,8 @@ async def get_job_status(job_id: UUID, request: Request):
         # KIE upstream can be slow/flaky; don't 500 the user — fall back to
         # whatever DB row we have. The worker will keep its own progress.
         try:
-            if job["service_type"].startswith("video_"):
-                kie_status = await kie.get_video_status(job["kie_task_id"])
-            else:
-                kie_status = await kie.get_task_status(job["kie_task_id"])
+            # Omni video + gpt-image-2 images both poll via the unified jobs endpoint.
+            kie_status = await kie.get_task_status(job["kie_task_id"])
         except Exception as e:
             logger.warning("KIE status poll failed for job %s: %s", job_id, type(e).__name__)
             return JobStatusResponse(

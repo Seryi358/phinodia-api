@@ -1,35 +1,16 @@
 import hashlib
 import hmac
 
+# Unified credit packs — ONE wallet pays for everything (video/image/landing).
+# amount is COP cents (Wompi convention). Prices = the "minimum / cheapest
+# profitable" tier the owner chose (1 credit ~= $2,490 COP base, bulk-discounted
+# down to ~$2,200/cr). Per-action credit COSTS live in app/services/credits.py
+# (video 3 credits/10s, image 1, landing 6) — NOT here.
 PACKAGES_BY_SKU = {
-    # Videos 8s (Reel Express) — 3 planes
-    "video_8s_3":   {"credits": 3,  "service": "video_8s",  "amount": 6299000},
-    "video_8s_10":  {"credits": 10, "service": "video_8s",  "amount": 18999000},
-    "video_8s_25":  {"credits": 25, "service": "video_8s",  "amount": 39999000},
-    # Videos 15s (Reel Standard)
-    "video_15s_3":  {"credits": 3,  "service": "video_15s", "amount": 11699000},
-    "video_15s_10": {"credits": 10, "service": "video_15s", "amount": 33999000},
-    "video_15s_25": {"credits": 25, "service": "video_15s", "amount": 72499000},
-    # Videos 22s (Reel Plus)
-    "video_22s_3":  {"credits": 3,  "service": "video_22s", "amount": 16799000},
-    "video_22s_10": {"credits": 10, "service": "video_22s", "amount": 48999000},
-    "video_22s_25": {"credits": 25, "service": "video_22s", "amount": 104999000},
-    # Videos 30s (Comercial)
-    "video_30s_3":  {"credits": 3,  "service": "video_30s", "amount": 21899000},
-    "video_30s_10": {"credits": 10, "service": "video_30s", "amount": 64999000},
-    "video_30s_25": {"credits": 25, "service": "video_30s", "amount": 137499000},
-    # Imagenes — bulk discount: $3997/img → $3499/img (-12%) → $2999/img (-25%)
-    "image_3":      {"credits": 3,  "service": "image",        "amount": 1199000},
-    "image_10":     {"credits": 10, "service": "image",        "amount": 3499000},
-    "image_25":     {"credits": 25, "service": "image",        "amount": 7499000},
-    # Landing Pages — bulk discount: $14997 → $12999 (-13%) → $11200 (-25%)
-    "landing_3":    {"credits": 3,  "service": "landing_page", "amount": 4499000},
-    "landing_10":   {"credits": 10, "service": "landing_page", "amount": 12999000},
-    "landing_25":   {"credits": 25, "service": "landing_page", "amount": 27999000},
+    "credits_6":  {"credits": 6,  "amount": 1490000},   # Prueba  — $14.900
+    "credits_20": {"credits": 20, "amount": 4790000},   # Pro     — $47.900 (Más popular)
+    "credits_50": {"credits": 50, "amount": 10990000},  # Studio  — $109.900
 }
-
-
-_SERVICE_PRIORITY = ["video_8s", "video_15s", "video_22s", "video_30s", "image", "landing_page"]
 
 
 def resolve_package(amount_cents: int, sku: str | None = None) -> dict | None:

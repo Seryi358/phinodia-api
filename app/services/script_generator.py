@@ -1,3 +1,4 @@
+import json
 import httpx
 from openai import AsyncOpenAI
 from app.config import get_settings
@@ -45,6 +46,52 @@ class ScriptGenerator:
             max_tokens=max_tokens,
         )
         return response.choices[0].message.content.strip()
+
+    async def _call_gpt_json(self, system: str, user: str, max_tokens: int = 1600) -> str:
+        """Like _call_gpt but forces a JSON object response (omni plan)."""
+        response = await self.client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.85,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        return response.choices[0].message.content.strip()
+
+    async def generate_omni_plan(
+        self, product_name: str, description: str, duration: int, num_clips: int,
+        product_analysis: str = "", buyer_persona: str = "",
+    ) -> dict:
+        """Produce the multi-clip Gemini-Omni plan: a frozen identity block +
+        one AIDA beat per <=10s clip (English action + a literal
+        Colombian-Spanish spoken line). Raises on malformed output so the caller
+        can fall back to a safe template."""
+        from app.prompts.video_ugc import (
+            SYSTEM_PROMPT, USER_TEMPLATE, aida_plan_text, word_budget_text,
+        )
+        system = SYSTEM_PROMPT.format(
+            num_clips=num_clips, duration=duration,
+            aida_plan=aida_plan_text(num_clips), word_budget=word_budget_text(),
+        )
+        user = USER_TEMPLATE.format(
+            product_name=_esc(product_name), description=_esc(description),
+            duration=duration, num_clips=num_clips,
+            product_analysis=_esc(product_analysis) or "Not available",
+            buyer_persona=_esc(buyer_persona) or "Not available",
+        )
+        raw = await self._call_gpt_json(system, user)
+        data = json.loads(raw)
+        identity = (data.get("identity_block") or "").strip()
+        clips = [c for c in (data.get("clips") or []) if isinstance(c, dict)
+                 and c.get("action") and c.get("dialogue_es")]
+        if not identity or not clips:
+            raise ValueError("omni plan missing identity_block or clips")
+        while len(clips) < num_clips:        # pad if the model returned too few
+            clips.append(clips[-1])
+        return {"identity_block": identity, "clips": clips[:num_clips]}
 
     async def analyze_product(self, product_name: str, description: str, image_url: str = "") -> str:
         """Step 1: Deep product analysis from user context + optional image."""

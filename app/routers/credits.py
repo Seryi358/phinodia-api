@@ -6,16 +6,12 @@ router = APIRouter()
 
 
 class BalanceResponse(BaseModel):
-    video_8s: int = 0
-    video_15s: int = 0
-    video_22s: int = 0
-    video_30s: int = 0
-    image: int = 0
-    landing_page: int = 0
+    # Single unified wallet balance. (Was per-service: video_8s/15s/22s/30s/…)
+    credits: int = 0
 
 
 @router.api_route("/check", methods=["GET", "HEAD"], response_model=BalanceResponse)
 async def check_credits(email: EmailStr = Query(...)):
     svc = CreditService()
-    balance = await svc.get_balance(email)
-    return BalanceResponse(**balance)
+    credits = await svc.get_balance(email)
+    return BalanceResponse(credits=credits)

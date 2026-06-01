@@ -72,42 +72,27 @@
   <script src="/static/js/api.js?v=1780300000"></script>
   <script defer src="/static/js/meta-pixel.js?v=1780300000"></script>
   <script>
-    const LABELS = {
-      video_8s: 'Videos 8s',
-      video_15s: 'Videos 15s',
-      video_22s: 'Videos 22s',
-      video_30s: 'Videos 30s',
-      image: 'Imagenes',
-      landing_page: 'Landing Pages',
-    };
-
     async function checkCredits() {
       const email = document.getElementById('credits-email').value.trim();
       if (!email || !isValidEmail(email)) {
         showToast('Ingresa un correo valido', 'error');
         return;
       }
-
       // Disable the button while in-flight so impatient users don't race-fire
-      // 5 parallel requests and exhaust the 30/min/IP rate limit.
+      // parallel requests and exhaust the 30/min/IP rate limit.
       setLoading('credits-submit', true);
       try {
         const balance = await getCredits(email);
+        const credits = (balance && typeof balance.credits === 'number') ? balance.credits : 0;
         const grid = document.getElementById('credits-grid');
-        grid.innerHTML = '';
-
-        let total = 0;
-        Object.entries(balance).forEach(([key, value]) => {
-          total += value;
-          const label = LABELS[key] || key;
-          const extra = value > 0 ? ' style="background: var(--accent-subtle);"' : '';
-          grid.innerHTML += '<div class="credit-item"' + extra + '><div class="credit-count">' + value + '</div><div class="credit-label">' + label + '</div></div>';
-        });
-
-        if (total === 0) {
-          grid.innerHTML = '<div class="credit-item" style="grid-column: 1 / -1;"><div class="credit-count" style="color: var(--text-secondary);">0</div><div class="credit-label">No tienes creditos disponibles</div></div>';
+        const videos20 = Math.floor(credits / 6);
+        grid.innerHTML =
+          '<div class="credit-item" style="grid-column:1 / -1;' + (credits > 0 ? 'background:var(--accent-subtle);' : '') + '">' +
+          '<div class="credit-count">' + credits + '</div>' +
+          '<div class="credit-label">' + (credits === 1 ? 'credito disponible' : 'creditos disponibles') + '</div></div>';
+        if (credits > 0) {
+          grid.innerHTML += '<div class="credit-item" style="grid-column:1 / -1;"><div class="credit-label" style="font-size:13px;color:var(--text-secondary)">Te alcanza para ~' + videos20 + ' videos de 20s, o ' + credits + ' imagenes</div></div>';
         }
-
         document.getElementById('credits-result').classList.remove('hidden');
       } catch (err) {
         showToast(err.message, 'error');

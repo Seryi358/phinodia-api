@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 KIE_BASE_URL = "https://api.kie.ai/api/v1"
 GPT_IMAGE_2_TEXT_MODEL = "gpt-image-2-text-to-image"
 GPT_IMAGE_2_EDIT_MODEL = "gpt-image-2-image-to-image"
+OMNI_VIDEO_MODEL = "gemini-omni-video"
 
 
 def _safe_result_url(u: str | None) -> str:
@@ -55,116 +56,85 @@ class KieAIClient:
             raise httpx.HTTPError("KIE AI response missing taskId")
         return task_id
 
-    # ── Video (VEO 3.1) ──────────────────────────────────────────────
+    # ── Video (Gemini Omni) ──────────────────────────────────────────
+    # Omni runs on the unified /jobs/createTask + /jobs/recordInfo endpoints
+    # (same as gpt-image-2), NOT the old /veo/* endpoints. A single generation
+    # is capped at 10s; longer videos are built by stitching clips (see
+    # app/services/video_stitch.py).
 
-    async def create_video_task(
+    async def create_omni_character(
+        self,
+        descriptions: str,
+        image_url: str,
+        character_name: str = "phinodia",
+    ) -> str | None:
+        """Create a reusable omni character from one reference photo.
+
+        Synchronous: the characterId is returned directly in the response. Used
+        to lock avatar identity across stitched clips. Best-effort — on any
+        failure we return None and the caller falls back to first-frame + fixed
+        seed consistency only (never fail a paid job over an optional id).
+        """
+        # KIE docs are inconsistent (`descriptions` in the schema, `description`
+        # in the example) — send both keys so whichever the gateway validates
+        # against is present.
+        body = {
+            "descriptions": descriptions,
+            "description": descriptions,
+            "image_urls": [image_url],
+            "character_name": character_name,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{KIE_BASE_URL}/omni/character/create",
+                    json=body,
+                    headers=self.headers,
+                )
+            self._check_status(resp)
+            data = (resp.json() or {}).get("data") or {}
+            return data.get("characterId") or None
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("omni character create failed: %s", type(e).__name__)
+            return None
+
+    async def create_omni_video_task(
         self,
         prompt: str,
-        image_url: str,
+        image_url: str = "",
+        character_ids: list[str] | None = None,
+        seed: int | None = None,
+        duration: str = "10",
         aspect_ratio: str = "9:16",
-        model: str = "veo3",
-        use_image: bool = True,
+        resolution: str = "720p",
     ) -> str:
-        """Generate base 8s video using VEO 3.1 Quality mode."""
-        if use_image and image_url:
-            body = {
-                "prompt": prompt,
-                "imageUrls": [image_url],
-                "model": model,
-                # KIE's current Veo API uses FIRST_AND_LAST_FRAMES_2_VIDEO for
-                # both single-image seeding and first+last-frame transitions.
-                "generationType": "FIRST_AND_LAST_FRAMES_2_VIDEO",
-                "aspect_ratio": aspect_ratio,
-                "quality": "high",
-                "enableTranslation": True,
-            }
-        else:
-            body = {
-                "prompt": prompt,
-                "model": model,
-                "generationType": "TEXT_2_VIDEO",
-                "aspect_ratio": aspect_ratio,
-                "quality": "high",
-                "enableTranslation": True,
-            }
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{KIE_BASE_URL}/veo/generate",
-                json=body,
-                headers=self.headers,
-            )
-            self._check_status(resp)
-            return self._extract_task_id(resp)
+        """Create a Gemini-Omni video task (<=10s).
 
-    async def extend_video(self, task_id: str, prompt: str, model: str = "quality") -> str:
-        """Extend video by +7 seconds using KIE's quality extension mode."""
-        body = {
-            "taskId": task_id,
+        image_url is the first frame (gpt-image-2 output, or the previous clip's
+        last frame for the continuation/last-frame relay). character_ids + a
+        fixed seed keep the avatar consistent across stitched clips.
+        """
+        inp: dict = {
             "prompt": prompt,
-            "model": model,
+            "duration": str(duration),
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
         }
+        if image_url:
+            inp["image_urls"] = [image_url]
+        if character_ids:
+            inp["character_ids"] = character_ids[:3]
+        if seed is not None:
+            inp["seed"] = int(seed)
+        body = {"model": OMNI_VIDEO_MODEL, "input": inp}
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
-                f"{KIE_BASE_URL}/veo/extend",
+                f"{KIE_BASE_URL}/jobs/createTask",
                 json=body,
                 headers=self.headers,
             )
             self._check_status(resp)
             return self._extract_task_id(resp)
-
-    async def get_video_status(self, task_id: str) -> dict:
-        """Poll VEO 3.1 task status"""
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                f"{KIE_BASE_URL}/veo/record-info",
-                params={"taskId": task_id},
-                headers=self.headers,
-            )
-            self._check_status(resp)
-            data = resp.json().get("data", {})
-
-        # VEO uses successFlag: 0=generating, 1=success, 2=failed, 3=gen_failed
-        success_flag = data.get("successFlag", 0)
-        state_map = {0: "generating", 1: "success", 2: "failed", 3: "failed"}
-        state = state_map.get(success_flag, "generating")
-        error_message = data.get("errorMessage") or data.get("failMsg") or ""
-        error_code = data.get("errorCode") or data.get("failCode") or ""
-        error = ""
-        if state == "failed":
-            error = f"{error_code}: {error_message}".strip(": ").strip()
-
-        # KIE may return the fully stitched extended video under
-        # response.fullResultUrls. Falling back to resultUrls/videoUrl would
-        # silently ship the base 8s clip for a paid 15s/22s/30s purchase.
-        response = data.get("response") or {}
-        video_url = ""
-        for key in ("fullResultUrls", "resultUrls", "originUrls"):
-            urls = response.get(key) or []
-            if urls:
-                video_url = urls[0]
-                break
-        if not video_url:
-            video_url = data.get("videoUrl", "")
-        video_url = _safe_result_url(video_url)
-
-        return {
-            "state": state,
-            "progress": 100 if state == "success" else (50 if state == "generating" else 0),
-            "result_urls": [video_url] if video_url else [],
-            "error": error,
-        }
-
-    async def get_hd_video(self, task_id: str) -> str | None:
-        """Get 1080p version of completed video"""
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{KIE_BASE_URL}/veo/get-1080p-video",
-                params={"taskId": task_id},
-                headers=self.headers,
-            )
-            self._check_status(resp)
-            data = resp.json().get("data", {})
-            return data.get("resultUrl") or data.get("videoUrl")
 
     # ── Images (GPT Image 2) ──────────────────────────────────────────
 
@@ -173,10 +143,12 @@ class KieAIClient:
         prompt: str,
         image_url: str,
         aspect_ratio: str = "1:1",
+        resolution: str = "1K",
     ) -> str:
         input_payload = {
             "prompt": prompt,
             "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
             "nsfw_checker": False,
         }
         model = GPT_IMAGE_2_TEXT_MODEL
@@ -194,7 +166,13 @@ class KieAIClient:
             return self._extract_task_id(resp)
 
     async def get_task_status(self, task_id: str) -> dict:
-        """Poll general KIE task status (used for images)."""
+        """Poll a KIE jobs/createTask task — used for BOTH gpt-image-2 images
+        and gemini-omni-video clips (both run on the unified jobs endpoint).
+
+        Omni states: waiting | queuing | generating | success | fail. On
+        success, data.resultJson is a JSON *string* {"resultUrls": [...]} that
+        must be parsed.
+        """
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
                 f"{KIE_BASE_URL}/jobs/recordInfo",
@@ -215,13 +193,17 @@ class KieAIClient:
             except (json.JSONDecodeError, KeyError):
                 pass
         result_urls = [u for u in (_safe_result_url(x) for x in raw_urls) if u]
+        state = data.get("state", "unknown")
         error = ""
-        if data.get("state") in ("fail", "failed"):
+        if state in ("fail", "failed"):
             error = f"{data.get('failCode') or ''}: {data.get('failMsg') or ''}".strip(": ").strip()
 
         return {
-            "state": data.get("state", "unknown"),
+            "state": state,
             "progress": data.get("progress", 0),
             "result_urls": result_urls,
+            # creditsConsumed lets the worker reconcile real cost vs the credits
+            # charged to the customer (cost-control safety net).
+            "credits": data.get("creditsConsumed") or data.get("costCredits"),
             "error": error,
         }
