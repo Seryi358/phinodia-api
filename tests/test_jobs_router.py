@@ -18,7 +18,7 @@ async def test_job_status_includes_download_url_for_completed_video():
     job = {
         "id": "11111111-1111-1111-1111-111111111111",
         "status": "completed",
-        "service_type": "video_8s",
+        "service_type": "video_10s",
         "result_type": "mp4",
         "result_url": "https://app.phinodia.com/uploads/results/11111111-1111-1111-1111-111111111111.mp4",
         "error_message": None,
@@ -34,7 +34,7 @@ async def test_download_endpoint_serves_video_attachment():
     from app.routers.jobs import download_job_result
 
     job_id = "22222222-2222-2222-2222-222222222222"
-    out_dir = Path("/home/sergio/repos-seryi358/phinodia-api/data/uploads/results")
+    out_dir = Path("data/uploads/results")
     out_dir.mkdir(parents=True, exist_ok=True)
     file_path = out_dir / f"{job_id}.mp4"
     file_path.write_bytes(b"fake-mp4-data")
@@ -42,7 +42,7 @@ async def test_download_endpoint_serves_video_attachment():
     job = {
         "id": job_id,
         "status": "completed",
-        "service_type": "video_8s",
+        "service_type": "video_10s",
         "result_type": "mp4",
         "result_url": f"https://app.phinodia.com/uploads/results/{job_id}.mp4",
     }
@@ -88,7 +88,7 @@ async def test_job_status_skips_kie_autocomplete_for_multistep_video():
     job = {
         "id": "44444444-4444-4444-4444-444444444444",
         "status": "generating",
-        "service_type": "video_15s",
+        "service_type": "video_20s",
         "kie_task_id": "kie-task-1",
         "result_type": "mp4",
         "result_url": None,
@@ -107,7 +107,7 @@ async def test_job_status_skips_kie_autocomplete_for_multistep_video():
         body = await get_job_status(UUID(job["id"]), _request())
 
     assert body.status == "generating"
-    assert mock_kie.get_video_status.await_count == 0
+    assert mock_kie.get_task_status.await_count == 0
 
 
 @pytest.mark.asyncio
@@ -117,7 +117,7 @@ async def test_job_status_auto_fails_stale_multistep_partial_and_refunds():
     job = {
         "id": "55555555-5555-5555-5555-555555555555",
         "status": "generating",
-        "service_type": "video_15s",
+        "service_type": "video_20s",
         "kie_task_id": "kie-task-2",
         "result_type": "mp4",
         "result_url": "https://app.phinodia.com/uploads/results/55555555-5555-5555-5555-555555555555.mp4",
@@ -144,7 +144,7 @@ async def test_job_status_auto_fails_stale_multistep_partial_and_refunds():
 
     assert body.status == "failed"
     assert "credito fue restaurado" in body.error_message.lower()
-    mock_credit.refund_credit.assert_awaited_once_with("user-1", "video_15s")
+    mock_credit.refund_credit.assert_awaited_once_with("user-1", "video_20s")
 
 
 @pytest.mark.asyncio
@@ -154,7 +154,7 @@ async def test_job_status_auto_promotes_stale_multistep_when_duration_valid():
     job = {
         "id": "66666666-6666-6666-6666-666666666666",
         "status": "generating",
-        "service_type": "video_15s",
+        "service_type": "video_20s",
         "kie_task_id": "kie-task-3",
         "result_type": "mp4",
         "result_url": "https://app.phinodia.com/uploads/results/66666666-6666-6666-6666-666666666666.mp4",

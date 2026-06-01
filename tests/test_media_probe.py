@@ -7,11 +7,11 @@ def _box(box_type: bytes, payload: bytes) -> bytes:
 
 
 def test_expected_video_duration_mapping():
-    assert expected_video_duration_seconds("video_15s") == 15.0
+    assert expected_video_duration_seconds("video_20s") == 20.0
     assert expected_video_duration_seconds("video_30s") == 30.0
     assert expected_video_duration_seconds("image") is None
-    assert is_multi_step_video_service("video_15s") is True
-    assert is_multi_step_video_service("video_8s") is False
+    assert is_multi_step_video_service("video_20s") is True
+    assert is_multi_step_video_service("video_10s") is False
 
 
 def test_extract_mp4_duration_seconds_from_mvhd_box():
