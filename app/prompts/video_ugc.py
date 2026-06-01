@@ -136,6 +136,7 @@ def assemble_omni_prompt(identity_block: str, action: str, dialogue_es: str) -> 
         "slight natural hand shake, realistic phone footage, not cinematic.\n"
         f"{identity_block.strip()}\n"
         f"{action.strip()} She holds the product clearly to the camera, label visible, looking into the lens.\n"
+        "Keep the product packaging, label and brand text EXACTLY like the reference photo; never change, translate or invent any text on it.\n"
         f"She speaks aloud in clear, warm, natural Colombian Spanish: \"{dialogue_es.strip()}\"\n"
         "Audio: only her voice and quiet natural room tone, no background music.\n"
         "No on-screen text, no captions, no subtitles, no watermark, no logo overlay."
@@ -150,6 +151,7 @@ def safe_omni_prompt(product_hint: str, dialogue_es: str) -> str:
     return (
         "Vertical 9:16, 720p, handheld phone-selfie UGC video, candid.\n"
         f"An everyday Colombian woman, late 20s, natural relatable look, holding {hint} to the camera.\n"
+        "Keep the product label and packaging exactly like the reference photo.\n"
         f"She speaks aloud in clear Colombian Spanish: \"{line}\"\n"
         "Audio: only her voice and room tone, no music.\n"
         "No on-screen text, no captions, no subtitles, no watermark."

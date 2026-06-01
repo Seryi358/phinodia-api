@@ -102,6 +102,7 @@ class KieAIClient:
         self,
         prompt: str,
         image_url: str = "",
+        reference_image_url: str = "",
         character_ids: list[str] | None = None,
         seed: int | None = None,
         duration: str = "10",
@@ -111,17 +112,27 @@ class KieAIClient:
         """Create a Gemini-Omni video task (<=10s).
 
         image_url is the first frame (gpt-image-2 output, or the previous clip's
-        last frame for the continuation/last-frame relay). character_ids + a
-        fixed seed keep the avatar consistent across stitched clips.
+        last frame for the continuation/last-frame relay).
+
+        reference_image_url is the ORIGINAL product photo, attached as a second
+        reference on EVERY clip so the product's packaging/label/brand text stays
+        identical and doesn't drift across stitched clips — without it omni
+        regenerates the product on later clips and can invent a different name.
+        character_ids + a fixed seed keep the avatar consistent across clips.
         """
+        images: list[str] = []
+        if image_url:
+            images.append(image_url)
+        if reference_image_url and reference_image_url != image_url:
+            images.append(reference_image_url)
         inp: dict = {
             "prompt": prompt,
             "duration": str(duration),
             "aspect_ratio": aspect_ratio,
             "resolution": resolution,
         }
-        if image_url:
-            inp["image_urls"] = [image_url]
+        if images:
+            inp["image_urls"] = images[:7]
         if character_ids:
             inp["character_ids"] = character_ids[:3]
         if seed is not None:

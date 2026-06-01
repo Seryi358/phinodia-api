@@ -334,11 +334,14 @@ async def _retry_kie_task(
     return "", {"state": "failed", "result_urls": [], "error": last_error}
 
 
-async def _omni_generate_clip(kie, rich_prompt, safe_prompt, frames, aspect):
+async def _omni_generate_clip(kie, rich_prompt, safe_prompt, frames, aspect, product_ref=""):
     # Produce ONE <=10s omni clip with graceful fallbacks. For each candidate
     # first frame (relay/gpt-image-2 frame, then the original product image) try
     # the rich prompt then the short safe prompt; finally text-only. Omni 500s on
     # long bracketed prompts, so the safe prompt is the proven short shape.
+    # product_ref (the ORIGINAL product photo) is attached as a SECOND reference
+    # on every attempt so the packaging/label/brand text never drifts across
+    # stitched clips (omni otherwise re-invents the product name on clip 2+).
     candidates = []
     for fr in frames:
         if fr:
@@ -350,8 +353,8 @@ async def _omni_generate_clip(kie, rich_prompt, safe_prompt, frames, aspect):
             _task_id, status = await _retry_kie_task(
                 kie,
                 (lambda pr=pr, fr=fr: kie.create_omni_video_task(
-                    prompt=pr, image_url=fr, seed=OMNI_SEED,
-                    duration="10", aspect_ratio=aspect, resolution="720p")),
+                    prompt=pr, image_url=fr, reference_image_url=product_ref,
+                    seed=OMNI_SEED, duration="10", aspect_ratio=aspect, resolution="720p")),
                 poll_is_video=False, max_retries=2,
             )
             if status["state"] == "success" and status.get("result_urls"):
@@ -376,8 +379,10 @@ async def _omni_render_video(kie, job_id, req, first_frame_url, plan, num_clips,
         rich = assemble_omni_prompt(identity, clip.get("action", ""), clip.get("dialogue_es", ""))
         safe = safe_omni_prompt(product_hint, clip.get("dialogue_es", ""))
         # Try the relay/first frame, then fall back to the original product image.
+        # Always attach the original product photo as a reference so the label
+        # stays identical across every stitched clip.
         frames = [current_frame, req.image_url]
-        clip_url = await _omni_generate_clip(kie, rich, safe, frames, aspect)
+        clip_url = await _omni_generate_clip(kie, rich, safe, frames, aspect, product_ref=req.image_url)
         if not clip_url:
             return None, f"Fallo en etapa clip_{i + 1}. {_friendly_error('omni internal error')}"
         local = str(work / f"{job_id}_clip{i}.mp4")
