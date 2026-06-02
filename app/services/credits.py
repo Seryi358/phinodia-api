@@ -31,13 +31,9 @@ VIDEO_CREDITS_PER_10S = 3
 # Durations offered in the UI (seconds). Each maps to ceil(d/10) credits.
 ALLOWED_VIDEO_DURATIONS = (10, 20, 30)
 
-# Free welcome credits a brand-new user gets on first generation, so they can
-# TRY the product before paying (the single biggest conversion lever for a
-# SaaS). 3 = one free 10s video OR 3 product images. Set to 0 to disable.
-# Cost to the owner per new tryer: ~$0.03 (image) to ~$0.90 (10s video) of KIE.
-# Only granted when the user is first created via the generate flow (passive
-# /credits/check does NOT create users), which limits abuse to the amount here.
-WELCOME_CREDITS = 3
+# Free welcome credits for new users. DISABLED (0) by owner decision — no free
+# trial. (Set to a positive number to re-enable a freemium try-before-buy.)
+WELCOME_CREDITS = 0
 
 _CAS_RETRIES = 8
 
