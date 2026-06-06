@@ -367,6 +367,7 @@ async def robots():
         "Disallow: /creditos\n"
         "Disallow: /estado\n"
         "Disallow: /mis-generaciones\n"
+        "Disallow: /comprar\n"
         "Sitemap: https://app.phinodia.com/sitemap.xml\n"
     )
     return PlainTextResponse(body, headers={"Cache-Control": "public, max-age=86400"})
@@ -385,6 +386,56 @@ async def sitemap():
     )
     body = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}\n</urlset>\n'
     return Response(body, media_type="application/xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
+# ── Frictionless one-click checkout ───────────────────────────────────────
+# GET /comprar/<sku> 302-redirects STRAIGHT to Wompi Web Checkout — no login,
+# no email form, no intermediate page. Wompi collects the buyer's email during
+# payment and the /api/v1/payments/webhook credits THAT email (auto-creating the
+# account via get_or_create_user). The integrity hash is computed exactly like
+# /api/v1/payments/checkout, and the reference uses the same PH-{sku}-{ts}-{hex}
+# format the webhook already parses. The marketing-site pricing buttons link
+# here so a plan click opens Wompi directly (zero friction).
+_WOMPI_CHECKOUT_BASE = "https://checkout.wompi.co/p/"
+
+
+@app.api_route("/comprar/{sku}", methods=["GET", "HEAD"])
+async def comprar_directo(sku: str):
+    from fastapi.responses import RedirectResponse
+    import hashlib
+    import time
+    import secrets
+    from urllib.parse import urlencode
+    from app.config import get_settings
+    from app.services.wompi import PACKAGES_BY_SKU
+
+    s = get_settings()
+    pkg = PACKAGES_BY_SKU.get(sku)
+    if not pkg:
+        # Unknown pack → fall back to the pricing page instead of erroring.
+        return RedirectResponse("https://app.phinodia.com/precios", status_code=302)
+
+    amount = pkg["amount"]
+    currency = "COP"
+    reference = f"PH-{sku}-{int(time.time())}-{secrets.token_hex(4)}"
+    integrity = hashlib.sha256(
+        f"{reference}{amount}{currency}{s.wompi_integrity_secret}".encode()
+    ).hexdigest()
+    # Land on the generic thank-you page so the Meta Purchase pixel fires; the
+    # webhook also fires the server-side Purchase via CAPI (same reference).
+    redirect_url = (
+        f"https://phinodia.com/gracias-video/?plan={sku}"
+        f"&value={amount // 100}&ref={reference}"
+    )
+    params = {
+        "public-key": s.wompi_public_key,
+        "currency": currency,
+        "amount-in-cents": amount,
+        "reference": reference,
+        "signature:integrity": integrity,
+        "redirect-url": redirect_url,
+    }
+    return RedirectResponse(_WOMPI_CHECKOUT_BASE + "?" + urlencode(params), status_code=302)
 
 
 # Note: dotfile filter moved into add_cache_and_security_headers below so 404
