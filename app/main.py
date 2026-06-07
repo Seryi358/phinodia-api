@@ -158,6 +158,7 @@ _RATE_LIMITED_PATHS = (
     "/api/v1/payments/checkout",
     "/api/v1/contact",
     "/api/v1/preview-emails",
+    "/comprar",
 )
 _RATE_LIMIT = 30   # requests
 _RATE_WINDOW = 60  # seconds
@@ -400,20 +401,22 @@ _WOMPI_CHECKOUT_BASE = "https://checkout.wompi.co/p/"
 
 
 @app.api_route("/comprar/{sku}", methods=["GET", "HEAD"])
-async def comprar_directo(sku: str):
-    from fastapi.responses import RedirectResponse
+async def comprar_directo(sku: str, request: Request, eid: str = "", fbp: str = "", fbc: str = ""):
+    import asyncio
     import hashlib
     import time
     import secrets
     from urllib.parse import urlencode
+    from fastapi.responses import RedirectResponse
     from app.config import get_settings
     from app.services.wompi import PACKAGES_BY_SKU
 
     s = get_settings()
     pkg = PACKAGES_BY_SKU.get(sku)
     if not pkg:
-        # Unknown pack → fall back to the pricing page instead of erroring.
-        return RedirectResponse("https://app.phinodia.com/precios", status_code=302)
+        # Unknown pack → fall back to the pricing page (trailing slash =
+        # canonical, avoids an extra 307 redirect hop).
+        return RedirectResponse("https://app.phinodia.com/precios/", status_code=302)
 
     amount = pkg["amount"]
     currency = "COP"
@@ -421,19 +424,57 @@ async def comprar_directo(sku: str):
     integrity = hashlib.sha256(
         f"{reference}{amount}{currency}{s.wompi_integrity_secret}".encode()
     ).hexdigest()
-    # Land on the generic thank-you page so the Meta Purchase pixel fires; the
-    # webhook also fires the server-side Purchase via CAPI (same reference).
-    redirect_url = (
-        f"https://phinodia.com/gracias-video/?plan={sku}"
-        f"&value={amount // 100}&ref={reference}"
-    )
+
+    # Meta click identifiers: prefer the explicit query params the plan button
+    # sends; otherwise fall back to the _fbp/_fbc cookies the browser delivers
+    # to this subdomain (cookie scope is .phinodia.com).
+    fbp = fbp or request.cookies.get("_fbp", "")
+    fbc = fbc or request.cookies.get("_fbc", "")
+
+    # Server-side InitiateCheckout (Meta CAPI) for the frictionless path. The
+    # plan button fires the SAME event client-side with the SAME eventID, so
+    # Meta dedupes pixel+CAPI. Best-effort: never block or fail the redirect.
+    try:
+        from app.services.meta_capi import get_capi
+        capi = get_capi()
+        if capi.enabled:
+            xff = request.headers.get("x-forwarded-for", "")
+            client_ip = xff.split(",")[0].strip() or (request.client.host if request.client else None)
+            user_agent = request.headers.get("user-agent", "")[:500]
+            task = asyncio.create_task(capi.send_event(
+                event_name="InitiateCheckout",
+                event_id=(eid or f"ic_{reference}"),
+                client_ip=client_ip,
+                user_agent=user_agent,
+                fbp=fbp or None,
+                fbc=fbc or None,
+                event_source_url="https://phinodia.com/phinodiapp/",
+                value_cop=amount // 100,
+                currency=currency,
+                content_ids=[sku],
+                content_type="product",
+            ))
+            from app.routers.generate import _background_tasks
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+    except Exception:
+        pass
+
+    # Thank-you page fires the Meta Purchase pixel; carry plan/value/ref (+ the
+    # click-ids) so Purchase attribution and EMQ stay intact. The webhook also
+    # fires the server-side Purchase via CAPI (same reference).
+    ru = f"https://phinodia.com/gracias-video/?plan={sku}&value={amount // 100}&ref={reference}"
+    if fbp:
+        ru += f"&fbp={fbp}"
+    if fbc:
+        ru += f"&fbc={fbc}"
     params = {
         "public-key": s.wompi_public_key,
         "currency": currency,
         "amount-in-cents": amount,
         "reference": reference,
         "signature:integrity": integrity,
-        "redirect-url": redirect_url,
+        "redirect-url": ru,
     }
     return RedirectResponse(_WOMPI_CHECKOUT_BASE + "?" + urlencode(params), status_code=302)
 

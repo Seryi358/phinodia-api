@@ -364,9 +364,10 @@ async function pollJobStatus(jobId, onUpdate, intervalMs = 5000) {
 window.addEventListener('pagehide', cancelAllPolls);
 
 // On bfcache restore (Safari/Firefox back-button), polls were cancelled by
-// pagehide but the result UI still shows "Procesando". Skip the reload if
-// there's an active job persisted in sessionStorage so we don't blow away
-// recoverable in-flight state — the page can resume polling instead.
+// pagehide but the result UI still shows "Procesando". Reload to get fresh
+// state. Pages that persist an in-flight job under `phinodia_active_job`
+// (none today) can opt out of the reload and resume polling themselves —
+// the guard is here so adding that later doesn't require touching this file.
 window.addEventListener('pageshow', (e) => {
   if (!e.persisted) return;
   let active = null;
@@ -447,6 +448,14 @@ async function openWompiCheckout(sku, email, redirectUrl, abVariant) {
     const ru = redirectUrl || window.location.origin + '/precios';
     const sep = ru.includes('?') ? '&' : '?';
     const redirectWithRef = ru + sep + 'ref=' + encodeURIComponent(checkout.reference);
+
+    // The Wompi widget script is loaded with `defer` and can be blocked by an
+    // ad-blocker or a flaky CDN. Without this guard `new WidgetCheckout` throws
+    // a raw ReferenceError that surfaces to the user as a cryptic toast.
+    if (typeof WidgetCheckout !== 'function') {
+      showToast('No se pudo cargar el procesador de pagos. Recarga la pagina e intenta de nuevo.', 'error');
+      return;
+    }
 
     const widget = new WidgetCheckout({
       currency: checkout.currency,

@@ -21,24 +21,9 @@
     "name": "Planes y Precios PhinodIA",
     "url": "https://app.phinodia.com/precios",
     "itemListElement": [
-      {"@type": "Offer", "name": "Reel Express 8s — Basico", "price": "62990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Reel Express 8s — Profesional", "price": "189990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Reel Express 8s — Empresarial", "price": "399990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Reel Standard 15s — Basico", "price": "116990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Reel Standard 15s — Profesional", "price": "339990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Reel Standard 15s — Empresarial", "price": "724990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Reel Plus 22s — Basico", "price": "167990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Reel Plus 22s — Profesional", "price": "489990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Reel Plus 22s — Empresarial", "price": "1049990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Comercial 30s — Basico", "price": "218990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Comercial 30s — Profesional", "price": "649990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Comercial 30s — Empresarial", "price": "1374990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Imagenes — Basico (3)", "price": "11990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Imagenes — Profesional (10)", "price": "34990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Imagenes — Empresarial (25)", "price": "74990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Landing Pages — Basico (3)", "price": "44990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Landing Pages — Profesional (10)", "price": "129990", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Landing Pages — Empresarial (25)", "price": "279990", "priceCurrency": "COP"}
+      {"@type": "Offer", "name": "Prueba — 6 creditos", "price": "14900", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Pro — 20 creditos", "price": "47900", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Studio — 50 creditos", "price": "109900", "priceCurrency": "COP"}
     ]
   }
   </script>
@@ -93,7 +78,7 @@
         <a href="/referidos">Referidos</a>
         <a href="/precios" class="nav-cta">Precios</a>
       </div>
-      <button class="nav-toggle" aria-label="Menu">&#9776;</button>
+      <button class="nav-toggle" aria-label="Menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line></svg></button>
     </div>
   </nav>
 
@@ -310,6 +295,12 @@
         return;
       }
 
+      // Debounce FIRST — before any side effect. Otherwise a double-click
+      // fires duplicate AddToCart Pixel events (each with a distinct Date.now
+      // event_id, so Meta can't dedupe them) and inflates the metric, even
+      // though the checkout request itself is debounced further down.
+      if (_checkoutInFlight) return;
+
       // Fire AddToCart pixel event — middle-funnel signal. Meta's algorithm
       // uses this (along with InitiateCheckout fired later by api.js) to
       // optimize bidding BEFORE enough Purchase volume exists to escape
@@ -344,8 +335,8 @@
 
       // Debounce: stop the user from spamming "Comprar" while the previous
       // checkout request/widget is still being prepared (otherwise N modals
-      // stack and N orphan references hit the backend).
-      if (_checkoutInFlight) return;
+      // stack and N orphan references hit the backend). The early-return
+      // guard above already bailed; here we claim the in-flight flag.
       _checkoutInFlight = true;
       const buttons = document.querySelectorAll('button[data-sku]');
       buttons.forEach(b => { b.disabled = true; });
@@ -362,18 +353,25 @@
         if (refCode) {
           try {
             const ctrl = new AbortController();
+            // clearTimeout in finally so a non-ok issue-token response (or a
+            // throw) can't leave a live 5s timer that aborts an unrelated
+            // later request. A single 5s budget covers the whole two-step
+            // flow; both fetches share the controller intentionally.
             const t = setTimeout(() => ctrl.abort(), 5000);
-            const tokRes = await fetch(API + '/referrals/issue-token?email=' + encodeURIComponent(email) + '&ref=' + encodeURIComponent(refCode), { signal: ctrl.signal });
-            if (tokRes.ok) {
-              const { token } = await tokRes.json();
-              await fetch(API + '/referrals/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ referred_email: email, referral_code: refCode, token }),
-                signal: ctrl.signal,
-              });
+            try {
+              const tokRes = await fetch(API + '/referrals/issue-token?email=' + encodeURIComponent(email) + '&ref=' + encodeURIComponent(refCode), { signal: ctrl.signal });
+              if (tokRes.ok) {
+                const { token } = await tokRes.json();
+                await fetch(API + '/referrals/register', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ referred_email: email, referral_code: refCode, token }),
+                  signal: ctrl.signal,
+                });
+              }
+            } finally {
+              clearTimeout(t);
             }
-            clearTimeout(t);
           } catch (_) { /* don't block checkout on registrar failure */ }
         }
 
