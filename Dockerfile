@@ -27,4 +27,4 @@ EXPOSE 8000
 # preserve the https:// scheme (otherwise uvicorn rebuilds Location with
 # http:// and the browser downgrade is blocked by HSTS only on subsequent
 # visits, hurting first-load + crawler experience).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--no-server-header", "--proxy-headers", "--forwarded-allow-ips", "*"]

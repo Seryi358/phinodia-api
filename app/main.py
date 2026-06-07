@@ -5,6 +5,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+import mimetypes as _mimetypes
+
+# .webp/.avif aren't always in the system mime map inside slim containers, so
+# StaticFiles would serve them as application/octet-stream. Register them so
+# images get the correct Content-Type.
+_mimetypes.add_type("image/webp", ".webp")
+_mimetypes.add_type("image/avif", ".avif")
 from app.config import get_settings
 settings = get_settings()
 APP_RELEASE = "2026-04-29-kie-debug-1"
@@ -305,6 +312,12 @@ async def add_cache_and_security_headers(request: Request, call_next):
             "base-uri 'self'; "
             "form-action 'self' https://checkout.wompi.co"
         )
+
+    # Fallback CSP for non-HTML utility routes (/health, /robots.txt,
+    # /sitemap.xml, /favicon.ico, /comprar redirects) that match none of the
+    # branches above. They serve no HTML, so the strictest policy is safe.
+    if "Content-Security-Policy" not in response.headers:
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
 
     return response
 

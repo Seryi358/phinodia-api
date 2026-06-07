@@ -68,7 +68,7 @@
   // checkout request to forward to CAPI for matching.
   window.getFbp = function () {
     const m = document.cookie.match(/(?:^|;\s*)_fbp=([^;]+)/);
-    return m ? m[1] : '';
+    return m ? decodeURIComponent(m[1]) : '';
   };
 
   // Build the _fbc value from a ?fbclid= URL param. Meta wants format
@@ -77,7 +77,7 @@
   // yet on first paint, so reading the URL is more reliable.
   window.getFbc = function () {
     const fromCookie = document.cookie.match(/(?:^|;\s*)_fbc=([^;]+)/);
-    if (fromCookie) return fromCookie[1];
+    if (fromCookie) return decodeURIComponent(fromCookie[1]);
     const urlClick = new URLSearchParams(window.location.search).get('fbclid');
     if (urlClick) {
       return 'fb.1.' + Date.now() + '.' + urlClick;
