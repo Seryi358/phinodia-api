@@ -86,12 +86,14 @@
         const credits = (balance && typeof balance.credits === 'number') ? balance.credits : 0;
         const grid = document.getElementById('credits-grid');
         const videos20 = Math.floor(credits / 6);
+        const videos30 = Math.floor(credits / 9);
         grid.innerHTML =
           '<div class="credit-item" style="grid-column:1 / -1;' + (credits > 0 ? 'background:var(--accent-subtle);' : '') + '">' +
           '<div class="credit-count">' + credits + '</div>' +
           '<div class="credit-label">' + (credits === 1 ? 'credito disponible' : 'creditos disponibles') + '</div></div>';
         if (credits > 0) {
-          grid.innerHTML += '<div class="credit-item" style="grid-column:1 / -1;"><div class="credit-label" style="font-size:13px;color:var(--text-secondary)">Te alcanza para ~' + videos20 + ' videos de 20s, o ' + credits + ' imagenes</div></div>';
+          const afford = '~' + videos20 + (videos20 === 1 ? ' video' : ' videos') + ' de 20s' + (videos30 >= 1 ? ', ~' + videos30 + ' de 30s' : '') + ', o ' + credits + (credits === 1 ? ' imagen' : ' imagenes');
+          grid.innerHTML += '<div class="credit-item" style="grid-column:1 / -1;"><div class="credit-label" style="font-size:13px;color:var(--text-secondary)">Te alcanza para ' + afford + '</div></div>';
         }
         document.getElementById('credits-result').classList.remove('hidden');
       } catch (err) {
