@@ -32,8 +32,54 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
     _ka_task = _ka_aio.create_task(_supabase_keepalive())
+
+    # Barrido de trabajos huerfanos: la auto-falla de GET /jobs solo corre si el
+    # frontend hace poll; un job interrumpido por un reinicio del proceso que
+    # nadie consulta se queda en "processing" y el credito se pierde. Umbral
+    # conservador de 90min (> el gate de 60min de videos multi-step) -> nunca
+    # toca un job en vuelo; la CAS sobre status evita doble reembolso.
+    async def _sweep_orphan_jobs():
+        import logging as _lg
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        from app.database import db as _sdb
+        from app.services.credits import CreditService as _SCS
+        log = _lg.getLogger(__name__)
+        cutoff = (_dt.now(_tz.utc) - _td(minutes=90)).isoformat().replace("+00:00", "Z")
+        try:
+            stuck = await _sdb.select("jobs", {
+                "select": "id,user_id,service_type,result_url",
+                "status": "in.(processing,generating)",
+                "created_at": f"lt.{cutoff}", "limit": "200",
+            })
+        except Exception as e:
+            log.warning("orphan sweep select failed: %s", e); return
+        for j in stuck or []:
+            try:
+                if j.get("result_url"):
+                    await _sdb.update("jobs",
+                        {"id": f"eq.{j['id']}", "status": "in.(processing,generating)"},
+                        {"status": "completed", "completed_at": _dt.now(_tz.utc).isoformat(),
+                         "error_message": "Recuperado tras reinicio: tu resultado estaba listo."})
+                    continue
+                updated = await _sdb.update("jobs",
+                    {"id": f"eq.{j['id']}", "status": "in.(processing,generating)"},
+                    {"status": "failed",
+                     "error_message": "La generacion se interrumpio. Tu credito fue restaurado."})
+                if updated and j.get("user_id") and j.get("service_type"):
+                    await _SCS().refund_credit(j["user_id"], j["service_type"])
+                    log.info("Barrido: job huerfano %s fallado y credito reembolsado", j["id"])
+            except Exception as e:
+                log.warning("orphan sweep job %s failed: %s", j.get("id"), e)
+
+    async def _orphan_sweeper():
+        await _ka_aio.sleep(60)  # no correr durante tests cortos
+        while True:
+            await _sweep_orphan_jobs()
+            await _ka_aio.sleep(30 * 60)
+    _sweeper_task = _ka_aio.create_task(_orphan_sweeper())
     yield
     _ka_task.cancel()
+    _sweeper_task.cancel()
     # Drain in-flight generation background tasks before tearing down the
     # Supabase pool so they can checkpoint state (refund credits / mark
     # jobs failed). Without this, a redeploy mid-generation crashes the
