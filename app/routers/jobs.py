@@ -165,6 +165,8 @@ async def get_job_status(job_id: UUID, request: Request):
                     await credit_svc.refund_credit(uid, service_type)
                 elif forced and not uid:
                     logger.error("Auto-fail job %s missing user_id — credit not refunded", job_id)
+                elif forced and uid and not service_type:
+                    logger.error("Auto-fail job %s missing service_type — credit not refunded, manual review", job_id)
                 if forced:
                     job["status"] = "failed"
                     job["error_message"] = fail_msg

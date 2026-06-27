@@ -125,8 +125,11 @@ async def wompi_webhook(event: dict):
     try:
         ev_ts_int = int(ev_ts)
     except (TypeError, ValueError):
-        logger.warning("Webhook missing/invalid timestamp")
-        return {"status": "ok", "action": "bad_timestamp"}
+        # La firma ya cubre el timestamp, asi que un evento firma-valido sin
+        # timestamp es autentico: forzamos reintento (no 200) para no perder un
+        # pago legitimo. La cadena CAS de idempotencia evita el doble credito.
+        logger.warning("Webhook missing/invalid timestamp — forcing retry")
+        raise HTTPException(503, "missing/invalid timestamp — retry")
     if ev_ts_int > 10_000_000_000:  # > year 2286 in seconds → must be ms epoch
         ev_ts_int //= 1000
     if abs(int(time.time()) - ev_ts_int) > REPLAY_WINDOW_SECONDS:

@@ -14,7 +14,7 @@ _mimetypes.add_type("image/webp", ".webp")
 _mimetypes.add_type("image/avif", ".avif")
 from app.config import get_settings
 settings = get_settings()
-APP_RELEASE = "2026-04-29-kie-debug-1"
+APP_RELEASE = "2026-06-26-backlog-2"
 
 
 @asynccontextmanager
@@ -71,10 +71,35 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 log.warning("orphan sweep job %s failed: %s", j.get("id"), e)
 
+    # [3/21] Reconciliacion de reembolsos pendientes. refund() encola en
+    # pending_refunds SOLO ante CreditContention (credito garantizado-no-otorgado).
+    # Aqui se otorga via la RPC atomica resolve_pending_refund(p_id): hace el grant
+    # y el marcado resolved_at en UNA transaccion (SELECT ... FOR UPDATE), asi es
+    # IDEMPOTENTE aun si se pierde la respuesta de red (re-llamar ve resolved_at y
+    # devuelve false) y a prueba de crash (sin commit no hay grant ni resolve).
+    # Seguro entre los 4 workers: el FOR UPDATE serializa por fila.
+    async def _reconcile_pending_refunds():
+        import logging as _lg
+        from app.database import db as _rdb
+        log = _lg.getLogger(__name__)
+        try:
+            rows = await _rdb.select("pending_refunds", {
+                "select": "id", "resolved_at": "is.null", "limit": "100"})
+        except Exception as e:
+            log.warning("pending_refunds select failed: %s", e); return
+        for r in rows or []:
+            try:
+                granted = await _rdb.rpc("resolve_pending_refund", {"p_id": r["id"]})
+                if granted is True:
+                    log.info("pending_refund %s reconciliado (RPC idempotente)", r["id"])
+            except Exception as e:
+                log.warning("reconcile pending_refund %s fallo: %s — reintenta luego", r.get("id"), type(e).__name__)
+
     async def _orphan_sweeper():
         await _ka_aio.sleep(60)  # no correr durante tests cortos
         while True:
             await _sweep_orphan_jobs()
+            await _reconcile_pending_refunds()
             await _ka_aio.sleep(30 * 60)
     _sweeper_task = _ka_aio.create_task(_orphan_sweeper())
     yield

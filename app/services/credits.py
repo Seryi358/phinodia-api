@@ -135,14 +135,31 @@ class CreditService:
         return await self._adjust(user_id, -amount, require_available=True)
 
     async def refund(self, user_id: str, amount: int = 1) -> bool:
-        """Refund `amount` credits (e.g. on a failed generation)."""
+        """Refund `amount` credits (e.g. on a failed generation).
+
+        Si el CAS se agota o falla la red, NO se pierde el credito en silencio:
+        se encola en pending_refunds para reconciliacion idempotente (sweeper en
+        main.py). Devuelve False para que el llamador sepa que fue diferido.
+        """
         if amount <= 0:
             return True
         try:
             return await self._adjust(user_id, amount, require_available=False)
         except CreditContention:
-            logger.error("refund CAS exhausted user=%s amount=%d — needs manual replay", user_id, amount)
+            # CreditContention garantiza que el credito NO se otorgo (todos los CAS
+            # fallaron) -> es seguro encolar para reconciliacion idempotente. NO
+            # encolamos ante otras excepciones (red/timeout): serian AMBIGUAS (el
+            # UPDATE pudo haber commiteado) y reintentar otorgaria doble credito.
+            logger.error("refund CAS exhausted user=%s amount=%d — encolando en pending_refunds", user_id, amount)
+            await self._enqueue_pending_refund(user_id, amount, "cas_exhausted")
             return False
+
+    async def _enqueue_pending_refund(self, user_id: str, amount: int, reason: str) -> None:
+        """Marcador durable de un reembolso pendiente (best-effort)."""
+        try:
+            await db.insert("pending_refunds", {"user_id": user_id, "amount": amount, "reason": reason})
+        except Exception as e:
+            logger.error("No se pudo encolar pending_refund user=%s amount=%d: %s", user_id, amount, type(e).__name__)
 
     async def grant_credits(self, user_id: str, service_or_amount, amount: int | None = None) -> None:
         """Add purchased/bonus credits to the unified wallet.

@@ -108,6 +108,9 @@ ERROR_MESSAGES = {
 def _friendly_error(raw_error: str) -> str:
     """Convert technical KIE AI errors to user-friendly Spanish messages."""
     lower = raw_error.lower()
+    if "credits insufficient" in lower or "current balance isn't enough" in lower:
+        # Senal de ops para alertar y pausar generaciones antes de que sigan fallando.
+        logger.error("KIE_BALANCE_EXHAUSTED: %s — recarga KIE / pausa generaciones", raw_error[:200])
     for key, msg in ERROR_MESSAGES.items():
         if key in lower:
             return msg

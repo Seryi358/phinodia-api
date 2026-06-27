@@ -58,5 +58,11 @@ class SupabaseClient:
         rows = r.json()
         return rows[0] if rows else data
 
+    async def rpc(self, fn: str, params: dict | None = None):
+        """Call a Postgres function via PostgREST /rpc/{fn}. Returns the JSON body."""
+        r = await self._client.post(f"/rpc/{fn}", json=params or {})
+        r.raise_for_status()
+        return r.json()
+
 
 db = SupabaseClient()

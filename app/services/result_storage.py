@@ -9,6 +9,7 @@ about to write `result_url` to the DB — keeps the read-after-write
 consistent and avoids a second background task to manage.
 """
 import asyncio
+import errno
 import logging
 import os
 from urllib.parse import urlparse
@@ -85,7 +86,10 @@ async def persist_external_url(url: str, job_id: str, ext: str) -> str:
                 os.replace(tmp, path)
                 success = True
     except (httpx.HTTPError, OSError, asyncio.TimeoutError, asyncio.CancelledError) as e:
-        logger.warning("persist_external_url failed for job %s (%s): %s — keeping upstream URL", job_id, url, e)
+        if isinstance(e, OSError) and getattr(e, "errno", None) == errno.ENOSPC:
+            logger.error("persist_external_url: DISCO LLENO (ENOSPC) job %s — el resultado no se archivo; el thumbnail 404eara cuando expire la URL upstream", job_id)
+        else:
+            logger.warning("persist_external_url failed for job %s (%s): %s — keeping upstream URL", job_id, url, e)
         if isinstance(e, asyncio.CancelledError):
             raise
         return url
