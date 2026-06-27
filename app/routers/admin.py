@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import hmac
 import io
+import logging
 from datetime import datetime, timezone
 from html import escape as _esc_html
 import asyncio
@@ -25,6 +26,7 @@ from app.database import db
 from app.services.gmail import GmailSender, build_ops_alert_email
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class OpsEmailRequest(BaseModel):
@@ -261,6 +263,14 @@ async def ops_email(req: OpsEmailRequest, token: str = Query(...)):
         raw_text=req.raw_text,
     )
     recipient = req.to or settings.gmail_sender_email
+    # Anti open-relay: aunque el endpoint esta protegido por token, si el token se
+    # filtra no debe poder enviar a destinatarios arbitrarios. Restringe a
+    # @phinodia.com + el remitente + la allowlist configurada.
+    _allowed = {settings.gmail_sender_email.lower()}
+    _allowed |= {a.strip().lower() for a in (getattr(settings, "ops_email_allowlist", "") or "").split(",") if a.strip()}
+    if not (recipient.lower() in _allowed or recipient.lower().endswith("@phinodia.com")):
+        logger.warning("ops-email rechazado: destinatario %r no permitido (configura OPS_EMAIL_ALLOWLIST si es legitimo)", recipient)
+        raise HTTPException(403, "Destinatario no permitido")
     await asyncio.to_thread(
         sender.send_email,
         to=recipient,

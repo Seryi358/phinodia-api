@@ -58,6 +58,23 @@ async def _fail_video_job(job_id: str, req, message: str) -> bool:
         await credit_svc.refund_credit(user["id"], service_type)
     return bool(failed_now)
 
+
+# [1] Deadline duro del worker de video: 55min. Para multi-step (video_20s/30s) queda
+# por debajo del gate de auto-fail de 60min, asi el worker se auto-falla + reembolsa
+# (CAS-guarded) ANTES de que el gate lo mate a mitad de extension. (Single-step
+# video_10s ya tiene gate de 30min, que actua primero; en cualquier caso, 1 solo reembolso.)
+VIDEO_DEADLINE_S = 3300
+
+async def _process_video_guarded(job_id: str, req: "VideoRequest"):
+    try:
+        async with asyncio.timeout(VIDEO_DEADLINE_S):
+            await _process_video(job_id, req)
+    except TimeoutError:
+        # Backstop: _process_video ya intento fallar+reembolsar al ser cancelado.
+        # _fail_video_job es CAS-safe, asi que esta segunda llamada NO duplica el reembolso.
+        logger.error("Video job %s excedio %ds — backstop fail+refund", job_id, VIDEO_DEADLINE_S)
+        await _fail_video_job(job_id, req, "La generacion tomo demasiado tiempo. Tu credito fue restaurado.")
+
 # Hold references to background tasks to prevent GC collection
 _background_tasks: set = set()
 
@@ -480,9 +497,12 @@ async def _process_video(job_id: str, req: "VideoRequest"):
             (lambda: kie.create_image_task(prompt=first_frame_prompt, image_url=req.image_url,
                                            aspect_ratio=aspect, resolution="1K")),
             poll_is_video=False, max_retries=2)
-        first_frame_url = (ff_status["result_urls"][0]
-                           if ff_status["state"] == "success" and ff_status.get("result_urls")
-                           else req.image_url)
+        if ff_status["state"] == "success" and ff_status.get("result_urls"):
+            first_frame_url = ff_status["result_urls"][0]
+        else:
+            logger.warning("First-frame render fallo para job %s (state=%s) — usando la foto cruda como primer frame",
+                           job_id, ff_status.get("state"))
+            first_frame_url = req.image_url
 
         # Step 4: multi-clip omni script plan (AIDA + Colombian Spanish)
         phase = "script_plan"
@@ -539,9 +559,23 @@ async def _process_video(job_id: str, req: "VideoRequest"):
 
     except (Exception, asyncio.CancelledError) as e:
         logger.exception("Video pipeline failed for job %s: %s", job_id, type(e).__name__)
-        await _fail_video_job(job_id, req, f"Fallo interno en etapa {phase}. {_friendly_error(str(e))}")
+        # Si _fail_video_job lanza (p.ej. fallo transitorio de Supabase) durante una
+        # cancelacion, NO debe suprimir la CancelledError: logueamos y dejamos que el
+        # re-raise llegue al backstop (timeout) y luego al gate/sweeper, que reembolsan.
+        try:
+            await _fail_video_job(job_id, req, f"Fallo interno en etapa {phase}. {_friendly_error(str(e))}")
+        except Exception as _fe:
+            logger.error("fail_video_job fallo manejando job %s: %s", job_id, type(_fe).__name__)
         if isinstance(e, asyncio.CancelledError):
             raise
+    finally:
+        # [6] Limpia los temporales del job en WORK_DIR (clips, frames, norm/list).
+        # No toca RESULTS_DIR, donde publish_local ya copio el video final servible.
+        try:
+            for _f in video_stitch.WORK_DIR.glob(f"*{job_id}*"):
+                _f.unlink(missing_ok=True)
+        except Exception as _ce:
+            logger.warning("Temp cleanup fallo para job %s: %s", job_id, type(_ce).__name__)
 
 
 async def _process_image(job_id: str, req: ImageRequest):
@@ -858,7 +892,7 @@ async def generate_video(req: VideoRequest):
         # No dejar al usuario sin crédito si la fila de job no se pudo crear.
         await credit_svc.refund_credit(user["id"], service_type)
         raise HTTPException(503, "No se pudo crear el trabajo. Te devolvimos el crédito; intenta de nuevo.")
-    task = asyncio.create_task(_process_video(job["id"], req))
+    task = asyncio.create_task(_process_video_guarded(job["id"], req))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return GenerateResponse(job_id=job["id"], status="processing",
