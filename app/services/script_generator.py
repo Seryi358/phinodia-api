@@ -2,7 +2,7 @@ import json
 import httpx
 from openai import AsyncOpenAI
 from app.config import get_settings
-from app.prompts.video_ugc import SYSTEM_PROMPT as VIDEO_SYSTEM, USER_TEMPLATE as VIDEO_USER
+from app.prompts.video_ugc import SYSTEM_PROMPT as VIDEO_SYSTEM, USER_TEMPLATE as VIDEO_USER, num_clips_for
 from app.prompts.image_product import (
     SYSTEM_PROMPT as IMAGE_SYSTEM,
     USER_TEMPLATE_FIRST_FRAME as IMAGE_FIRST_FRAME_USER,
@@ -167,6 +167,7 @@ class ScriptGenerator:
             product_name=_esc(product_name),
             description=_esc(description),
             duration=duration,
+            num_clips=num_clips_for(duration),
             format=format_type,
             aspect_ratio=aspect_ratio,
             creative_direction=_esc(creative_direction) or "Auto-generate creative direction",

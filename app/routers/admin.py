@@ -9,8 +9,10 @@ download CSV. Anyone scanning URLs without the token gets 401."""
 from __future__ import annotations
 
 import csv
+import hmac
 import io
 from datetime import datetime, timezone
+from html import escape as _esc_html
 import asyncio
 from typing import Literal
 
@@ -40,7 +42,7 @@ def _check_token(token: str) -> None:
     s = get_settings()
     if not s.admin_token:
         raise HTTPException(404, "Admin not configured")
-    if token != s.admin_token:
+    if not token or not hmac.compare_digest(token, s.admin_token):
         raise HTTPException(401, "Invalid admin token")
 
 
@@ -158,13 +160,13 @@ async def sales_dashboard(token: str = Query(...), days: int = Query(90, ge=1, l
         by_plan[plan]["credits"] += r["creditos"]
 
     rows_html = "\n".join(
-        f"<tr><td>{r['fecha']}</td><td>{r['email']}</td><td>{r['plan']}</td>"
+        f"<tr><td>{_esc_html(str(r['fecha']))}</td><td>{_esc_html(str(r['email']))}</td><td>{_esc_html(str(r['plan']))}</td>"
         f"<td>{r['creditos']}</td><td class='money'>${r['monto_cop']:,.0f}</td>"
-        f"<td class='mono'>{r['wompi_tx_id']}</td></tr>"
+        f"<td class='mono'>{_esc_html(str(r['wompi_tx_id']))}</td></tr>"
         for r in rows
     )
     plan_rows_html = "\n".join(
-        f"<tr><td>{plan}</td><td>{stats['count']}</td>"
+        f"<tr><td>{_esc_html(str(plan))}</td><td>{stats['count']}</td>"
         f"<td>{stats['credits']}</td><td class='money'>${stats['revenue']:,.0f}</td></tr>"
         for plan, stats in sorted(by_plan.items(), key=lambda x: -x[1]['revenue'])
     )
@@ -348,9 +350,9 @@ async def ab_test_dashboard(
             if v["conversions"] > 0:
                 lift_rev = (v["avg_ticket_cop"] - baseline["avg_ticket_cop"]) / baseline["avg_ticket_cop"] * 100
                 lift_vs_a = f'<span style="color:{"#080" if lift_rev>=0 else "#a00"}">{lift_rev:+.1f}%</span>'
-        plans_str = ", ".join(f'{p}×{n}' for p, n in sorted(v["plans"].items()))
+        plans_str = ", ".join(f'{_esc_html(str(p))}×{n}' for p, n in sorted(v["plans"].items()))
         rows_html += (
-            f'<tr><td><b>{v["variant"].upper()}</b></td>'
+            f'<tr><td><b>{_esc_html(str(v["variant"])).upper()}</b></td>'
             f'<td style="text-align:right">{v["conversions"]}</td>'
             f'<td style="text-align:right">${int(v["revenue_cop"]):,}</td>'
             f'<td style="text-align:right">${int(v["avg_ticket_cop"]):,}</td>'

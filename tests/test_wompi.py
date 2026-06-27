@@ -43,9 +43,9 @@ def test_resolve_property_nested():
 
 # Unified credit packs (one wallet). Strict resolution: SKU and amount BOTH match.
 @pytest.mark.parametrize("sku,amount,credits", [
-    ("credits_6", 1490000, 6),
-    ("credits_20", 4790000, 20),
-    ("credits_50", 10990000, 50),
+    ("credits_6", 1690000, 6),
+    ("credits_20", 6990000, 20),
+    ("credits_50", 15990000, 50),
 ])
 def test_resolve_package_strict_match(sku, amount, credits):
     from app.services.wompi import resolve_package
@@ -57,21 +57,21 @@ def test_resolve_package_strict_match(sku, amount, credits):
 def test_resolve_package_unknown_sku_rejected():
     from app.services.wompi import resolve_package
     # Unknown SKU even if amount matches a real package
-    assert resolve_package(1490000, sku="fake_sku") is None
-    assert resolve_package(1490000, sku="credits_99") is None
+    assert resolve_package(1690000, sku="fake_sku") is None
+    assert resolve_package(1690000, sku="credits_99") is None
 
 
 def test_resolve_package_amount_mismatch_rejected():
     from app.services.wompi import resolve_package
     assert resolve_package(999, sku="credits_6") is None
-    assert resolve_package(1490001, sku="credits_6") is None       # off-by-one
-    assert resolve_package(1490000, sku="credits_20") is None      # right family, wrong pack
+    assert resolve_package(1690001, sku="credits_6") is None       # off-by-one
+    assert resolve_package(1690000, sku="credits_20") is None      # right family, wrong pack
 
 
 def test_resolve_package_no_sku_rejected():
     from app.services.wompi import resolve_package
-    assert resolve_package(1490000, sku=None) is None
-    assert resolve_package(1490000, sku="") is None
+    assert resolve_package(1690000, sku=None) is None
+    assert resolve_package(1690000, sku="") is None
 
 
 def test_packages_by_sku_unique_amounts():

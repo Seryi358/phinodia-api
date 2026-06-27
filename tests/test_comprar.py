@@ -26,7 +26,7 @@ async def test_comprar_redirects_to_wompi_with_valid_integrity():
     assert loc.startswith("https://checkout.wompi.co/p/?")
 
     q = parse_qs(urlparse(loc).query)  # parse_qs un-percent-encodes keys too
-    assert q["amount-in-cents"] == ["1490000"]   # credits_6 = $14.900
+    assert q["amount-in-cents"] == ["1690000"]   # credits_6 = $16.900
     assert q["currency"] == ["COP"]
 
     s = get_settings()
@@ -38,7 +38,7 @@ async def test_comprar_redirects_to_wompi_with_valid_integrity():
     # Integrity hash must match the exact formula the working /checkout uses.
     sig = q["signature:integrity"][0]
     expected = hashlib.sha256(
-        f"{ref}1490000COP{s.wompi_integrity_secret}".encode()
+        f"{ref}1690000COP{s.wompi_integrity_secret}".encode()
     ).hexdigest()
     assert sig == expected
 
@@ -51,7 +51,7 @@ async def test_comprar_redirects_to_wompi_with_valid_integrity():
 async def test_comprar_all_three_packs_map_to_correct_amounts():
     from app.main import comprar_directo
 
-    expected = {"credits_6": "1490000", "credits_20": "4790000", "credits_50": "10990000"}
+    expected = {"credits_6": "1690000", "credits_20": "6990000", "credits_50": "15990000"}
     for sku, cents in expected.items():
         resp = await comprar_directo(sku, _req())
         q = parse_qs(urlparse(resp.headers["location"]).query)

@@ -848,11 +848,16 @@ async def generate_video(req: VideoRequest):
     # deduct_credit derives the cost from the label (3 credits per 10s segment).
     if not await credit_svc.deduct_credit(user["id"], service_type):
         raise HTTPException(402, "No tienes creditos suficientes. Compra mas creditos en la seccion de precios.")
-    job = await db.insert("jobs", {
-        "user_id": user["id"], "service_type": service_type,
-        "input_image_url": req.image_url, "input_description": req.description,
-        "input_format": req.format, "status": "processing",
-    })
+    try:
+        job = await db.insert("jobs", {
+            "user_id": user["id"], "service_type": service_type,
+            "input_image_url": req.image_url, "input_description": req.description,
+            "input_format": req.format, "status": "processing",
+        })
+    except Exception:
+        # No dejar al usuario sin crédito si la fila de job no se pudo crear.
+        await credit_svc.refund_credit(user["id"], service_type)
+        raise HTTPException(503, "No se pudo crear el trabajo. Te devolvimos el crédito; intenta de nuevo.")
     task = asyncio.create_task(_process_video(job["id"], req))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
@@ -868,11 +873,15 @@ async def generate_image(req: ImageRequest):
     user = await credit_svc.get_or_create_user(req.email)
     if not await credit_svc.deduct_credit(user["id"], "image"):
         raise HTTPException(402, "No tienes creditos suficientes para este servicio. Compra mas creditos en la seccion de precios.")
-    job = await db.insert("jobs", {
-        "user_id": user["id"], "service_type": "image",
-        "input_image_url": req.image_url, "input_description": req.description,
-        "input_format": req.aspect_ratio, "status": "processing",
-    })
+    try:
+        job = await db.insert("jobs", {
+            "user_id": user["id"], "service_type": "image",
+            "input_image_url": req.image_url, "input_description": req.description,
+            "input_format": req.aspect_ratio, "status": "processing",
+        })
+    except Exception:
+        await credit_svc.refund_credit(user["id"], "image")
+        raise HTTPException(503, "No se pudo crear el trabajo. Te devolvimos el crédito; intenta de nuevo.")
     task = asyncio.create_task(_process_image(job["id"], req))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
@@ -888,11 +897,15 @@ async def generate_landing(req: LandingRequest):
     user = await credit_svc.get_or_create_user(req.email)
     if not await credit_svc.deduct_credit(user["id"], "landing_page"):
         raise HTTPException(402, "No tienes creditos suficientes para este servicio. Compra mas creditos en la seccion de precios.")
-    job = await db.insert("jobs", {
-        "user_id": user["id"], "service_type": "landing_page",
-        "input_image_url": req.image_url, "input_description": req.description,
-        "status": "processing",
-    })
+    try:
+        job = await db.insert("jobs", {
+            "user_id": user["id"], "service_type": "landing_page",
+            "input_image_url": req.image_url, "input_description": req.description,
+            "status": "processing",
+        })
+    except Exception:
+        await credit_svc.refund_credit(user["id"], "landing_page")
+        raise HTTPException(503, "No se pudo crear el trabajo. Te devolvimos el crédito; intenta de nuevo.")
     task = asyncio.create_task(_process_landing(job["id"], req))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

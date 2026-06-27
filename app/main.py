@@ -20,7 +20,20 @@ APP_RELEASE = "2026-04-29-kie-debug-1"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs("data/uploads", exist_ok=True)
+    # Keep-alive: el free tier de Supabase se pausa tras ~7 dias sin actividad.
+    # Una query ligera periodica lo mantiene activo aunque no haya ventas.
+    import asyncio as _ka_aio
+    async def _supabase_keepalive():
+        from app.database import db as _kdb
+        while True:
+            await _ka_aio.sleep(6 * 3600)  # sleep primero: no corre en tests cortos
+            try:
+                await _kdb.select("users", {"select": "id", "limit": "1"})
+            except Exception:
+                pass
+    _ka_task = _ka_aio.create_task(_supabase_keepalive())
     yield
+    _ka_task.cancel()
     # Drain in-flight generation background tasks before tearing down the
     # Supabase pool so they can checkpoint state (refund credits / mark
     # jobs failed). Without this, a redeploy mid-generation crashes the

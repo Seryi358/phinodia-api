@@ -33,7 +33,7 @@ async def test_generate_video_prompt():
         assert messages[0]["role"] == "system"
         assert "AIDA" in messages[0]["content"]
         assert "UGC" in messages[0]["content"]
-        assert "VEO 3.1" in messages[0]["content"]
+        assert "Omni" in messages[0]["content"]
         # Verify product_analysis and buyer_persona are in user message
         assert "Premium facial cream" in messages[1]["content"]
         assert "Sofia, 28" in messages[1]["content"]

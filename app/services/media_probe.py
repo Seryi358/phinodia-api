@@ -15,12 +15,20 @@ MAX_BYTES = 50 * 1024 * 1024
 DOWNLOAD_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 
 VIDEO_DURATIONS = {
+    # Alternate/secondary catalog (8s single clip, 15s base + extension).
+    # Not emitted by the current /videos flow; kept for compatibility.
+    "video_8s": 8.0,
+    "video_15s": 15.0,
+    # Active user-facing durations. The /videos generator sells 10s/20s/30s
+    # (20s selected by default) and VideoRequest.duration is Literal[10, 20, 30];
+    # _video_service() maps those to video_10s/video_20s/video_30s.
     "video_10s": 10.0,
     "video_20s": 20.0,
     "video_30s": 30.0,
 }
-# Anything longer than one 10s omni clip is built by stitching multiple clips.
-MULTI_STEP_VIDEO_SERVICES = {"video_20s", "video_30s"}
+# Anything longer than one ~10s omni clip is built by stitching multiple clips.
+# video_15s = base clip + extension, so it IS multi-step (needs the 60min gate).
+MULTI_STEP_VIDEO_SERVICES = {"video_15s", "video_20s", "video_30s"}
 CONTAINER_TYPES = {
     b"moov",
     b"trak",

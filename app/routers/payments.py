@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 from app.config import get_settings
 from app.database import db
 from app.services.credits import CreditService, CreditContention
-from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU
+from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU, fetch_transaction
 from app.services.gmail import GmailSender, build_purchase_email
 from app.services.meta_capi import get_capi
 from app.routers.referrals import process_referral_bonus
@@ -152,6 +152,29 @@ async def wompi_webhook(event: dict):
 
     # Use `or {}` not dict default — explicit null in payload would .get on None.
     tx_data = (event.get("data") or {}).get("transaction") or {}
+    # AUTHORITATIVE REFETCH (defense-in-depth): the webhook only SIGNS
+    # id/status/amount_in_cents; customer_email and reference are unsigned, so a
+    # leaked events_secret could forge where credits land. Re-read the tx from
+    # Wompi's API (authenticated with the private key) and trust ONLY that for the
+    # money/destination fields. Fail-closed: on refetch failure force a Wompi retry
+    # (503) instead of granting on unverified data.
+    _tx_id_signed = tx_data.get("id")
+    if _tx_id_signed:
+        authoritative = await fetch_transaction(
+            str(_tx_id_signed), settings.wompi_base_url, settings.wompi_private_key)
+        if authoritative is None:
+            logger.error("No se pudo refetch tx %s desde Wompi — forzando retry", _tx_id_signed)
+            raise HTTPException(503, "wompi refetch failed — retry")
+        tx_data = {
+            **tx_data,
+            "id": authoritative.get("id") or _tx_id_signed,
+            "status": authoritative.get("status"),
+            "amount_in_cents": authoritative.get("amount_in_cents"),
+            "currency": authoritative.get("currency"),
+            "reference": authoritative.get("reference"),
+            "customer_email": (authoritative.get("customer_email")
+                               or (authoritative.get("customer_data") or {}).get("email") or ""),
+        }
     status = tx_data.get("status")
     if status != "APPROVED":
         logger.info("Transaction %s status: %s — no credits granted", tx_data.get("id"), status)
