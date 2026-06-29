@@ -40,7 +40,8 @@ FORMAT_BLOCK = ("Vertical 9:16, 720p, handheld phone-selfie UGC video, arm's-len
 
 AUDIO_BLOCK = ("Ambient room tone only. NO background music, no soundtrack, no sound "
                "effects, no extra voiceover. The ONLY audio is her own voice speaking "
-               "the line below in a clear, neutral, warm Colombian Spanish accent.")
+               "the line below in a clear, warm, DISTINCTLY COLOMBIAN PAISA accent "
+               "(Medellin / Antioquia), not neutral and not Mexican.")
 
 NEGATIVE_BLOCK = ("No subtitles, no captions, no on-screen text, no titles, no "
                   "lower-thirds, no watermark, no logo overlay other than the product's "
@@ -75,7 +76,7 @@ Use this beat-per-clip plan:
 </aida_plan>
 
 <colombian_spanish>
-- Natural, warm, everyday Colombian Spanish as a real person from Bogota/Medellin would speak in a casual selfie video. Clear neutral Colombian accent, conversational, never a formal announcer.
+- Natural, warm, everyday Colombian Spanish as a real PAISA person from Medellin / Antioquia would speak in a casual selfie video. Distinctly paisa Colombian accent, conversational, never neutral and never a formal announcer.
 - You MAY use (sparingly, max one flavor word per line): "de una", "listo", "¿si o que?", "pues", "chevere", "bacano", "una nota", "vale la pena", "rendidor(a)", "plata", "me antoje", "full", "parce/parcero" (max once in the whole ad).
 - Address form: pick ONE for the whole ad — warm "usted" or "tu". Never mix usted/tu/vos.
 - FORBIDDEN (instantly inauthentic or off-brand): Mexican ("orale, guey, chido, neta, no manches, ahorita"), Spain ("vale, guay, tio, molar, flipar, coche, ordenador, vosotros, zumo"), Argentine ("che, boludo, copado, quilombo, posta"), and vulgar Colombian slang ("chimba, gonorrea, marica, ñero"). Use "computador", "celular", "carro", "plata".
@@ -137,7 +138,7 @@ def assemble_omni_prompt(identity_block: str, action: str, dialogue_es: str) -> 
         f"{identity_block.strip()}\n"
         f"{action.strip()} She holds the product clearly to the camera, label visible, looking into the lens.\n"
         "Keep the product packaging, label and brand text EXACTLY like the reference photo; never change, translate or invent any text on it.\n"
-        f"She speaks aloud in clear, warm, natural Colombian Spanish: \"{dialogue_es.strip()}\"\n"
+        f"She speaks aloud in a clear, warm, DISTINCTLY COLOMBIAN PAISA accent (from Medellin / Antioquia) — natural paisa Colombian Spanish, NOT a neutral Latin-American accent and NOT a Mexican accent: \"{dialogue_es.strip()}\"\n"
         "Audio: only her voice and quiet natural room tone, no background music.\n"
         "No on-screen text, no captions, no subtitles, no watermark, no logo overlay."
     )
@@ -150,9 +151,9 @@ def safe_omni_prompt(product_hint: str, dialogue_es: str) -> str:
     line = (dialogue_es or "Mira, esto de verdad me funciono, te lo recomiendo.").strip()
     return (
         "Vertical 9:16, 720p, handheld phone-selfie UGC video, candid.\n"
-        f"An everyday Colombian woman, late 20s, natural relatable look, holding {hint} to the camera.\n"
+        f"An everyday Colombian woman from Medellin (paisa), late 20s, natural relatable look, holding {hint} to the camera.\n"
         "Keep the product label and packaging exactly like the reference photo.\n"
-        f"She speaks aloud in clear Colombian Spanish: \"{line}\"\n"
+        f"She speaks aloud in a clear, DISTINCTLY COLOMBIAN PAISA accent (Medellin / Antioquia), not a neutral or Mexican accent: \"{line}\"\n"
         "Audio: only her voice and room tone, no music.\n"
         "No on-screen text, no captions, no subtitles, no watermark."
     )

@@ -385,23 +385,24 @@ async def _omni_generate_clip(kie, rich_prompt, safe_prompt, frames, aspect, pro
 
 
 async def _omni_render_video(kie, job_id, req, first_frame_url, plan, num_clips, aspect):
-    # Generate each <=10s clip (last-frame relay between clips for continuity)
-    # and concat into one mp4. Returns (final_local_path, None) or (None, error).
+    # Generate each <=10s clip and concat into one mp4. Every clip is anchored to
+    # the SAME original product-accurate first frame (NO last-frame relay), so the
+    # user's product stays identical across all clips. Returns (final_local_path, None) or (None, error).
     work = video_stitch.WORK_DIR
     work.mkdir(parents=True, exist_ok=True)
     product_hint = (req.product_name or "the product")[:60]
     identity = plan.get("identity_block", "")
     clips = plan.get("clips") or [{"action": "", "dialogue_es": ""}]
-    current_frame = first_frame_url
     clip_files = []
     for i in range(num_clips):
         clip = clips[i] if i < len(clips) else clips[-1]
         rich = assemble_omni_prompt(identity, clip.get("action", ""), clip.get("dialogue_es", ""))
         safe = safe_omni_prompt(product_hint, clip.get("dialogue_es", ""))
-        # Try the relay/first frame, then fall back to the original product image.
-        # Always attach the original product photo as a reference so the label
-        # stays identical across every stitched clip.
-        frames = [current_frame, req.image_url]
+        # ANCHOR every clip to the ORIGINAL product-accurate first frame, NOT the
+        # previous clip's last frame: relaying the last frame made omni drift the
+        # product across clips (a 30s/3-clip video showed a DIFFERENT product each
+        # clip). The user's product photo also goes as a reference (product_ref).
+        frames = [first_frame_url, req.image_url]
         clip_url = await _omni_generate_clip(kie, rich, safe, frames, aspect, product_ref=req.image_url)
         if not clip_url:
             return None, f"Fallo en etapa clip_{i + 1}. {_friendly_error('omni internal error')}"
@@ -417,14 +418,8 @@ async def _omni_render_video(kie, job_id, req, first_frame_url, plan, num_clips,
         )
         if not still:
             return None, "terminated"
-        # Extract this clip's last frame to seed the next clip (last-frame relay).
-        if i < num_clips - 1:
-            current_frame = req.image_url
-            lf = str(work / f"{job_id}_clip{i}_last.png")
-            if await video_stitch.extract_last_frame(local, lf):
-                pub = video_stitch.publish_local(lf, f"{job_id}-relay{i}.png")
-                if pub:
-                    current_frame = pub
+        # (No last-frame relay anymore: every clip uses the original first frame so
+        # the product never drifts — see the frames anchor above.)
     final_local = str(work / f"{job_id}_final.mp4")
     if not await video_stitch.concat_clips(clip_files, final_local):
         return None, "No pudimos unir los clips del video."
