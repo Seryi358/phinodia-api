@@ -29,6 +29,13 @@ from app.services.credits import credits_for_service_label
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Los dashboards HTML viven bajo /api/, donde el middleware de seguridad pone
+# `default-src 'none'` (bloquea los estilos inline -> se ven sin formato). Estos
+# paneles son HTML con <style> inline, así que les damos una CSP propia que
+# permita estilos inline (el middleware respeta una CSP ya definida por el endpoint).
+_DASH_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"
+_DASH_HEADERS = {"Cache-Control": "no-store", "Content-Security-Policy": _DASH_CSP}
+
 
 class OpsEmailRequest(BaseModel):
     subject: str = Field(..., min_length=3, max_length=180)
@@ -235,7 +242,7 @@ async def sales_dashboard(token: str = Query(...), days: int = Query(90, ge=1, l
   </table>
 </body>
 </html>"""
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(content=html, headers=_DASH_HEADERS)
 
 
 @router.post("/ops-email")
@@ -453,7 +460,7 @@ async def activacion_dashboard(token: str = Query(...)):
     {m['compradores']} compradores, solo {m['activados']} activaron ({m['tasa_activacion_pct']:.0f}%).
   </div>
 </body></html>"""
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(content=html, headers=_DASH_HEADERS)
 
 
 # ── A/B test dashboard ───────────────────────────────────────────────
@@ -582,4 +589,4 @@ async def ab_test_dashboard(
   'none' agrupa transacciones sin variant suffix (pre-test o tráfico directo).
 </div>
 </body></html>"""
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(content=html, headers=_DASH_HEADERS)
