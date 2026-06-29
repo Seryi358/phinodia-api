@@ -14,7 +14,7 @@ _mimetypes.add_type("image/webp", ".webp")
 _mimetypes.add_type("image/avif", ".avif")
 from app.config import get_settings
 settings = get_settings()
-APP_RELEASE = "2026-06-26-backlog-2"
+APP_RELEASE = "2026-06-28-activacion-emails"
 
 
 @asynccontextmanager
@@ -102,9 +102,25 @@ async def lifespan(app: FastAPI):
             await _reconcile_pending_refunds()
             await _ka_aio.sleep(30 * 60)
     _sweeper_task = _ka_aio.create_task(_orphan_sweeper())
+
+    # Activacion: recordatorios a compradores con creditos sin usar (el 95% de
+    # creditos vendidos no se usa). Cada 6h: detecta credits>0 sin generacion
+    # completada y manda un correo escalonado (dia 1/3/7) o win-back. Idempotente
+    # via activation_emails(UNIQUE user_id,kind) -> seguro en los 4 workers.
+    async def _activation_reminders_loop():
+        from app.services.activation import run_activation_reminders
+        await _ka_aio.sleep(120)  # no correr en tests cortos; deja estabilizar el boot
+        while True:
+            try:
+                await run_activation_reminders()
+            except Exception:
+                pass
+            await _ka_aio.sleep(6 * 3600)
+    _activation_task = _ka_aio.create_task(_activation_reminders_loop())
     yield
     _ka_task.cancel()
     _sweeper_task.cancel()
+    _activation_task.cancel()
     # Drain in-flight generation background tasks before tearing down the
     # Supabase pool so they can checkpoint state (refund credits / mark
     # jobs failed). Without this, a redeploy mid-generation crashes the

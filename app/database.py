@@ -58,6 +58,14 @@ class SupabaseClient:
         rows = r.json()
         return rows[0] if rows else data
 
+    async def delete(self, table: str, params: dict) -> list[dict]:
+        """DELETE rows matching `params` (PostgREST filters). Returns deleted
+        rows. Requires a non-empty filter — PostgREST refuses an unfiltered
+        DELETE, which protects against wiping a whole table by mistake."""
+        r = await self._client.delete(f"/{table}", params=params)
+        r.raise_for_status()
+        return r.json() if r.content else []
+
     async def rpc(self, fn: str, params: dict | None = None):
         """Call a Postgres function via PostgREST /rpc/{fn}. Returns the JSON body."""
         r = await self._client.post(f"/rpc/{fn}", json=params or {})

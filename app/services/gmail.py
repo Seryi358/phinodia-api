@@ -214,3 +214,89 @@ def build_purchase_email(email: str, plan_name: str, credits: int, service_type:
             <a href="{app_url}" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 17px; font-weight: 400; text-decoration: none; letter-spacing: -0.022em;">Ir a PhinodIA</a>
         </td></tr></table>"""
     return subject, _apple_email_base(content)
+
+
+# ── Activacion: recordatorios para compradores con creditos sin usar ─────────
+# El cuello de botella del negocio: la gente compra creditos y NO crea el video
+# (95% de creditos sin usar). Estos correos los reenganchan. Mismo estilo Apple
+# que el resto (via _apple_email_base): un solo mensaje, un solo CTA.
+ACTIVATION_CTA_URL = "https://app.phinodia.com/videos/"
+
+
+def _nudge_email(
+    *, subject: str, h1: str, sub: str, cta_label: str,
+    steps: list[str] | None = None, note: str = "",
+    cta_url: str = ACTIVATION_CTA_URL,
+) -> tuple[str, str]:
+    """Correo de activacion/recordatorio en estilo Apple: un mensaje, un CTA."""
+    steps_html = ""
+    if steps:
+        rows = "".join(
+            '<tr><td style="padding:8px 0;font-size:15px;color:#1d1d1f;line-height:1.5;">'
+            f'<span style="color:#86868b;">{i}.</span>&nbsp;&nbsp;{html.escape(s)}</td></tr>'
+            for i, s in enumerate(steps, 1)
+        )
+        steps_html = (
+            '<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" '
+            'style="margin:0 0 32px;padding:8px 24px;background:#f5f5f7;border-radius:12px;">'
+            f'{rows}</table>'
+        )
+    note_html = ""
+    if note:
+        note_html = (
+            f'<p style="margin:24px 0 0;font-size:13px;color:#86868b;line-height:1.5;">{html.escape(note)}</p>'
+        )
+    safe_cta = _safe_url(cta_url) or ACTIVATION_CTA_URL
+    content = f"""
+        <h1 style="margin:0 0 8px;font-size:28px;font-weight:700;letter-spacing:-0.005em;color:#1d1d1f;">{html.escape(h1)}</h1>
+        <p style="margin:0 0 32px;font-size:17px;color:#86868b;line-height:1.47;">{html.escape(sub)}</p>
+        {steps_html}
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:980px;background:#1d1d1f;">
+            <a href="{safe_cta}" style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:17px;font-weight:400;text-decoration:none;letter-spacing:-0.022em;">{html.escape(cta_label)}</a>
+        </td></tr></table>
+        {note_html}"""
+    return subject, _apple_email_base(content)
+
+
+def build_reminder_email(email: str, credits: int, day: int) -> tuple[str, str]:
+    """Recordatorio escalonado (dia 1 / 3 / 7) para creditos sin usar."""
+    c = int(credits)
+    if day <= 1:
+        return _nudge_email(
+            subject="Tus créditos PhinodIA te esperan",
+            h1=f"Tienes {c} créditos listos.",
+            sub="Crea tu primer video UGC en menos de 2 minutos. Sin grabar, sin modelos, sin agencia.",
+            cta_label="Crear mi primer video",
+            steps=[
+                "Sube la foto de tu producto",
+                "Elige el estilo del anuncio",
+                "Recibe tu video con voz colombiana",
+            ],
+        )
+    if day <= 3:
+        return _nudge_email(
+            subject="¿Listo para tu primer anuncio?",
+            h1=f"Tus {c} créditos siguen ahí.",
+            sub="Convierte la foto de tu producto en un video que frena el scroll y vende.",
+            cta_label="Crear mi video",
+            note="¿Dudas? Habla con nuestro asistente en phinodia.com — te responde al instante.",
+        )
+    return _nudge_email(
+        subject="No dejes tus créditos sin usar",
+        h1=f"Tus {c} créditos te esperan.",
+        sub="Solo te toma 2 minutos. Tus créditos no vencen, pero tu próxima venta no espera.",
+        cta_label="Usar mis créditos",
+        note="Si algo no quedó claro, nuestro asistente de voz en phinodia.com te ayuda.",
+    )
+
+
+def build_winback_email(email: str, credits: int) -> tuple[str, str]:
+    """Reenganche para compradores historicos que nunca usaron sus creditos."""
+    c = int(credits)
+    return _nudge_email(
+        subject="Aún tienes créditos en PhinodIA",
+        h1=f"Aún tienes {c} créditos.",
+        sub="Mejoramos PhinodIA: ahora es más rápido y confiable. Tus créditos no vencen — dale vida a la foto de tu producto cuando quieras.",
+        cta_label="Crear mi video ahora",
+        note="Conviertes una foto en un anuncio con voz colombiana en minutos.",
+    )

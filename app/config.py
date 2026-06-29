@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     gmail_client_secret: str
     gmail_refresh_token: str
     gmail_sender_email: str = "scastellanos@phinodia.com"
+    # Activacion: recordatorios automaticos a compradores con creditos sin usar.
+    # True por defecto; ponlo en "false" en EasyPanel para apagarlos sin deploy.
+    activation_reminders_enabled: bool = True
     # Allowlist de destinatarios para /admin/ops-email (coma-separado). Vacio =
     # solo @phinodia.com y el remitente (anti open-relay si el token se filtra).
     ops_email_allowlist: str = ""
