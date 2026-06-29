@@ -8,9 +8,9 @@ from app.routers import admin
 # users → jobs → txs → reminders  (orden en que _fetch_activation_metrics consulta)
 _USERS = [{"id": "u1", "credits": 2}, {"id": "u2", "credits": 0}, {"id": "u3", "credits": 10}]
 _JOBS = [
-    {"user_id": "u1", "status": "completed"},
-    {"user_id": "u2", "status": "failed"},
-    {"user_id": "u1", "status": "failed"},
+    {"user_id": "u1", "status": "completed", "service_type": "video_8s"},  # cuesta 3 créditos
+    {"user_id": "u2", "status": "failed", "service_type": "image"},
+    {"user_id": "u1", "status": "failed", "service_type": "video_8s"},
 ]
 _TXS = [
     {"user_id": "u1", "credits_added": 6, "status": "APPROVED", "amount_cop": 1690000},
@@ -33,8 +33,8 @@ async def test_fetch_activation_metrics():
     assert m["creditos_vendidos"] == 26       # 6 + 20 (solo APPROVED)
     assert m["creditos_otorgados"] == 26      # sin bonos aquí: otorgados == vendidos
     assert m["creditos_saldo"] == 12          # 2 + 0 + 10
-    assert m["creditos_usados_aprox"] == 14   # otorgados 26 - saldo 12
-    assert round(m["pct_creditos_sin_usar"]) == 46   # saldo/otorgados = 12/26 (NO al revés)
+    assert m["creditos_consumidos"] == 3      # 1 job completado video_8s = 3 créditos (no "otorgados−saldo")
+    assert round(m["pct_creditos_sin_usar"]) == 88   # (vendidos 26 − consumidos 3)/26, clamp 0-100
     assert m["ingresos_cop"] == 86800         # (1690000 + 6990000) / 100
     assert m["jobs_total"] == 3 and m["jobs_completados"] == 1 and m["jobs_fallidos"] == 2
     assert round(m["tasa_exito_generacion_pct"]) == 33
@@ -56,7 +56,7 @@ async def test_referral_bonus_counts_as_granted_not_sold():
         m = await admin._fetch_activation_metrics()
     assert m["creditos_vendidos"] == 6        # solo APPROVED
     assert m["creditos_otorgados"] == 7       # APPROVED (6) + REFERRAL_BONUS (1)
-    assert m["creditos_usados_aprox"] == 2    # otorgados 7 - saldo 5
+    assert m["creditos_consumidos"] == 0      # sin jobs completados
     assert m["ingresos_cop"] == 16900         # el bono no suma ingresos
 
 

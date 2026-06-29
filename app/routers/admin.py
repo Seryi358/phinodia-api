@@ -24,6 +24,7 @@ from pydantic import BaseModel, EmailStr, Field
 from app.config import get_settings
 from app.database import db
 from app.services.gmail import GmailSender, build_ops_alert_email
+from app.services.credits import credits_for_service_label
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -288,7 +289,7 @@ async def ops_email(req: OpsEmailRequest, token: str = Query(...)):
 # aquí mostramos lo accionable que SÍ tenemos.
 async def _fetch_activation_metrics() -> dict:
     users = await db.select("users", {"select": "id,credits", "limit": "10000"})
-    jobs = await db.select("jobs", {"select": "user_id,status", "limit": "50000"})
+    jobs = await db.select("jobs", {"select": "user_id,status,service_type", "limit": "50000"})
     txs = await db.select("transactions", {"select": "user_id,credits_added,status,amount_cop", "limit": "10000"})
     reminders = await db.select("activation_emails", {"select": "kind", "limit": "10000"})
 
@@ -305,7 +306,14 @@ async def _fetch_activation_metrics() -> dict:
     # "usados" debe restarse de los OTORGADOS, no de lo vendido, o subestima el uso.
     GRANT_STATES = {"APPROVED", "REFERRAL_BONUS"}
     credits_granted = sum(int(t.get("credits_added") or 0) for t in txs if t.get("status") in GRANT_STATES)
-    credits_used = max(0, credits_granted - int(credits_balance))
+    # Consumo REAL = costo de las generaciones completadas. NO usamos
+    # "otorgados − saldo": el saldo trae créditos de welcome/prueba históricos (y
+    # manuales) que NO están en transactions, lo que inflaba el saldo por encima de
+    # lo otorgado y rompía la métrica (daba >100% "sin usar").
+    credits_consumed = sum(
+        credits_for_service_label(j.get("service_type") or "")
+        for j in jobs if j.get("status") == "completed"
+    )
 
     completed_ids = {j["user_id"] for j in jobs if j.get("status") == "completed" and j.get("user_id")}
     activated_buyers = buyer_ids & completed_ids
@@ -328,10 +336,10 @@ async def _fetch_activation_metrics() -> dict:
         "creditos_vendidos": credits_sold,
         "creditos_otorgados": credits_granted,
         "creditos_saldo": int(credits_balance),
-        "creditos_usados_aprox": credits_used,
-        # % SIN USAR = saldo restante / otorgados (NO al revés). El saldo es lo que
-        # queda en las billeteras = créditos sin usar.
-        "pct_creditos_sin_usar": (int(credits_balance) / credits_granted * 100) if credits_granted else 0.0,
+        "creditos_consumidos": credits_consumed,
+        # % de créditos VENDIDOS que aún no se han consumido (clamp 0-100). Mide la
+        # fuga: de lo que pagaron, cuánto sigue sin usarse.
+        "pct_creditos_sin_usar": max(0.0, min(100.0, (credits_sold - credits_consumed) / credits_sold * 100)) if credits_sold else 0.0,
         "ingresos_cop": revenue_cop,
         "jobs_total": jobs_total,
         "jobs_completados": jobs_completed,
@@ -430,9 +438,10 @@ async def activacion_dashboard(token: str = Query(...)):
   <div class="kpis">
     <div class="kpi"><div class="label">Vendidos</div><div class="value">{m['creditos_vendidos']:,}</div></div>
     <div class="kpi"><div class="label">En saldo</div><div class="value">{m['creditos_saldo']:,}</div></div>
-    <div class="kpi"><div class="label">Usados (aprox)</div><div class="value">{m['creditos_usados_aprox']:,}</div></div>
+    <div class="kpi"><div class="label">Consumidos</div><div class="value">{m['creditos_consumidos']:,}</div></div>
     <div class="kpi"><div class="label">Ingresos</div><div class="value">${m['ingresos_cop']:,.0f}</div></div>
   </div>
+  {f'<div class="note" style="background:#FFF7ED;border-left-color:#C2410C">⚠️ El <b>saldo</b> ({m["creditos_saldo"]:,}) supera por mucho lo <b>vendido</b> ({m["creditos_vendidos"]:,}): hay ~{m["creditos_saldo"]-m["creditos_otorgados"]:,} créditos de <b>prueba/welcome históricos</b> (o ajustes manuales) en las billeteras, no de compras. Por eso "consumidos" se calcula del costo real de las generaciones, no de "otorgados − saldo".</div>' if m['creditos_saldo'] > m['creditos_otorgados'] * 1.2 else ''}
 
   <h2>Recordatorios de activación</h2>
   <table><tr><th>Tipo</th><th style="text-align:right">Enviados</th></tr>{rem_html}</table>
