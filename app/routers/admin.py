@@ -280,6 +280,164 @@ async def ops_email(req: OpsEmailRequest, token: str = Query(...)):
     return {"status": "ok", "to": recipient, "subject": subject}
 
 
+# ── Activación / funnel dashboard ────────────────────────────────────
+# La fuga #1 del negocio: la gente compra créditos y no crea el video.
+# Este dashboard mide el funnel server-side (registro → compra → activación)
+# + uso de créditos + éxito de generación + recordatorios enviados.
+# OJO: el CVR real (visitas→compra) vive en Meta (no tenemos tráfico server-side);
+# aquí mostramos lo accionable que SÍ tenemos.
+async def _fetch_activation_metrics() -> dict:
+    users = await db.select("users", {"select": "id,credits", "limit": "10000"})
+    jobs = await db.select("jobs", {"select": "user_id,status", "limit": "50000"})
+    txs = await db.select("transactions", {"select": "user_id,credits_added,status,amount_cop", "limit": "10000"})
+    reminders = await db.select("activation_emails", {"select": "kind", "limit": "10000"})
+
+    total_users = len(users)
+    credits_balance = sum(float(u.get("credits") or 0) for u in users)
+    with_credits = sum(1 for u in users if float(u.get("credits") or 0) > 0)
+
+    approved = [t for t in txs if t.get("status") == "APPROVED"]
+    buyer_ids = {t["user_id"] for t in approved if t.get("user_id")}
+    credits_sold = sum(int(t.get("credits_added") or 0) for t in approved)
+    revenue_cop = sum(int(t.get("amount_cop") or 0) for t in approved) / 100
+
+    completed_ids = {j["user_id"] for j in jobs if j.get("status") == "completed" and j.get("user_id")}
+    activated_buyers = buyer_ids & completed_ids
+    jobs_total = len(jobs)
+    jobs_completed = sum(1 for j in jobs if j.get("status") == "completed")
+    jobs_failed = sum(1 for j in jobs if j.get("status") == "failed")
+
+    rem_by_kind: dict[str, int] = {}
+    for r in reminders:
+        k = r.get("kind") or "?"
+        rem_by_kind[k] = rem_by_kind.get(k, 0) + 1
+
+    return {
+        "usuarios": total_users,
+        "compradores": len(buyer_ids),
+        "con_creditos": with_credits,
+        "activados": len(activated_buyers),
+        "sin_activar": len(buyer_ids - completed_ids),
+        "tasa_activacion_pct": (len(activated_buyers) / len(buyer_ids) * 100) if buyer_ids else 0.0,
+        "creditos_vendidos": credits_sold,
+        "creditos_saldo": int(credits_balance),
+        "creditos_usados_aprox": max(0, credits_sold - int(credits_balance)),
+        "pct_creditos_sin_usar": (max(0, credits_sold - int(credits_balance)) / credits_sold * 100) if credits_sold else 0.0,
+        "ingresos_cop": revenue_cop,
+        "jobs_total": jobs_total,
+        "jobs_completados": jobs_completed,
+        "jobs_fallidos": jobs_failed,
+        "tasa_exito_generacion_pct": (jobs_completed / jobs_total * 100) if jobs_total else 0.0,
+        "recordatorios_enviados": rem_by_kind,
+        "recordatorios_total": sum(rem_by_kind.values()),
+        "generado_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/activacion.json")
+async def activacion_json(token: str = Query(...)):
+    """Métricas de activación/funnel en JSON."""
+    _check_token(token)
+    return await _fetch_activation_metrics()
+
+
+@router.get("/activacion", response_class=HTMLResponse)
+async def activacion_dashboard(token: str = Query(...)):
+    """Dashboard de activación: funnel registro→compra→activación + uso de créditos."""
+    _check_token(token)
+    m = await _fetch_activation_metrics()
+
+    def pct(n, d):
+        return (n / d * 100) if d else 0.0
+    # Funnel widths (relativos al máximo = usuarios)
+    base = max(m["usuarios"], 1)
+    funnel = [
+        ("Usuarios registrados", m["usuarios"], "#0B1437"),
+        ("Compradores", m["compradores"], "#1E5BC6"),
+        ("Compradores con créditos sin usar", m["sin_activar"], "#C2410C"),
+        ("Activados (crearon ≥1 video)", m["activados"], "#1E9E62"),
+    ]
+    funnel_html = "".join(
+        f'<div class="frow"><div class="flabel">{_esc_html(lbl)}</div>'
+        f'<div class="fbar-wrap"><div class="fbar" style="width:{max(2,pct(n,base)):.0f}%;background:{col}">{n}</div></div></div>'
+        for lbl, n, col in funnel
+    )
+    rem = m["recordatorios_enviados"]
+    rem_labels = {"reminder_d1": "Día 1", "reminder_d3": "Día 3", "reminder_d7": "Día 7", "winback": "Win-back"}
+    rem_html = "".join(
+        f"<tr><td>{_esc_html(rem_labels.get(k, k))}</td><td style='text-align:right'>{v}</td></tr>"
+        for k, v in sorted(rem.items())
+    ) or '<tr><td colspan="2" class="empty">Aún no se han enviado recordatorios</td></tr>'
+
+    act_color = "#1E9E62" if m["tasa_activacion_pct"] >= 30 else ("#C2410C" if m["tasa_activacion_pct"] >= 10 else "#B42318")
+    gen_color = "#1E9E62" if m["tasa_exito_generacion_pct"] >= 80 else ("#C2410C" if m["tasa_exito_generacion_pct"] >= 50 else "#B42318")
+
+    html = f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<title>PhinodIA · Activación — Dashboard</title>
+<style>
+  body {{ font-family:-apple-system,system-ui,sans-serif; margin:0; padding:32px; background:#FAFBF7; color:#2A2A2A; }}
+  h1 {{ color:#0B1437; margin:0 0 8px; font-size:28px; }}
+  .subtitle {{ color:#6B7280; margin-bottom:28px; font-size:14px; }}
+  .kpis {{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px; }}
+  .kpi {{ background:white; border-radius:12px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }}
+  .kpi .label {{ color:#6B7280; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; }}
+  .kpi .value {{ font-size:28px; font-weight:700; color:#0B1437; }}
+  .actions {{ margin-bottom:24px; display:flex; gap:12px; flex-wrap:wrap; }}
+  .btn {{ background:#3B82F6; color:white; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px; }}
+  .btn-secondary {{ background:#6B7280; }}
+  h2 {{ color:#0B1437; margin:28px 0 16px; font-size:20px; }}
+  .frow {{ display:flex; align-items:center; gap:14px; margin-bottom:10px; }}
+  .flabel {{ width:280px; font-size:13px; color:#374151; text-align:right; }}
+  .fbar-wrap {{ flex:1; background:#EEF1F4; border-radius:8px; overflow:hidden; }}
+  .fbar {{ color:white; font-weight:700; font-size:13px; padding:10px 12px; border-radius:8px; min-width:28px; box-sizing:border-box; white-space:nowrap; }}
+  table {{ width:100%; max-width:420px; background:white; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05); border-collapse:collapse; }}
+  th,td {{ padding:12px 16px; text-align:left; border-bottom:1px solid #E5E7EB; font-size:14px; }}
+  th {{ background:#0B1437; color:white; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }}
+  tr:last-child td {{ border-bottom:none; }}
+  .empty {{ text-align:center; color:#6B7280; }}
+  .note {{ margin-top:24px; padding:14px 16px; background:#eef6ff; border-left:4px solid #3B82F6; border-radius:6px; font-size:13px; color:#374151; max-width:760px; }}
+</style></head><body>
+  <h1>🎯 PhinodIA · Activación</h1>
+  <p class="subtitle">Funnel y uso de créditos · Generado {m['generado_at'][:19]} UTC</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="label">Tasa de activación</div><div class="value" style="color:{act_color}">{m['tasa_activacion_pct']:.0f}%</div></div>
+    <div class="kpi"><div class="label">Créditos sin usar</div><div class="value">{m['pct_creditos_sin_usar']:.0f}%</div></div>
+    <div class="kpi"><div class="label">Éxito de generación</div><div class="value" style="color:{gen_color}">{m['tasa_exito_generacion_pct']:.0f}%</div></div>
+    <div class="kpi"><div class="label">Recordatorios enviados</div><div class="value">{m['recordatorios_total']}</div></div>
+  </div>
+
+  <div class="actions">
+    <a class="btn btn-secondary" href="/api/v1/admin/sales?token={token}">📊 Ventas</a>
+    <a class="btn btn-secondary" href="/api/v1/admin/ab-test?token={token}">🧪 A/B</a>
+    <a class="btn" href="/api/v1/admin/activacion.json?token={token}">📋 JSON</a>
+  </div>
+
+  <h2>Funnel</h2>
+  {funnel_html}
+
+  <h2>Créditos</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="label">Vendidos</div><div class="value">{m['creditos_vendidos']:,}</div></div>
+    <div class="kpi"><div class="label">En saldo</div><div class="value">{m['creditos_saldo']:,}</div></div>
+    <div class="kpi"><div class="label">Usados (aprox)</div><div class="value">{m['creditos_usados_aprox']:,}</div></div>
+    <div class="kpi"><div class="label">Ingresos</div><div class="value">${m['ingresos_cop']:,.0f}</div></div>
+  </div>
+
+  <h2>Recordatorios de activación</h2>
+  <table><tr><th>Tipo</th><th style="text-align:right">Enviados</th></tr>{rem_html}</table>
+
+  <div class="note">
+    <b>Sobre el CVR (visitas → compra):</b> el conversion rate real necesita el tráfico, que vive en
+    Meta/Pixel (no server-side). Cuando enciendas pauta, mídelo en Ads Manager (ViewContent→Purchase) o
+    en GA4. Aquí ves el funnel <i>después</i> de la compra — donde está tu fuga real: de
+    {m['compradores']} compradores, solo {m['activados']} activaron ({m['tasa_activacion_pct']:.0f}%).
+  </div>
+</body></html>"""
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+
+
 # ── A/B test dashboard ───────────────────────────────────────────────
 # Aggregates transactions by variant encoded in plan_name (format:
 # "<service>_<credits>__ab_<letter>" or just "<service>_<credits>" for
