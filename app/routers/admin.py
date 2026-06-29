@@ -36,6 +36,64 @@ logger = logging.getLogger(__name__)
 _DASH_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"
 _DASH_HEADERS = {"Cache-Control": "no-store", "Content-Security-Policy": _DASH_CSP}
 
+# Estética Apple-minimalista compartida por los 3 paneles admin (sin emojis, con logo).
+_DASH_CSS = """
+  :root{--ink:#1d1d1f;--gray:#86868b;--line:#d2d2d7;--bg:#fbfbfd;--soft:#f5f5f7;--accent:#0071e3}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',sans-serif;margin:0;padding:48px 24px 72px;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto}
+  .brand{text-align:center;margin-bottom:14px}
+  .brand img{height:26px;opacity:.92}
+  h1{font-size:32px;font-weight:600;letter-spacing:-.022em;margin:0 0 4px;text-align:center}
+  .sub{color:var(--gray);font-size:14px;text-align:center;margin:0 0 30px}
+  .nav{display:flex;gap:8px;justify-content:center;margin:0 0 44px;flex-wrap:wrap}
+  .nav a{font-size:13px;font-weight:500;text-decoration:none;color:var(--ink);background:var(--soft);padding:8px 16px;border-radius:980px;border:1px solid transparent}
+  .nav a:hover{border-color:var(--line)}
+  .nav a.on{background:var(--ink);color:#fff}
+  h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--gray);margin:46px 0 16px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:680px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px 20px}
+  .kpi .l{font-size:12px;color:var(--gray);margin-bottom:10px}
+  .kpi .v{font-size:30px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .frow{display:flex;align-items:center;gap:16px;margin-bottom:11px}
+  .flabel{width:300px;text-align:right;font-size:14px;color:#424245}
+  @media(max-width:680px){.flabel{width:140px}}
+  .ftrack{flex:1;background:var(--soft);border-radius:9px;overflow:hidden}
+  .fbar{color:#fff;font-size:13px;font-weight:600;padding:9px 13px;border-radius:9px;min-width:36px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  table{width:100%;max-width:460px;background:#fff;border:1px solid var(--line);border-radius:18px;border-collapse:separate;border-spacing:0;overflow:hidden}
+  th,td{padding:13px 18px;text-align:left;font-size:14px;border-bottom:1px solid var(--soft)}
+  th{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--gray)}
+  tr:last-child td{border-bottom:none}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .money{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+  .note{margin-top:20px;padding:16px 18px;background:var(--soft);border-radius:14px;font-size:13px;color:#424245;line-height:1.55;max-width:780px}
+  .note b{color:var(--ink)}
+  .empty{color:var(--gray);text-align:center;padding:32px}
+  table.wide{max-width:none}
+  tr:hover td{background:#fafafa}
+  .mono{font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:12px;color:var(--gray)}
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 8px}
+  .pills a{font-size:12px;text-decoration:none;color:var(--ink);background:var(--soft);padding:7px 14px;border-radius:980px;border:1px solid transparent}
+  .pills a:hover{border-color:var(--line)}
+"""
+
+
+def _dash_top(title: str, token: str, active: str, subtitle: str = "") -> str:
+    """Encabezado Apple compartido: logo + título + navegación entre paneles."""
+    def tab(key, label, path):
+        on = " on" if key == active else ""
+        return f'<a class="{on.strip()}" href="/api/v1/admin/{path}?token={token}">{_esc_html(label)}</a>'
+    nav = tab("activacion", "Activación", "activacion") + tab("sales", "Ventas", "sales") + tab("ab", "A/B", "ab-test")
+    sub = f'<p class="sub">{_esc_html(subtitle)}</p>' if subtitle else ""
+    return (
+        '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f'<title>PhinodIA · {_esc_html(title)}</title><style>{_DASH_CSS}</style></head><body><div class="wrap">'
+        '<div class="brand"><img src="/static/images/dash-logo.png" alt="PhinodIA"></div>'
+        f'<h1>{_esc_html(title)}</h1>{sub}<div class="nav">{nav}</div>'
+    )
+
 
 class OpsEmailRequest(BaseModel):
     subject: str = Field(..., min_length=3, max_length=180)
@@ -181,67 +239,35 @@ async def sales_dashboard(token: str = Query(...), days: int = Query(90, ge=1, l
         for plan, stats in sorted(by_plan.items(), key=lambda x: -x[1]['revenue'])
     )
 
-    html = f"""<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>PhinodIA · Ventas — Dashboard</title>
-<style>
-  body {{ font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 32px; background: #FAFBF7; color: #2A2A2A; }}
-  h1 {{ color: #0B1437; margin: 0 0 8px; font-size: 28px; }}
-  .subtitle {{ color: #6B7280; margin-bottom: 32px; font-size: 14px; }}
-  .kpis {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }}
-  .kpi {{ background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }}
-  .kpi .label {{ color: #6B7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }}
-  .kpi .value {{ font-size: 28px; font-weight: 700; color: #0B1437; }}
-  .actions {{ margin-bottom: 24px; display: flex; gap: 12px; }}
-  .btn {{ background: #3B82F6; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; }}
-  .btn:hover {{ background: #2563EB; }}
-  .btn-secondary {{ background: #6B7280; }}
-  table {{ width: 100%; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-collapse: collapse; margin-bottom: 32px; }}
-  th, td {{ padding: 12px 16px; text-align: left; border-bottom: 1px solid #E5E7EB; font-size: 14px; }}
-  th {{ background: #0B1437; color: white; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }}
-  tr:last-child td {{ border-bottom: none; }}
-  tr:hover {{ background: #F9FAFB; }}
-  .money {{ font-weight: 600; color: #0B1437; text-align: right; font-variant-numeric: tabular-nums; }}
-  .mono {{ font-family: 'SF Mono', Menlo, monospace; font-size: 12px; color: #6B7280; }}
-  h2 {{ color: #0B1437; margin: 24px 0 16px; font-size: 20px; }}
-  .empty {{ text-align: center; padding: 48px; color: #6B7280; }}
-</style>
-</head>
-<body>
-  <h1>📊 PhinodIA · Ventas</h1>
-  <p class="subtitle">Últimos {days} días · Generado {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}</p>
-
+    subtitle = f"Últimos {days} días · {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+    body = f"""
   <div class="kpis">
-    <div class="kpi"><div class="label">Ingresos totales</div><div class="value">${total:,.0f}</div></div>
-    <div class="kpi"><div class="label">Ventas</div><div class="value">{len(rows)}</div></div>
-    <div class="kpi"><div class="label">Ticket promedio</div><div class="value">${avg:,.0f}</div></div>
-    <div class="kpi"><div class="label">Planes vendidos</div><div class="value">{len(by_plan)}</div></div>
+    <div class="kpi"><div class="l">Ingresos totales</div><div class="v">${total:,.0f}</div></div>
+    <div class="kpi"><div class="l">Ventas</div><div class="v">{len(rows):,}</div></div>
+    <div class="kpi"><div class="l">Ticket promedio</div><div class="v">${avg:,.0f}</div></div>
+    <div class="kpi"><div class="l">Planes</div><div class="v">{len(by_plan)}</div></div>
   </div>
 
-  <div class="actions">
-    <a class="btn" href="/api/v1/admin/sales.csv?token={token}&days={days}">📥 Descargar CSV (Excel)</a>
-    <a class="btn btn-secondary" href="/api/v1/admin/sales.json?token={token}&days={days}">📋 JSON</a>
-    <a class="btn btn-secondary" href="?token={token}&days=7">7d</a>
-    <a class="btn btn-secondary" href="?token={token}&days=30">30d</a>
-    <a class="btn btn-secondary" href="?token={token}&days=90">90d</a>
-    <a class="btn btn-secondary" href="?token={token}&days=365">365d</a>
+  <div class="pills">
+    <a href="/api/v1/admin/sales.csv?token={token}&days={days}">Descargar CSV</a>
+    <a href="/api/v1/admin/sales.json?token={token}&days={days}">JSON</a>
+    <a href="?token={token}&days=7">7d</a>
+    <a href="?token={token}&days=30">30d</a>
+    <a href="?token={token}&days=90">90d</a>
+    <a href="?token={token}&days=365">365d</a>
   </div>
 
   <h2>Ventas por plan</h2>
-  <table>
-    <tr><th>Plan</th><th>Cantidad</th><th>Créditos</th><th>Ingresos COP</th></tr>
+  <table class="wide"><tr><th>Plan</th><th class="num">Cantidad</th><th class="num">Créditos</th><th class="num">Ingresos COP</th></tr>
     {plan_rows_html or '<tr><td colspan="4" class="empty">Sin datos</td></tr>'}
   </table>
 
   <h2>Detalle de ventas ({len(rows)})</h2>
-  <table>
-    <tr><th>Fecha (UTC)</th><th>Email</th><th>Plan</th><th>Créditos</th><th>Monto</th><th>Wompi TX</th></tr>
+  <table class="wide"><tr><th>Fecha (UTC)</th><th>Email</th><th>Plan</th><th class="num">Créditos</th><th class="num">Monto</th><th>Wompi TX</th></tr>
     {rows_html or '<tr><td colspan="6" class="empty">Sin ventas en este periodo</td></tr>'}
   </table>
-</body>
-</html>"""
+</div></body></html>"""
+    html = _dash_top("Ventas", token, "sales", subtitle) + body
     return HTMLResponse(content=html, headers=_DASH_HEADERS)
 
 
@@ -373,69 +399,40 @@ async def activacion_dashboard(token: str = Query(...)):
 
     def pct(n, d):
         return (n / d * 100) if d else 0.0
-    # Funnel widths (relativos al máximo = usuarios)
+    # Funnel widths (relativos al máximo = usuarios). Colores Apple sobrios.
     base = max(m["usuarios"], 1)
     funnel = [
-        ("Usuarios registrados", m["usuarios"], "#0B1437"),
-        ("Compradores", m["compradores"], "#1E5BC6"),
-        ("Compradores con créditos sin usar", m["sin_activar"], "#C2410C"),
-        ("Activados (crearon ≥1 video)", m["activados"], "#1E9E62"),
+        ("Usuarios registrados", m["usuarios"], "#1d1d1f"),
+        ("Compradores", m["compradores"], "#0071e3"),
+        ("Compradores con créditos sin usar", m["sin_activar"], "#c2410c"),
+        ("Activados (crearon ≥1 video)", m["activados"], "#1d8a4e"),
     ]
     funnel_html = "".join(
         f'<div class="frow"><div class="flabel">{_esc_html(lbl)}</div>'
-        f'<div class="fbar-wrap"><div class="fbar" style="width:{max(2,pct(n,base)):.0f}%;background:{col}">{n}</div></div></div>'
+        f'<div class="ftrack"><div class="fbar" style="width:{max(3,pct(n,base)):.0f}%;background:{col}">{n:,}</div></div></div>'
         for lbl, n, col in funnel
     )
-    rem = m["recordatorios_enviados"]
     rem_labels = {"reminder_d1": "Día 1", "reminder_d3": "Día 3", "reminder_d7": "Día 7", "winback": "Win-back"}
     rem_html = "".join(
-        f"<tr><td>{_esc_html(rem_labels.get(k, k))}</td><td style='text-align:right'>{v}</td></tr>"
-        for k, v in sorted(rem.items())
+        f'<tr><td>{_esc_html(rem_labels.get(k, str(k)))}</td><td class="num">{v:,}</td></tr>'
+        for k, v in sorted(m["recordatorios_enviados"].items())
     ) or '<tr><td colspan="2" class="empty">Aún no se han enviado recordatorios</td></tr>'
 
-    act_color = "#1E9E62" if m["tasa_activacion_pct"] >= 30 else ("#C2410C" if m["tasa_activacion_pct"] >= 10 else "#B42318")
-    gen_color = "#1E9E62" if m["tasa_exito_generacion_pct"] >= 80 else ("#C2410C" if m["tasa_exito_generacion_pct"] >= 50 else "#B42318")
+    saldo_note = ""
+    if m["creditos_saldo"] > m["creditos_otorgados"] * 1.2:
+        saldo_note = (
+            f'<div class="note"><b>Nota sobre el saldo.</b> El saldo en billeteras ({m["creditos_saldo"]:,}) '
+            f'supera por mucho lo vendido ({m["creditos_vendidos"]:,}): hay ~{m["creditos_saldo"] - m["creditos_otorgados"]:,} '
+            f'créditos de prueba/welcome históricos (o ajustes manuales), no de compras. Por eso «consumidos» se calcula '
+            f'del costo real de las generaciones, no de «otorgados − saldo».</div>'
+        )
 
-    html = f"""<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8">
-<title>PhinodIA · Activación — Dashboard</title>
-<style>
-  body {{ font-family:-apple-system,system-ui,sans-serif; margin:0; padding:32px; background:#FAFBF7; color:#2A2A2A; }}
-  h1 {{ color:#0B1437; margin:0 0 8px; font-size:28px; }}
-  .subtitle {{ color:#6B7280; margin-bottom:28px; font-size:14px; }}
-  .kpis {{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px; }}
-  .kpi {{ background:white; border-radius:12px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }}
-  .kpi .label {{ color:#6B7280; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; }}
-  .kpi .value {{ font-size:28px; font-weight:700; color:#0B1437; }}
-  .actions {{ margin-bottom:24px; display:flex; gap:12px; flex-wrap:wrap; }}
-  .btn {{ background:#3B82F6; color:white; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px; }}
-  .btn-secondary {{ background:#6B7280; }}
-  h2 {{ color:#0B1437; margin:28px 0 16px; font-size:20px; }}
-  .frow {{ display:flex; align-items:center; gap:14px; margin-bottom:10px; }}
-  .flabel {{ width:280px; font-size:13px; color:#374151; text-align:right; }}
-  .fbar-wrap {{ flex:1; background:#EEF1F4; border-radius:8px; overflow:hidden; }}
-  .fbar {{ color:white; font-weight:700; font-size:13px; padding:10px 12px; border-radius:8px; min-width:28px; box-sizing:border-box; white-space:nowrap; }}
-  table {{ width:100%; max-width:420px; background:white; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05); border-collapse:collapse; }}
-  th,td {{ padding:12px 16px; text-align:left; border-bottom:1px solid #E5E7EB; font-size:14px; }}
-  th {{ background:#0B1437; color:white; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }}
-  tr:last-child td {{ border-bottom:none; }}
-  .empty {{ text-align:center; color:#6B7280; }}
-  .note {{ margin-top:24px; padding:14px 16px; background:#eef6ff; border-left:4px solid #3B82F6; border-radius:6px; font-size:13px; color:#374151; max-width:760px; }}
-</style></head><body>
-  <h1>🎯 PhinodIA · Activación</h1>
-  <p class="subtitle">Funnel y uso de créditos · Generado {m['generado_at'][:19]} UTC</p>
-
+    body = f"""
   <div class="kpis">
-    <div class="kpi"><div class="label">Tasa de activación</div><div class="value" style="color:{act_color}">{m['tasa_activacion_pct']:.0f}%</div></div>
-    <div class="kpi"><div class="label">Créditos sin usar</div><div class="value">{m['pct_creditos_sin_usar']:.0f}%</div></div>
-    <div class="kpi"><div class="label">Éxito de generación</div><div class="value" style="color:{gen_color}">{m['tasa_exito_generacion_pct']:.0f}%</div></div>
-    <div class="kpi"><div class="label">Recordatorios enviados</div><div class="value">{m['recordatorios_total']}</div></div>
-  </div>
-
-  <div class="actions">
-    <a class="btn btn-secondary" href="/api/v1/admin/sales?token={token}">📊 Ventas</a>
-    <a class="btn btn-secondary" href="/api/v1/admin/ab-test?token={token}">🧪 A/B</a>
-    <a class="btn" href="/api/v1/admin/activacion.json?token={token}">📋 JSON</a>
+    <div class="kpi"><div class="l">Tasa de activación</div><div class="v">{m['tasa_activacion_pct']:.0f}%</div></div>
+    <div class="kpi"><div class="l">Créditos sin usar</div><div class="v">{m['pct_creditos_sin_usar']:.0f}%</div></div>
+    <div class="kpi"><div class="l">Éxito de generación</div><div class="v">{m['tasa_exito_generacion_pct']:.0f}%</div></div>
+    <div class="kpi"><div class="l">Recordatorios</div><div class="v">{m['recordatorios_total']:,}</div></div>
   </div>
 
   <h2>Funnel</h2>
@@ -443,23 +440,22 @@ async def activacion_dashboard(token: str = Query(...)):
 
   <h2>Créditos</h2>
   <div class="kpis">
-    <div class="kpi"><div class="label">Vendidos</div><div class="value">{m['creditos_vendidos']:,}</div></div>
-    <div class="kpi"><div class="label">En saldo</div><div class="value">{m['creditos_saldo']:,}</div></div>
-    <div class="kpi"><div class="label">Consumidos</div><div class="value">{m['creditos_consumidos']:,}</div></div>
-    <div class="kpi"><div class="label">Ingresos</div><div class="value">${m['ingresos_cop']:,.0f}</div></div>
+    <div class="kpi"><div class="l">Vendidos</div><div class="v">{m['creditos_vendidos']:,}</div></div>
+    <div class="kpi"><div class="l">En saldo</div><div class="v">{m['creditos_saldo']:,}</div></div>
+    <div class="kpi"><div class="l">Consumidos</div><div class="v">{m['creditos_consumidos']:,}</div></div>
+    <div class="kpi"><div class="l">Ingresos</div><div class="v">${m['ingresos_cop']:,.0f}</div></div>
   </div>
-  {f'<div class="note" style="background:#FFF7ED;border-left-color:#C2410C">⚠️ El <b>saldo</b> ({m["creditos_saldo"]:,}) supera por mucho lo <b>vendido</b> ({m["creditos_vendidos"]:,}): hay ~{m["creditos_saldo"]-m["creditos_otorgados"]:,} créditos de <b>prueba/welcome históricos</b> (o ajustes manuales) en las billeteras, no de compras. Por eso "consumidos" se calcula del costo real de las generaciones, no de "otorgados − saldo".</div>' if m['creditos_saldo'] > m['creditos_otorgados'] * 1.2 else ''}
+  {saldo_note}
 
   <h2>Recordatorios de activación</h2>
-  <table><tr><th>Tipo</th><th style="text-align:right">Enviados</th></tr>{rem_html}</table>
+  <table><tr><th>Tipo</th><th class="num">Enviados</th></tr>{rem_html}</table>
 
-  <div class="note">
-    <b>Sobre el CVR (visitas → compra):</b> el conversion rate real necesita el tráfico, que vive en
-    Meta/Pixel (no server-side). Cuando enciendas pauta, mídelo en Ads Manager (ViewContent→Purchase) o
-    en GA4. Aquí ves el funnel <i>después</i> de la compra — donde está tu fuga real: de
-    {m['compradores']} compradores, solo {m['activados']} activaron ({m['tasa_activacion_pct']:.0f}%).
-  </div>
-</body></html>"""
+  <div class="note"><b>Sobre el CVR (visitas → compra).</b> El conversion rate real necesita el tráfico, que vive en Meta/Pixel (no server-side). Cuando enciendas pauta, mídelo en Ads Manager (ViewContent→Purchase) o en GA4. Aquí ves el funnel <i>después</i> de la compra — donde está tu fuga real: de {m['compradores']} compradores, solo {m['activados']} activaron ({m['tasa_activacion_pct']:.0f}%).</div>
+
+  <div class="nav" style="margin-top:40px"><a href="/api/v1/admin/activacion.json?token={token}">Ver JSON</a></div>
+</div></body></html>"""
+    subtitle = f"Funnel y uso de créditos · {m['generado_at'][:19]} UTC"
+    html = _dash_top("Activación", token, "activacion", subtitle) + body
     return HTMLResponse(content=html, headers=_DASH_HEADERS)
 
 
@@ -542,51 +538,33 @@ async def ab_test_dashboard(
         if baseline and baseline["conversions"] > 0 and v["variant"] != baseline["variant"]:
             if v["conversions"] > 0:
                 lift_rev = (v["avg_ticket_cop"] - baseline["avg_ticket_cop"]) / baseline["avg_ticket_cop"] * 100
-                lift_vs_a = f'<span style="color:{"#080" if lift_rev>=0 else "#a00"}">{lift_rev:+.1f}%</span>'
+                lift_vs_a = f'<span style="color:{"#1d8a4e" if lift_rev>=0 else "#c2410c"}">{lift_rev:+.1f}%</span>'
         plans_str = ", ".join(f'{_esc_html(str(p))}×{n}' for p, n in sorted(v["plans"].items()))
         rows_html += (
             f'<tr><td><b>{_esc_html(str(v["variant"])).upper()}</b></td>'
-            f'<td style="text-align:right">{v["conversions"]}</td>'
-            f'<td style="text-align:right">${int(v["revenue_cop"]):,}</td>'
-            f'<td style="text-align:right">${int(v["avg_ticket_cop"]):,}</td>'
-            f'<td style="text-align:right">{lift_vs_a}</td>'
-            f'<td style="font-size:12px">{plans_str}</td></tr>'
+            f'<td class="num">{v["conversions"]:,}</td>'
+            f'<td class="num">${int(v["revenue_cop"]):,}</td>'
+            f'<td class="num">${int(v["avg_ticket_cop"]):,}</td>'
+            f'<td class="num">{lift_vs_a}</td>'
+            f'<td style="font-size:12px;color:#86868b">{plans_str}</td></tr>'
         )
-    html = f"""<!DOCTYPE html>
-<html lang="es"><head>
-<meta charset="utf-8"><title>PhinodIA A/B — {test_id}</title>
-<style>
-  body {{ font-family:-apple-system,BlinkMacSystemFont,sans-serif; max-width:900px; margin:32px auto; padding:24px; background:#f5f7fa; color:#0B1437 }}
-  h1 {{ color:#0B1437; border-bottom:3px solid #3B82F6; padding-bottom:8px }}
-  .meta {{ color:#666; font-size:14px; margin:8px 0 24px }}
-  .kpi {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:16px 0 }}
-  .kpi > div {{ background:white; padding:16px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05) }}
-  .kpi .label {{ font-size:12px; color:#666; text-transform:uppercase; letter-spacing:0.05em }}
-  .kpi .value {{ font-size:22px; font-weight:700; margin-top:6px }}
-  table {{ width:100%; background:white; border-collapse:collapse; border-radius:8px; overflow:hidden; margin-top:16px; box-shadow:0 1px 3px rgba(0,0,0,0.05) }}
-  th {{ background:#0B1437; color:white; text-align:left; padding:12px }}
-  td {{ padding:12px; border-top:1px solid #eee }}
-  tr:nth-child(even) {{ background:#f9fafb }}
-  .note {{ margin-top:24px; padding:12px; background:#eef6ff; border-left:4px solid #3B82F6; border-radius:4px; font-size:13px }}
-</style></head><body>
-<h1>🧪 A/B Test — {test_id}</h1>
-<div class="meta">Últimos {d['period_days']} días · generado {d['generado_at'][:19]} UTC</div>
-<div class="kpi">
-  <div><div class="label">Variantes</div><div class="value">{len(variants)}</div></div>
-  <div><div class="label">Conversiones totales</div><div class="value">{d['total_conversions']}</div></div>
-  <div><div class="label">Revenue total</div><div class="value">${int(d['total_revenue_cop']):,}</div></div>
-</div>
-<table><thead><tr>
-  <th>Variante</th><th style="text-align:right">Conversiones</th>
-  <th style="text-align:right">Revenue COP</th><th style="text-align:right">Ticket promedio</th>
-  <th style="text-align:right">Lift vs A</th><th>Planes vendidos</th>
-</tr></thead><tbody>
-{rows_html or '<tr><td colspan="6">Sin datos todavía — espera que el tráfico acumule conversiones por variante</td></tr>'}
-</tbody></table>
-<div class="note">
-  <b>Interpretación:</b> con menos de ~30 conversiones por variante los resultados no son
-  estadísticamente significativos — seguir midiendo hasta cruzar ese umbral. La variante
-  'none' agrupa transacciones sin variant suffix (pre-test o tráfico directo).
-</div>
-</body></html>"""
+    subtitle = f"Test «{test_id}» · últimos {d['period_days']} días · {d['generado_at'][:19]} UTC"
+    body = f"""
+  <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi"><div class="l">Variantes</div><div class="v">{len(variants)}</div></div>
+    <div class="kpi"><div class="l">Conversiones</div><div class="v">{d['total_conversions']:,}</div></div>
+    <div class="kpi"><div class="l">Revenue total</div><div class="v">${int(d['total_revenue_cop']):,}</div></div>
+  </div>
+
+  <h2>Comparación de variantes</h2>
+  <table class="wide"><thead><tr>
+    <th>Variante</th><th class="num">Conversiones</th><th class="num">Revenue COP</th>
+    <th class="num">Ticket promedio</th><th class="num">Lift vs A</th><th>Planes vendidos</th>
+  </tr></thead><tbody>
+  {rows_html or '<tr><td colspan="6" class="empty">Sin datos todavía — espera que el tráfico acumule conversiones por variante</td></tr>'}
+  </tbody></table>
+
+  <div class="note"><b>Interpretación.</b> Con menos de ~30 conversiones por variante los resultados no son estadísticamente significativos — sigue midiendo hasta cruzar ese umbral. La variante «none» agrupa transacciones sin sufijo de variante (pre-test o tráfico directo).</div>
+</div></body></html>"""
+    html = _dash_top("A/B Test", token, "ab", subtitle) + body
     return HTMLResponse(content=html, headers=_DASH_HEADERS)
