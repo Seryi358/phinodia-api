@@ -300,6 +300,12 @@ async def _fetch_activation_metrics() -> dict:
     buyer_ids = {t["user_id"] for t in approved if t.get("user_id")}
     credits_sold = sum(int(t.get("credits_added") or 0) for t in approved)
     revenue_cop = sum(int(t.get("amount_cop") or 0) for t in approved) / 100
+    # Otorgados = créditos que entraron a las billeteras (ventas APPROVED + bonos de
+    # referido REFERRAL_BONUS). El saldo (users.credits) incluye los bonos, así que
+    # "usados" debe restarse de los OTORGADOS, no de lo vendido, o subestima el uso.
+    GRANT_STATES = {"APPROVED", "REFERRAL_BONUS"}
+    credits_granted = sum(int(t.get("credits_added") or 0) for t in txs if t.get("status") in GRANT_STATES)
+    credits_used = max(0, credits_granted - int(credits_balance))
 
     completed_ids = {j["user_id"] for j in jobs if j.get("status") == "completed" and j.get("user_id")}
     activated_buyers = buyer_ids & completed_ids
@@ -320,9 +326,12 @@ async def _fetch_activation_metrics() -> dict:
         "sin_activar": len(buyer_ids - completed_ids),
         "tasa_activacion_pct": (len(activated_buyers) / len(buyer_ids) * 100) if buyer_ids else 0.0,
         "creditos_vendidos": credits_sold,
+        "creditos_otorgados": credits_granted,
         "creditos_saldo": int(credits_balance),
-        "creditos_usados_aprox": max(0, credits_sold - int(credits_balance)),
-        "pct_creditos_sin_usar": (max(0, credits_sold - int(credits_balance)) / credits_sold * 100) if credits_sold else 0.0,
+        "creditos_usados_aprox": credits_used,
+        # % SIN USAR = saldo restante / otorgados (NO al revés). El saldo es lo que
+        # queda en las billeteras = créditos sin usar.
+        "pct_creditos_sin_usar": (int(credits_balance) / credits_granted * 100) if credits_granted else 0.0,
         "ingresos_cop": revenue_cop,
         "jobs_total": jobs_total,
         "jobs_completados": jobs_completed,

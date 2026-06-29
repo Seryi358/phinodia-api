@@ -30,14 +30,34 @@ async def test_fetch_activation_metrics():
     assert m["activados"] == 1                # solo u1 tiene job completed
     assert m["sin_activar"] == 1              # u3 compró pero no activó
     assert round(m["tasa_activacion_pct"]) == 50
-    assert m["creditos_vendidos"] == 26       # 6 + 20
+    assert m["creditos_vendidos"] == 26       # 6 + 20 (solo APPROVED)
+    assert m["creditos_otorgados"] == 26      # sin bonos aquí: otorgados == vendidos
     assert m["creditos_saldo"] == 12          # 2 + 0 + 10
-    assert m["creditos_usados_aprox"] == 14   # 26 - 12
+    assert m["creditos_usados_aprox"] == 14   # otorgados 26 - saldo 12
+    assert round(m["pct_creditos_sin_usar"]) == 46   # saldo/otorgados = 12/26 (NO al revés)
     assert m["ingresos_cop"] == 86800         # (1690000 + 6990000) / 100
     assert m["jobs_total"] == 3 and m["jobs_completados"] == 1 and m["jobs_fallidos"] == 2
     assert round(m["tasa_exito_generacion_pct"]) == 33
     assert m["recordatorios_enviados"] == {"winback": 2, "reminder_d1": 1}
     assert m["recordatorios_total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_referral_bonus_counts_as_granted_not_sold():
+    # Un bono de referido (REFERRAL_BONUS) entra al saldo pero NO es una venta.
+    # Debe contar en "otorgados" (para que "usados" no se subestime), no en "vendidos".
+    users = [{"id": "u1", "credits": 5}]
+    jobs = []
+    txs = [
+        {"user_id": "u1", "credits_added": 6, "status": "APPROVED", "amount_cop": 1690000},
+        {"user_id": "u1", "credits_added": 1, "status": "REFERRAL_BONUS", "amount_cop": 0},
+    ]
+    with patch.object(admin.db, "select", AsyncMock(side_effect=[users, jobs, txs, []])):
+        m = await admin._fetch_activation_metrics()
+    assert m["creditos_vendidos"] == 6        # solo APPROVED
+    assert m["creditos_otorgados"] == 7       # APPROVED (6) + REFERRAL_BONUS (1)
+    assert m["creditos_usados_aprox"] == 2    # otorgados 7 - saldo 5
+    assert m["ingresos_cop"] == 16900         # el bono no suma ingresos
 
 
 @pytest.mark.asyncio

@@ -58,7 +58,7 @@ async def test_sends_winback_to_old_unactivated_user():
     users = [{"id": "u1", "email": "buyer@x.com", "credits": 20, "created_at": _iso_days_ago(67)}]
     jobs = []  # nadie tiene job 'completed'
     send = MagicMock()
-    with patch.object(activation.db, "select", AsyncMock(side_effect=[users, jobs])), \
+    with patch.object(activation.db, "select", AsyncMock(side_effect=[[], users, jobs])), \
          patch.object(activation.db, "insert", AsyncMock(return_value={})) as ins, \
          patch.object(activation, "_send_sync", send):
         sent = await run_activation_reminders()
@@ -75,7 +75,7 @@ async def test_skips_activated_users():
     users = [{"id": "u1", "email": "a@x.com", "credits": 20, "created_at": _iso_days_ago(67)}]
     jobs = [{"user_id": "u1"}]  # u1 SI tiene un job completado -> no elegible
     send = MagicMock()
-    with patch.object(activation.db, "select", AsyncMock(side_effect=[users, jobs])), \
+    with patch.object(activation.db, "select", AsyncMock(side_effect=[[], users, jobs])), \
          patch.object(activation.db, "insert", AsyncMock(return_value={})) as ins, \
          patch.object(activation, "_send_sync", send):
         sent = await run_activation_reminders()
@@ -88,7 +88,7 @@ async def test_skips_activated_users():
 async def test_skips_recent_user_under_one_day():
     users = [{"id": "u1", "email": "a@x.com", "credits": 20, "created_at": _iso_days_ago(0.2)}]
     send = MagicMock()
-    with patch.object(activation.db, "select", AsyncMock(side_effect=[users, []])), \
+    with patch.object(activation.db, "select", AsyncMock(side_effect=[[], users, []])), \
          patch.object(activation.db, "insert", AsyncMock(return_value={})) as ins, \
          patch.object(activation, "_send_sync", send):
         sent = await run_activation_reminders()
@@ -101,7 +101,7 @@ async def test_already_claimed_does_not_resend():
     users = [{"id": "u1", "email": "a@x.com", "credits": 20, "created_at": _iso_days_ago(67)}]
     send = MagicMock()
     # insert lanza (conflicto UNIQUE = ya enviado) -> no se envia
-    with patch.object(activation.db, "select", AsyncMock(side_effect=[users, []])), \
+    with patch.object(activation.db, "select", AsyncMock(side_effect=[[], users, []])), \
          patch.object(activation.db, "insert", AsyncMock(side_effect=Exception("409 conflict"))), \
          patch.object(activation, "_send_sync", send):
         sent = await run_activation_reminders()
@@ -123,7 +123,7 @@ async def test_disabled_flag_short_circuits(monkeypatch):
 async def test_send_failure_reverts_claim():
     users = [{"id": "u1", "email": "a@x.com", "credits": 20, "created_at": _iso_days_ago(67)}]
     send = MagicMock(side_effect=RuntimeError("gmail down"))
-    with patch.object(activation.db, "select", AsyncMock(side_effect=[users, []])), \
+    with patch.object(activation.db, "select", AsyncMock(side_effect=[[], users, []])), \
          patch.object(activation.db, "insert", AsyncMock(return_value={})), \
          patch.object(activation.db, "delete", AsyncMock(return_value=[])) as dele, \
          patch.object(activation, "_send_sync", send):
@@ -141,7 +141,7 @@ async def test_respects_per_cycle_cap():
         for i in range(activation.MAX_PER_CYCLE + 10)
     ]
     send = MagicMock()
-    with patch.object(activation.db, "select", AsyncMock(side_effect=[many, []])), \
+    with patch.object(activation.db, "select", AsyncMock(side_effect=[[], many, []])), \
          patch.object(activation.db, "insert", AsyncMock(return_value={})), \
          patch.object(activation, "_send_sync", send):
         sent = await run_activation_reminders()

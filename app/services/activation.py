@@ -20,8 +20,10 @@ Garantias:
   * Como mucho UN correo por usuario por ciclo: la ventana por edad mapea cada
     usuario a exactamente un `kind`, asi los compradores historicos reciben solo
     el win-back (no los tres recordatorios de golpe).
-  * Seguro entre los 4 workers de uvicorn: el UNIQUE serializa el reclamo.
-  * Tope de seguridad MAX_PER_CYCLE para no disparar un blast accidental.
+  * Seguro entre los 4 workers de uvicorn: el UNIQUE serializa el reclamo (cero
+    duplicados aunque los 4 corran el ciclo a la vez).
+  * Topes: MAX_PER_CYCLE acota POR WORKER (no es global — el loop corre en los 4);
+    GLOBAL_HOURLY_CAP impone el techo GLOBAL real contando envios recientes en DB.
 """
 import asyncio
 import logging
@@ -34,9 +36,15 @@ from app.services.gmail import GmailSender, build_reminder_email, build_winback_
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Tope de correos por ciclo (red de seguridad ante un bug que marque a muchos
-# como elegibles). Con ~71 historicos, el blast inicial se reparte en 2 ciclos.
+# Tope de correos POR WORKER por ciclo. OJO: el loop corre en el lifespan de los
+# 4 workers de uvicorn, asi que este techo NO es global (el real es ~4x). La
+# idempotencia (cero duplicados) la garantiza el UNIQUE(user_id,kind); este numero
+# solo regula el RITMO por proceso.
 MAX_PER_CYCLE = 50
+# Tope GLOBAL (todos los workers) de correos en la ultima hora — red de seguridad
+# REAL ante un bug de elegibilidad masiva. Se evalua contando filas en la DB al
+# inicio de cada ciclo, asi que los 4 workers comparten el mismo techo.
+GLOBAL_HOURLY_CAP = 200
 
 
 def _parse_ts(s: str | None) -> datetime | None:
@@ -74,23 +82,31 @@ def _build_for_kind(email: str, credits: int, kind: str) -> tuple[str, str]:
 async def _eligible_users() -> list[dict]:
     """Usuarios con credits>0 que NUNCA completaron una generacion.
 
-    Dos queries (no anti-join en PostgREST): traer compradores y restar los que
-    tienen al menos un job 'completed'. N es pequeno (decenas), asi que el
-    diff en memoria es trivial.
+    Trae a los candidatos (credits>0) y, SOLO para ellos, consulta si tienen
+    algun job 'completed' (filtrando por user_id en lotes de 100). Asi se evita
+    traer la tabla `jobs` entera con un limit fijo: ese patron podia TRUNCARSE al
+    crecer el volumen de jobs y dejar a un usuario YA activado fuera del set ->
+    se marcaria como elegible -> recibiria un recordatorio erroneo.
     """
     users = await db.select("users", {
         "select": "id,email,credits,created_at",
         "credits": "gt.0",
-        "limit": "2000",
+        "limit": "5000",
     })
     if not users:
         return []
-    activated = await db.select("jobs", {
-        "select": "user_id",
-        "status": "eq.completed",
-        "limit": "10000",
-    })
-    activated_ids = {j["user_id"] for j in (activated or []) if j.get("user_id")}
+    ids = [u["id"] for u in users if u.get("id")]
+    activated_ids: set[str] = set()
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        in_clause = "in.(" + ",".join(f'"{x}"' for x in chunk) + ")"
+        rows = await db.select("jobs", {
+            "select": "user_id",
+            "status": "eq.completed",
+            "user_id": in_clause,
+            "limit": "10000",
+        })
+        activated_ids |= {j["user_id"] for j in (rows or []) if j.get("user_id")}
     return [u for u in users if u.get("id") not in activated_ids]
 
 
@@ -109,6 +125,21 @@ async def run_activation_reminders() -> int:
     """Un ciclo de recordatorios. Devuelve el numero de correos enviados."""
     if not getattr(settings, "activation_reminders_enabled", True):
         return 0
+    # Cap GLOBAL entre los 4 workers: si ya salieron muchos correos en la ultima
+    # hora (p.ej. por un bug de elegibilidad masiva), abortar el ciclo. El
+    # MAX_PER_CYCLE de abajo es solo un throttle POR WORKER; este conteo en DB es
+    # el techo global verdadero. Best-effort: si la consulta falla, el cap
+    # por-worker + el UNIQUE siguen protegiendo.
+    try:
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        recent = await db.select("activation_emails", {
+            "select": "id", "sent_at": f"gte.{cutoff}", "limit": str(GLOBAL_HOURLY_CAP + 1)})
+        if len(recent or []) >= GLOBAL_HOURLY_CAP:
+            logger.warning("activation: cap GLOBAL/hora (%d) alcanzado — abortando ciclo", GLOBAL_HOURLY_CAP)
+            return 0
+    except Exception:
+        pass
     try:
         users = await _eligible_users()
     except Exception as e:

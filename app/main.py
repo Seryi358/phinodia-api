@@ -14,7 +14,7 @@ _mimetypes.add_type("image/webp", ".webp")
 _mimetypes.add_type("image/avif", ".avif")
 from app.config import get_settings
 settings = get_settings()
-APP_RELEASE = "2026-06-29-dashboard-activacion"
+APP_RELEASE = "2026-06-29-review-fixes"
 
 
 @asynccontextmanager
