@@ -14,7 +14,7 @@ _mimetypes.add_type("image/webp", ".webp")
 _mimetypes.add_type("image/avif", ".avif")
 from app.config import get_settings
 settings = get_settings()
-APP_RELEASE = "2026-06-29-unsubscribe"
+APP_RELEASE = "2026-06-29-unsub-hardening"
 
 
 @asynccontextmanager
@@ -593,44 +593,66 @@ async def comprar_directo(sku: str, request: Request, eid: str = "", fbp: str = 
 
 
 @app.api_route("/api/v1/unsubscribe", methods=["GET", "POST"])
-async def unsubscribe(e: str = "", t: str = ""):
-    """Baja con UN clic de los correos de marketing (recordatorios / win-back).
-    Verifica el token HMAC y agrega el correo a email_optout; el job de activacion
-    nunca vuelve a escribir a esa direccion. Acepta GET (link del correo) y POST
-    (one-click del header List-Unsubscribe). El email NO se refleja en la pagina."""
+async def unsubscribe(request: Request, e: str = "", t: str = ""):
+    """Baja de los correos de marketing (recordatorios / win-back).
+    GET (link del correo) -> pagina de CONFIRMACION, NO muta: los escaneres/prefetch
+    de correo SIGUEN los links, asi que un GET que diera de baja desuscribiria por
+    accidente. POST (el boton 'Confirmar' o el one-click del header List-Unsubscribe)
+    -> registra la baja, fail-CLOSED (solo confirma si se persistio). El email NO se
+    refleja en la pagina (sin XSS)."""
     import hmac as _hmac
     import hashlib as _hashlib
+    from urllib.parse import urlencode as _urlencode
     from fastapi.responses import HTMLResponse
     from app.database import db
     s = get_settings()
     em = (e or "").strip().lower()
     expected = _hmac.new(s.wompi_integrity_secret.encode(), em.encode(), _hashlib.sha256).hexdigest()[:32]
-    ok = bool(em) and _hmac.compare_digest(t or "", expected)
-    if ok:
-        try:
-            await db.upsert("email_optout", {"email": em})
-        except Exception:
-            pass
-    titulo = "Listo, te diste de baja" if ok else "Enlace no valido"
-    msg = ("No volveras a recibir correos de recordatorio de PhinodIA. Tus creditos siguen "
-           "disponibles cuando quieras usarlos." if ok else
-           "No pudimos procesar la baja: el enlace no es valido o esta incompleto.")
-    page = (
-        '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1"><title>PhinodIA</title>'
-        '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;'
-        'background:#fbfbfd;color:#1d1d1f;margin:0;min-height:100vh;display:flex;align-items:center;'
-        'justify-content:center;text-align:center;padding:24px}.c{max-width:420px}'
-        'h1{font-size:24px;font-weight:600;letter-spacing:-.02em;margin:0 0 10px}'
-        'p{color:#6e6e73;font-size:15px;line-height:1.5;margin:0 0 24px}'
-        'a{color:#0071e3;text-decoration:none;font-size:15px}</style></head>'
-        f'<body><div class="c"><h1>{titulo}</h1><p>{msg}</p>'
-        '<a href="https://phinodia.com/">Ir a Phinodia</a></div></body></html>'
-    )
-    return HTMLResponse(page, headers={
-        "Cache-Control": "no-store",
-        "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
-    })
+    valid = bool(em) and _hmac.compare_digest(t or "", expected)
+
+    def _page(titulo: str, msg: str, extra: str = "") -> HTMLResponse:
+        page = (
+            '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1"><title>PhinodIA</title>'
+            '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;'
+            'background:#fbfbfd;color:#1d1d1f;margin:0;min-height:100vh;display:flex;align-items:center;'
+            'justify-content:center;text-align:center;padding:24px}.c{max-width:420px}'
+            'h1{font-size:24px;font-weight:600;letter-spacing:-.02em;margin:0 0 10px}'
+            'p{color:#6e6e73;font-size:15px;line-height:1.5;margin:0 0 24px}'
+            'a{color:#0071e3;text-decoration:none;font-size:15px}'
+            'button{font-family:inherit;font-size:16px;font-weight:600;color:#fff;background:#1d1d1f;'
+            'border:0;border-radius:980px;padding:13px 28px;cursor:pointer}</style></head>'
+            f'<body><div class="c"><h1>{titulo}</h1><p>{msg}</p>{extra}'
+            '<a href="https://phinodia.com/">Ir a Phinodia</a></div></body></html>'
+        )
+        return HTMLResponse(page, headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        })
+
+    if not valid:
+        return _page("Enlace no valido", "El enlace no es valido o esta incompleto.")
+
+    if request.method.upper() == "GET":
+        action = "/api/v1/unsubscribe?" + _urlencode({"e": em, "t": t})
+        form = f'<form method="post" action="{action}" style="margin:0 0 22px"><button type="submit">Confirmar baja</button></form>'
+        return _page("¿Dejar de recibir recordatorios?",
+                     "Confirma para no recibir mas correos de recordatorio de PhinodIA. Tus creditos siguen disponibles.",
+                     extra=form)
+
+    # POST -> registrar la baja. fail-CLOSED: solo decimos "listo" si de verdad se guardo.
+    persisted = False
+    try:
+        await db.upsert("email_optout", {"email": em})
+        persisted = True
+    except Exception:
+        import logging as _lg
+        _lg.getLogger(__name__).warning("unsubscribe: fallo al persistir opt-out")
+    if persisted:
+        return _page("Listo, te diste de baja",
+                     "No volveras a recibir correos de recordatorio de PhinodIA. Tus creditos siguen disponibles cuando quieras usarlos.")
+    return _page("No pudimos procesar la baja",
+                 "Hubo un problema momentaneo. Vuelve a intentar en un momento; si sigue fallando, escribenos.")
 
 
 # Note: dotfile filter moved into add_cache_and_security_headers below so 404

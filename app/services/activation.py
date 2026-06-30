@@ -152,14 +152,23 @@ async def run_activation_reminders() -> int:
         logger.warning("activation: no se pudo listar elegibles: %s", type(e).__name__)
         return 0
 
-    # Respetar las BAJAS (anti-spam): nunca escribir a quien se dio de baja.
-    try:
-        outs = await db.select("email_optout", {"select": "email", "limit": "10000"})
-        optout = {(o.get("email") or "").strip().lower() for o in (outs or [])}
+    # Respetar las BAJAS (anti-spam): consultar opt-outs SOLO de los candidatos
+    # (filtrando por email, en lotes). Así el control de baja NO se trunca si la
+    # lista de bajas crece — un `limit` fijo sobre toda la tabla dejaría pasar a
+    # gente dada de baja más allá del corte.
+    cand_emails = sorted({(u.get("email") or "").strip().lower() for u in users if u.get("email")})
+    if cand_emails:
+        optout: set[str] = set()
+        for i in range(0, len(cand_emails), 100):
+            chunk = cand_emails[i:i + 100]
+            in_clause = "in.(" + ",".join(f'"{e}"' for e in chunk) + ")"
+            try:
+                rows = await db.select("email_optout", {"select": "email", "email": in_clause, "limit": "1000"})
+                optout |= {(o.get("email") or "").strip().lower() for o in (rows or [])}
+            except Exception:
+                pass
         if optout:
             users = [u for u in users if (u.get("email") or "").strip().lower() not in optout]
-    except Exception:
-        pass
 
     now = datetime.now(timezone.utc)
     sent = 0
