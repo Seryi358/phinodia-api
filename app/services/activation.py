@@ -112,13 +112,19 @@ async def _eligible_users() -> list[dict]:
 
 def _send_sync(to: str, subject: str, html_body: str) -> None:
     """Gmail SDK es sincrono — se llama dentro de asyncio.to_thread."""
+    from app.services.gmail import unsubscribe_url
     sender = GmailSender(
         client_id=settings.gmail_client_id,
         client_secret=settings.gmail_client_secret,
         refresh_token=settings.gmail_refresh_token,
         sender_email=settings.gmail_sender_email,
     )
-    sender.send_email(to=to, subject=subject, html_body=html_body)
+    # Cabeceras estandar para el boton nativo "Cancelar suscripcion" de Gmail / Apple
+    # Mail (one-click). Junto con el link en el cuerpo, evita que sea spam y mejora la
+    # entregabilidad.
+    _url = unsubscribe_url(to)
+    headers = {"List-Unsubscribe": f"<{_url}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
+    sender.send_email(to=to, subject=subject, html_body=html_body, extra_headers=headers)
 
 
 async def run_activation_reminders() -> int:
@@ -145,6 +151,15 @@ async def run_activation_reminders() -> int:
     except Exception as e:
         logger.warning("activation: no se pudo listar elegibles: %s", type(e).__name__)
         return 0
+
+    # Respetar las BAJAS (anti-spam): nunca escribir a quien se dio de baja.
+    try:
+        outs = await db.select("email_optout", {"select": "email", "limit": "10000"})
+        optout = {(o.get("email") or "").strip().lower() for o in (outs or [])}
+        if optout:
+            users = [u for u in users if (u.get("email") or "").strip().lower() not in optout]
+    except Exception:
+        pass
 
     now = datetime.now(timezone.utc)
     sent = 0

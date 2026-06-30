@@ -32,12 +32,14 @@ class GmailSender:
             client_id=client_id, client_secret=client_secret, scopes=SCOPES,
         )
 
-    def send_email(self, to: str, subject: str, html_body: str) -> dict:
+    def send_email(self, to: str, subject: str, html_body: str, extra_headers: dict | None = None) -> dict:
         service = build("gmail", "v1", credentials=self.credentials)
         msg = MIMEMultipart("alternative")
         msg["To"] = to
         msg["From"] = self.sender_email
         msg["Subject"] = subject
+        for _k, _v in (extra_headers or {}).items():
+            msg[_k] = _v
         msg.attach(MIMEText(html_body, "html"))
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
         return service.users().messages().send(userId="me", body={"raw": raw}).execute()
@@ -223,10 +225,23 @@ def build_purchase_email(email: str, plan_name: str, credits: int, service_type:
 ACTIVATION_CTA_URL = "https://app.phinodia.com/videos/"
 
 
+def unsubscribe_url(email: str) -> str:
+    """URL firmada de baja (un clic) para los correos de marketing (recordatorios /
+    win-back). El token HMAC ata la baja al propio correo del destinatario, así un
+    enlace no sirve para dar de baja a otra persona."""
+    import hmac as _hmac
+    import hashlib as _hashlib
+    from urllib.parse import quote as _quote
+    from app.config import get_settings
+    em = (email or "").strip().lower()
+    tok = _hmac.new(get_settings().wompi_integrity_secret.encode(), em.encode(), _hashlib.sha256).hexdigest()[:32]
+    return f"https://app.phinodia.com/api/v1/unsubscribe?e={_quote(em)}&t={tok}"
+
+
 def _nudge_email(
     *, subject: str, h1: str, sub: str, cta_label: str,
     steps: list[str] | None = None, note: str = "",
-    cta_url: str = ACTIVATION_CTA_URL,
+    cta_url: str = ACTIVATION_CTA_URL, unsub_email: str = "",
 ) -> tuple[str, str]:
     """Correo de activacion/recordatorio en estilo Apple: un mensaje, un CTA."""
     steps_html = ""
@@ -247,6 +262,13 @@ def _nudge_email(
             f'<p style="margin:24px 0 0;font-size:13px;color:#86868b;line-height:1.5;">{html.escape(note)}</p>'
         )
     safe_cta = _safe_url(cta_url) or ACTIVATION_CTA_URL
+    unsub_html = ""
+    if unsub_email:
+        _u = html.escape(unsubscribe_url(unsub_email), quote=True)
+        unsub_html = (
+            '<p style="margin:28px 0 0;font-size:12px;color:#86868b;line-height:1.5;">'
+            f'¿No quieres más recordatorios? <a href="{_u}" style="color:#86868b;text-decoration:underline;">Date de baja</a>.</p>'
+        )
     content = f"""
         <h1 style="margin:0 0 8px;font-size:28px;font-weight:700;letter-spacing:-0.005em;color:#1d1d1f;">{html.escape(h1)}</h1>
         <p style="margin:0 0 32px;font-size:17px;color:#86868b;line-height:1.47;">{html.escape(sub)}</p>
@@ -254,7 +276,7 @@ def _nudge_email(
         <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:980px;background:#1d1d1f;">
             <a href="{safe_cta}" style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:17px;font-weight:400;text-decoration:none;letter-spacing:-0.022em;">{html.escape(cta_label)}</a>
         </td></tr></table>
-        {note_html}"""
+        {note_html}{unsub_html}"""
     return subject, _apple_email_base(content)
 
 
@@ -272,6 +294,7 @@ def build_reminder_email(email: str, credits: int, day: int) -> tuple[str, str]:
                 "Elige el estilo del anuncio",
                 "Recibe tu video con voz colombiana",
             ],
+            unsub_email=email,
         )
     if day <= 3:
         return _nudge_email(
@@ -280,6 +303,7 @@ def build_reminder_email(email: str, credits: int, day: int) -> tuple[str, str]:
             sub="Convierte la foto de tu producto en un video que frena el scroll y vende.",
             cta_label="Crear mi video",
             note="¿Dudas? Habla con nuestro asistente en phinodia.com — te responde al instante.",
+            unsub_email=email,
         )
     return _nudge_email(
         subject="No dejes tus créditos sin usar",
@@ -287,6 +311,7 @@ def build_reminder_email(email: str, credits: int, day: int) -> tuple[str, str]:
         sub="Solo te toma 2 minutos. Tus créditos no vencen, pero tu próxima venta no espera.",
         cta_label="Usar mis créditos",
         note="Si algo no quedó claro, nuestro asistente de voz en phinodia.com te ayuda.",
+        unsub_email=email,
     )
 
 
@@ -299,4 +324,5 @@ def build_winback_email(email: str, credits: int) -> tuple[str, str]:
         sub="Mejoramos PhinodIA: ahora es más rápido y confiable. Tus créditos no vencen — dale vida a la foto de tu producto cuando quieras.",
         cta_label="Crear mi video ahora",
         note="Conviertes una foto en un anuncio con voz colombiana en minutos.",
+        unsub_email=email,
     )
