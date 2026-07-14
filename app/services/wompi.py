@@ -10,8 +10,8 @@ import httpx
 # (video 3 credits/10s, image 1, landing 6) — NOT here.
 PACKAGES_BY_SKU = {
     "credits_6":  {"credits": 6,  "amount": 1690000},   # Prueba  — $16.900
-    "credits_20": {"credits": 20, "amount": 6990000},   # Pro     — $69.900 (Más popular)
-    "credits_50": {"credits": 50, "amount": 15990000},  # Studio  — $159.900
+    "credits_20": {"credits": 20, "amount": 5490000},   # Pro     — $54.900 (Más popular)
+    "credits_50": {"credits": 50, "amount": 11990000},  # Studio  — $119.900
 }
 
 
