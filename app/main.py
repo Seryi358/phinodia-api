@@ -421,12 +421,13 @@ async def add_cache_and_security_headers(request: Request, call_next):
 
     return response
 
-from app.routers import generate, jobs, credits, payments, upload, referrals, contact, admin  # noqa: E402
+from app.routers import generate, jobs, credits, payments, upload, referrals, contact, admin, subscriptions  # noqa: E402
 
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(credits.router, prefix="/api/v1/credits", tags=["credits"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
+app.include_router(subscriptions.router, prefix="/api/v1/subscriptions", tags=["subscriptions"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
 app.include_router(referrals.router, prefix="/api/v1/referrals", tags=["referrals"])
 app.include_router(contact.router, prefix="/api/v1", tags=["contact"])
@@ -685,6 +686,11 @@ _ROUTE_METHODS = {
     # payments
     "/api/v1/payments/checkout": "POST",
     "/api/v1/payments/webhook": "POST",
+    # subscriptions (status/activate/cancel llevan {id} — se matchean por prefijo)
+    "/api/v1/subscriptions": "GET",
+    "/api/v1/subscriptions/config": "GET, HEAD",
+    "/api/v1/subscriptions/create": "POST",
+    "/api/v1/subscriptions/cron/run": "POST",
     # upload
     "/api/v1/upload/image": "POST",
     # referrals

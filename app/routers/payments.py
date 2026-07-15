@@ -205,6 +205,33 @@ async def wompi_webhook(event: dict):
         logger.error("Webhook missing customer_email for tx %s — forcing Wompi retry", tx_data.get("id"))
         raise HTTPException(503, "customer_email missing — retry")
 
+    # ── Suscripciones recurrentes (motor aislado) ──────────────────────────────
+    # Wompi entrega TODOS los eventos a esta única URL. Un cobro recurrente
+    # (wompi_recurring.charge_payment_source) produce una tx normal cuya
+    # referencia es PH-SUB-{sub_id8}-{YYYYMM}. La desviamos aquí ANTES del parseo
+    # de SKU de pago único (que la marcaría "unknown_package") y delegamos al
+    # servicio de suscripción, que acredita idempotentemente vía
+    # subscription_invoices.credited. Todos los gates de seguridad de arriba
+    # (firma, replay, entorno, refetch autoritativo, APPROVED, COP, email) ya se
+    # aplicaron, así que aquí solo resta acreditar el período correcto.
+    if reference.startswith("PH-SUB-"):
+        from app.services import subscription_service as subs
+        try:
+            result = await subs.credit_invoice_from_webhook(
+                reference=reference,
+                wompi_transaction_id=str(tx_data.get("id") or ""),
+                amount_in_cents=amount,
+                customer_email=customer_email,
+            )
+        except Exception as e:
+            # grant_credits transitorio u otro fallo: 503 para que Wompi reintente.
+            # La acreditación es idempotente por el flip credited=false->true, así
+            # que un reintento no duplica créditos.
+            logger.exception("Fallo acreditando suscripción %s: %s", reference, e)
+            raise HTTPException(503, "subscription credit failed — retry")
+        logger.info("Webhook suscripción %s -> %s", reference, result.get("action"))
+        return {"status": "ok", **result}
+
     # Extract SKU from reference — format:
     #   PH-{sku}-{timestamp}-{hex}            (classic, no A/B)
     #   PH-{sku}-{timestamp}-{hex}-v{letter}  (with A/B variant)
