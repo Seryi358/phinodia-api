@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Precios — PhinodIA</title>
-  <meta name="description" content="Planes y precios para generar videos UGC, imagenes de producto y landing pages con inteligencia artificial. Paga con tarjeta, PSE o Nequi.">
+  <meta name="description" content="Planes y precios para generar videos UGC, imágenes de producto y landing pages con inteligencia artificial. Paga con tarjeta, PSE o Nequi.">
   <meta name="robots" content="index, follow">
   <meta property="og:title" content="Precios — PhinodIA">
-  <meta property="og:description" content="Planes y precios para generar videos UGC, imagenes y landing pages con IA. Paga con Wompi.">
+  <meta property="og:description" content="Planes y precios para generar videos UGC, imágenes y landing pages con IA. Paga con Wompi.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://app.phinodia.com/precios">
   <meta property="og:image" content="https://app.phinodia.com/static/images/phinodia-hero.jpg">
@@ -21,9 +21,9 @@
     "name": "Planes y Precios PhinodIA",
     "url": "https://app.phinodia.com/precios",
     "itemListElement": [
-      {"@type": "Offer", "name": "Prueba — 6 creditos", "price": "16900", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Pro — 20 creditos", "price": "54900", "priceCurrency": "COP"},
-      {"@type": "Offer", "name": "Studio — 50 creditos", "price": "119900", "priceCurrency": "COP"}
+      {"@type": "Offer", "name": "Prueba — 6 créditos", "price": "16900", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Pro — 20 créditos", "price": "54900", "priceCurrency": "COP"},
+      {"@type": "Offer", "name": "Studio — 50 créditos", "price": "119900", "priceCurrency": "COP"}
     ]
   }
   </script>
@@ -86,7 +86,7 @@
     <section class="hero" style="padding-bottom: 24px;">
       <p class="hero-badge">Precios</p>
       <h1>Contenido profesional. Precios accesibles.</h1>
-      <p>Hasta 80% mas barato que la producción tradicional. Resultados en minutos, no semanas.</p>
+      <p>Hasta 80% más barato que la producción tradicional. Resultados en minutos, no semanas.</p>
     </section>
 
     <!-- Before/After Demo -->
@@ -112,7 +112,7 @@
     <div class="form-card" style="max-width:500px;margin:0 auto 32px;">
       <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
         <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0">
-          <label for="pricing-email">Tu correo electronico</label>
+          <label for="pricing-email">Tu correo electrónico</label>
           <input type="email" id="pricing-email" class="form-input" placeholder="tucorreo@ejemplo.com" required>
         </div>
         <div style="display:flex;gap:4px;margin-bottom:2px;">
@@ -130,7 +130,7 @@
       </div>
 
       <div style="max-width:560px;margin:0 auto 28px;background:#f5f5f7;border-radius:12px;padding:16px 20px;font-size:14px;color:#444">
-        <strong>Cuanto consume cada generación?</strong>
+        <strong>¿Cuánto consume cada generación?</strong>
         <div style="margin-top:8px;line-height:1.95">
           Video 10s = <b>3 créditos</b> &nbsp;&middot;&nbsp; 20s = <b>6</b> &nbsp;&middot;&nbsp; 30s = <b>9</b><br>
           Imagen de producto = <b>1 crédito</b><br>
@@ -139,10 +139,6 @@
       </div>
 
       <div class="pricing-grid" id="grid-credits"></div>
-
-      <p class="text-center" style="margin-top:24px;color:var(--text-secondary);font-size:14px">
-        ¿Prefieres que se renueven solos? <a href="/suscripcion" class="card-link">Mira los planes de suscripción</a>
-      </p>
     </div>
 
     <!-- Images Tab -->
@@ -158,7 +154,7 @@
     <div id="landings-tab" class="tab-content hidden">
       <div class="section-header" style="margin-bottom:32px">
         <h2>Landing Pages</h2>
-        <p>Paginas de venta con AIDA y neuromarketing, listas para usar</p>
+        <p>Páginas de venta con AIDA y neuromarketing, listas para usar</p>
       </div>
       <div class="pricing-grid" id="grid-landings"></div>
     </div>
@@ -210,9 +206,9 @@
 
     const PLANS = {
       'grid-credits': [
-        {credits:6,  label:'creditos', sku:'credits_6',  price:16900,  popular:false, name:'Prueba'},
-        {credits:20, label:'creditos', sku:'credits_20', price:54900,  popular:true,  name:'Pro'},
-        {credits:50, label:'creditos', sku:'credits_50', price:119900, popular:false, name:'Studio'},
+        {credits:6,  label:'créditos', sku:'credits_6',  price:16900,  popular:false, name:'Prueba'},
+        {credits:20, label:'créditos', sku:'credits_20', price:54900,  popular:true,  name:'Pro'},
+        {credits:50, label:'créditos', sku:'credits_50', price:119900, popular:false, name:'Studio'},
       ],
     }
 
@@ -244,7 +240,7 @@
         grid.innerHTML = '';
         for (const p of plans) {
           const perUnit = fmtPer(p.price, p.credits);
-          const unitLabel = 'credito';
+          const unitLabel = 'crédito';
           grid.innerHTML += `
             <div class="pricing-card${p.popular ? ' popular' : ''}">
               <div style="font-size:12px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${p.name || ''}</div>
@@ -294,7 +290,7 @@
     async function buyPlan(sku, btn) {
       const email = document.getElementById('pricing-email').value.trim();
       if (!email || !isValidEmail(email)) {
-        showToast('Ingresa tu correo electronico primero', 'error');
+        showToast('Ingresa tu correo electrónico primero', 'error');
         document.getElementById('pricing-email').focus();
         return;
       }

@@ -124,7 +124,7 @@
 
 
         <div class="form-group">
-          <label for="video-email">Tu correo electronico</label>
+          <label for="video-email">Tu correo electrónico</label>
           <input type="email" id="video-email" name="email" class="form-input" placeholder="tucorreo@ejemplo.com" required>
           <p class="form-hint">Para asociar tus créditos y recibir confirmaciones.</p>
         </div>
@@ -182,7 +182,7 @@
       if (!form.image_url) { _bail('Sube una foto de tu producto'); return; }
       if (!form.product_name) { _bail('Escribe el nombre del producto'); return; }
       if (!form.description) { _bail('Describe tu vision para el video'); return; }
-      if (!form.email || !isValidEmail(form.email)) { _bail('Ingresa un correo electronico valido'); return; }
+      if (!form.email || !isValidEmail(form.email)) { _bail('Ingresa un correo electrónico valido'); return; }
       if (!form.data_consent) { _bail('Debes aceptar el tratamiento de datos'); return; }
 
       setLoading('video-submit', true);
