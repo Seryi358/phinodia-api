@@ -46,13 +46,22 @@ function initToasts() {
 function showToast(message, type = 'info') {
   initToasts();
   const container = document.querySelector('.toast-container');
-  const icons = { success: '\u2713', error: '\u2717', warning: '\u26A0', info: '\u2139' };
+  // Inline SVG icons (monochrome, currentColor) keyed by toast type \u2014 no emoji.
+  const icons = {
+    success: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 4.5 6 12 2.5 8.5"/></svg>',
+    error: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 4 12M4 4l8 8"/></svg>',
+    warning: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.4 1.5 13.5h13z"/><line x1="8" y1="6.5" x2="8" y2="9.6"/><line x1="8" y1="11.4" x2="8" y2="11.4"/></svg>',
+    info: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.3"/><line x1="8" y1="7.4" x2="8" y2="11"/><line x1="8" y1="4.9" x2="8" y2="4.9"/></svg>',
+  };
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  // Use textContent (not innerHTML) so error messages from the API can't
-  // inject HTML/event handlers (XSS protection).
   const iconSpan = document.createElement('span');
-  iconSpan.textContent = icons[type] || '';
+  iconSpan.style.display = 'flex';
+  iconSpan.style.flexShrink = '0';
+  // iconSpan uses innerHTML with a hardcoded, trusted SVG constant (never user
+  // input). The user-controlled `message` below stays in textContent so API
+  // error strings can't inject HTML/event handlers (XSS protection).
+  iconSpan.innerHTML = icons[type] || '';
   const msgSpan = document.createElement('span');
   msgSpan.textContent = message;
   toast.appendChild(iconSpan);

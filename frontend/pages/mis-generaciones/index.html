@@ -46,10 +46,10 @@
       </a>
       <div class="nav-links">
         <a href="/videos">Videos</a>
-        <a href="/imagenes">Imagenes</a>
+        <a href="/imagenes">Imágenes</a>
         <a href="/landing-pages">Landing Pages</a>
         <a href="/mis-generaciones" class="active">Mis Generaciones</a>
-        <a href="/creditos">Mis Creditos</a>
+        <a href="/creditos">Mis Créditos</a>
         <a href="/referidos">Referidos</a>
         <a href="/precios" class="nav-cta">Precios</a>
       </div>
@@ -60,7 +60,7 @@
   <main id="main" class="container">
     <section class="hero" style="padding-bottom: 24px;">
       <h1>Mis generaciones.</h1>
-      <p>Consulta y descarga todos los videos, imagenes y landing pages que has creado.</p>
+      <p>Consulta y descarga todos los videos, imágenes y landing pages que has creado.</p>
     </section>
 
     <div class="form-card" style="max-width: 500px; margin: 0 auto;">
@@ -83,7 +83,7 @@
       <p>2026 PhinodIA. Todos los derechos reservados.</p>
       <div class="footer-links">
         <a href="https://phinodia.com/politica-de-privacidad/" target="_blank" rel="noopener">Privacidad</a>
-        <a href="https://phinodia.com/condiciones-del-servicio/" target="_blank" rel="noopener">Terminos</a>
+        <a href="https://phinodia.com/condiciones-del-servicio/" target="_blank" rel="noopener">Términos</a>
         <a href="https://phinodia.com/habeas-data/" target="_blank" rel="noopener">Habeas Data</a>
       </div>
     </div>
@@ -154,7 +154,7 @@
       // Video: use input image as poster + play overlay
       if (job.result_type === 'mp4' && job.input_image_url) {
         const playOverlay = job.status === 'completed'
-          ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);color:#fff;font-size:42px;font-weight:300;pointer-events:none;">&#9654;</div>'
+          ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);color:#fff;font-size:42px;font-weight:300;pointer-events:none;"><svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></div>'
           : '';
         return imgWithFallback(job.input_image_url, 'Video preview', 'mp4') + playOverlay;
       }
