@@ -205,39 +205,66 @@ _OG_B = re.compile(
 )
 
 
+_FETCH_CAP = 15 * 1024 * 1024  # tope duro de descarga (no confiar en content-length)
+
+
+async def _safe_get(client, url: str, max_hops: int = 5):
+    """GET que sigue redirects MANUALMENTE re-validando cada salto contra SSRF, y
+    lee el cuerpo por streaming con un TOPE DURO de bytes. Devuelve (final_url,
+    headers, body). Dos defensas del review:
+      - Redirect-bypass SSRF: con follow_redirects automático, una URL pública
+        puede redirigir (301/302/...) a una IP interna/metadata del cloud. Aquí
+        cada hop vuelve a pasar por _is_safe_url.
+      - Resource-cap: content-length es falsificable/ausente, así que NO se confía
+        en él: se corta al leer pasado _FETCH_CAP.
+    Residual conocido: DNS-rebinding (el IP validado podría cambiar antes de la
+    conexión de httpx). Mitigado en la práctica porque la respuesta SIEMPRE se
+    procesa como imagen (magic-bytes + decode Pillow); un endpoint interno que
+    devuelva JSON/HTML se rechaza -> SSRF ciego sin exfiltración."""
+    current = url
+    for _ in range(max_hops + 1):
+        if not _is_safe_url(current):
+            raise HTTPException(400, "El enlace no es valido o no esta permitido")
+        async with client.stream("GET", current) as r:
+            loc = r.headers.get("location")
+            if r.status_code in (301, 302, 303, 307, 308) and loc:
+                current = urljoin(current, loc)
+                continue
+            r.raise_for_status()
+            total = 0
+            chunks: list[bytes] = []
+            async for chunk in r.aiter_bytes():
+                total += len(chunk)
+                if total > _FETCH_CAP:
+                    raise HTTPException(400, "El contenido del enlace es demasiado grande")
+                chunks.append(chunk)
+            return str(r.url), dict(r.headers), b"".join(chunks)
+    raise HTTPException(400, "Demasiadas redirecciones en el enlace")
+
+
 async def _fetch_image_from_url(url: str) -> bytes:
     if not _is_safe_url(url):
         raise HTTPException(400, "El enlace no es valido o no esta permitido")
     headers = {"User-Agent": "Mozilla/5.0 (compatible; PhinodIABot/1.0; +https://phinodia.com)"}
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0, headers=headers, max_redirects=5) as client:
-            r = await client.get(url)
-            r.raise_for_status()
-            # Cortafuegos de tamaño: no bajar respuestas gigantes.
-            clen = r.headers.get("content-length")
-            if clen and clen.isdigit() and int(clen) > 15 * 1024 * 1024:
-                raise HTTPException(400, "El contenido del enlace es demasiado grande")
-            ct = (r.headers.get("content-type", "").split(";")[0]).strip().lower()
+        # follow_redirects=False: los seguimos a mano re-validando cada salto (anti-SSRF).
+        async with httpx.AsyncClient(follow_redirects=False, timeout=15.0, headers=headers) as client:
+            final_url, hdrs, body = await _safe_get(client, url)
+            ct = (hdrs.get("content-type", "").split(";")[0]).strip().lower()
 
             # (a) el enlace ES una imagen directa
             if ct in ALLOWED_TYPES:
-                return r.content
+                return body
 
             # (b) el enlace es HTML -> buscar og:image
             if "html" in ct or ct == "" or "text" in ct:
-                html = r.text[:300000]
+                html = body[:400000].decode("utf-8", errors="ignore")
                 m = _OG_A.search(html) or _OG_B.search(html)
                 if not m:
                     raise HTTPException(400, "No encontramos una imagen de producto en ese enlace. Sube una foto.")
-                img_url = urljoin(str(r.url), m.group(1).replace("&amp;", "&"))
-                if not _is_safe_url(img_url):
-                    raise HTTPException(400, "La imagen del enlace no es valida")
-                ir = await client.get(img_url)
-                ir.raise_for_status()
-                iclen = ir.headers.get("content-length")
-                if iclen and iclen.isdigit() and int(iclen) > 15 * 1024 * 1024:
-                    raise HTTPException(400, "La imagen del enlace es demasiado grande")
-                return ir.content
+                img_url = urljoin(final_url, m.group(1).replace("&amp;", "&"))
+                _, _, img_body = await _safe_get(client, img_url)  # re-valida SSRF + tope del 2º fetch
+                return img_body
 
             raise HTTPException(400, "Ese enlace no contiene una imagen valida")
     except HTTPException:
