@@ -32,9 +32,12 @@
      #57534E = ~7:1 (AAA), #78716C = ~4.6:1 (AA). */
   --text-secondary: #57534E;
   --text-tertiary: #78716C;
-  --accent: #2563EB;
-  --accent-hover: #1D4ED8;
-  --accent-subtle: rgba(37,99,235,0.06);
+  /* Acento = oro antiguo (Sartoria): sustituye el azul tech. AA sobre --bg
+     (5.3:1) y con etiqueta blanca encima (5.5:1). */
+  --accent: #8A6215;
+  --accent-hover: #6E4E10;
+  --accent-subtle: rgba(138,98,21,0.08);
+  --accent-ink: #FFFFFF;
   /* CTA primario = coral con etiqueta OSCURA (WCAG 5.8:1; blanco fallaria ~3:1) */
   --cta: #FF5A2C;
   --cta-hover: #EA4A1E;
@@ -42,9 +45,9 @@
   --indigo: #1B2A5B;
   --amber: #F2A516;
   /* Sartoria: acento vintage italiano (oro antiguo + sepia). El oro de TEXTO
-     cumple contraste sobre --bg; el "bright" es decorativo (anillos, filetes). */
+     cumple AA sobre --bg (5.3:1); el "bright" es decorativo (anillos, filetes). */
   --serif: 'Playfair Display', 'Bodoni 72', 'Didot', Georgia, 'Times New Roman', serif;
-  --gold: #9B6F1B;
+  --gold: #8A6215;
   --gold-bright: #C08A2E;
   --sepia: #6F4E37;
   --error: #B91C1C;
@@ -158,7 +161,7 @@ img { max-width: 100%; height: auto; }
 
 .nav-cta {
   background: var(--accent) !important;
-  color: #fff !important;
+  color: var(--accent-ink) !important;
   padding: 6px 16px !important;
   border-radius: 980px !important;
   font-weight: 400 !important;
@@ -594,7 +597,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   left: 50%;
   transform: translateX(-50%);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   padding: 4px 16px;
   border-radius: 980px;
   font-size: 12px;
@@ -666,7 +669,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   font-weight: 600;
 }
 
-.status-badge.processing { background: rgba(0,102,204,0.1); color: var(--accent); }
+.status-badge.processing { background: rgba(138,98,21,0.12); color: var(--accent); }
 .status-badge.completed { background: rgba(36,138,61,0.1); color: var(--success); }
 .status-badge.failed { background: rgba(222,55,48,0.1); color: var(--error); }
 .status-badge.pending { background: var(--surface); color: var(--text-secondary); }
@@ -969,9 +972,11 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   --text: #F2F0EA;
   --text-secondary: #B6B1A6;
   --text-tertiary: #8B8677;
-  --accent: #6E9BFF;
-  --accent-hover: #8FB2FF;
-  --accent-subtle: rgba(110,155,255,0.12);
+  /* oro claro en dark (9.4:1 sobre el fondo); la tinta encima pasa a oscura */
+  --accent: #D9B65E;
+  --accent-hover: #E4C878;
+  --accent-subtle: rgba(217,182,94,0.14);
+  --accent-ink: #14161F;
   --cta: #FF6A3D;
   --cta-hover: #FF824E;
   --cta-ink: #14161F;
@@ -988,8 +993,8 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   --icon-bg: rgba(255,255,255,0.08);
   --shadow: rgba(0,0,0,0.45);
 }
-/* En dark, el botón azul sólido lleva texto claro legible; usa un azul más profundo */
-:root[data-theme="dark"] .nav-cta { background: #3B62C4 !important; }
+/* En dark el pill del nav queda oro claro con tinta oscura (var(--accent-ink)) */
+:root[data-theme="dark"] .nav-cta { background: var(--accent) !important; color: var(--accent-ink) !important; }
 /* Logo (hexágono índigo) -> blanco en dark para que contraste con el nav oscuro */
 :root[data-theme="dark"] .nav-logo img { filter: brightness(0) invert(1); }
 :root[data-theme="dark"] .btn-secondary:hover { background: var(--accent); color: #0F1220; }
@@ -1017,7 +1022,7 @@ html.ph-theme-anim, html.ph-theme-anim * { transition: background-color .3s ease
   border: 0; background: transparent; color: var(--text-tertiary); cursor: pointer;
   font-size: 12px; font-weight: 700; padding: 6px 10px; font-family: inherit; transition: all var(--transition);
 }
-.ph-lang button.active { background: var(--accent); color: #fff; }
+.ph-lang button.active { background: var(--accent); color: var(--accent-ink); }
 .ph-lang button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ── Botón flotante subir/bajar ── */
