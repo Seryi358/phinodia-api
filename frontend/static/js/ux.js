@@ -126,6 +126,17 @@
       window.addEventListener('scroll', refresh, { passive: true });
       refresh();
     }
+    // Sartoria: sello de cera + tagline "a la medida" al inicio del footer
+    var footer = document.querySelector('.footer');
+    if (footer && !document.getElementById('ph-sartoria')) {
+      var sar = document.createElement('div');
+      sar.className = 'ph-sartoria'; sar.id = 'ph-sartoria';
+      sar.innerHTML = '<div class="ph-sartoria-inner">' +
+        '<span class="ph-seal" aria-hidden="true"><span>P</span></span>' +
+        '<p class="tl">Hecho a la medida de tu tienda. <b>Una propuesta que no vas a querer rechazar.</b></p>' +
+        '</div>';
+      footer.insertBefore(sar, footer.firstChild);
+    }
   }
 
   /* ─────────────── init ─────────────── */

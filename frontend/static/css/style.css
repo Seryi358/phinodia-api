@@ -11,6 +11,15 @@
   font-display: swap;
   src: url('/static/fonts/manrope-var.woff2') format('woff2');
 }
+/* Sartoria: serif Didone (Playfair Display, variable, auto-hospedado) para
+   titulares de firma. El cuerpo sigue en Manrope por legibilidad/confianza. */
+@font-face {
+  font-family: 'Playfair Display';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/static/fonts/playfair.woff2') format('woff2');
+}
 
 :root {
   --bg: #FCFBF9;
@@ -32,6 +41,12 @@
   --cta-ink: #14161F;
   --indigo: #1B2A5B;
   --amber: #F2A516;
+  /* Sartoria: acento vintage italiano (oro antiguo + sepia). El oro de TEXTO
+     cumple contraste sobre --bg; el "bright" es decorativo (anillos, filetes). */
+  --serif: 'Playfair Display', 'Bodoni 72', 'Didot', Georgia, 'Times New Roman', serif;
+  --gold: #9B6F1B;
+  --gold-bright: #C08A2E;
+  --sepia: #6F4E37;
   --error: #B91C1C;
   --warning: #C2410C;
   --success: #15803D;
@@ -185,32 +200,33 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 }
 
 .hero-overline {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
   text-transform: uppercase;
-  letter-spacing: 1.2px;
+  letter-spacing: 1.8px;
   margin-bottom: 8px;
 }
 
 .hero-badge {
   display: inline-block;
-  color: var(--text-tertiary);
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
   margin-bottom: 12px;
   text-transform: uppercase;
-  letter-spacing: 1.2px;
+  letter-spacing: 1.8px;
   background: none;
   border: none;
   padding: 0;
 }
 
 .hero h1 {
-  font-size: clamp(32px, 5.5vw, 56px);
-  font-weight: 700;
-  line-height: 1.07143;
-  letter-spacing: -0.005em;
+  font-family: var(--serif);
+  font-size: clamp(33px, 5.6vw, 58px);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: normal;
   margin-bottom: 16px;
   color: var(--text);
 }
@@ -780,11 +796,21 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 }
 
 .section-header h2 {
-  font-size: clamp(24px, 3.5vw, 40px);
-  font-weight: 700;
-  letter-spacing: -0.005em;
+  font-family: var(--serif);
+  font-size: clamp(25px, 3.6vw, 41px);
+  font-weight: 600;
+  letter-spacing: normal;
   margin-bottom: 8px;
   color: var(--text);
+}
+/* Filete dorado de firma bajo los títulos de sección */
+.section-header h2::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 2px;
+  margin: 14px auto 0;
+  background: linear-gradient(90deg, transparent, var(--gold-bright), transparent);
 }
 
 .section-header p {
@@ -951,6 +977,10 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   --cta-ink: #14161F;
   --indigo: #A9BBF2;
   --amber: #F2A516;
+  /* oro más claro para contraste sobre fondo oscuro */
+  --gold: #D9B65E;
+  --gold-bright: #E4C878;
+  --sepia: #C9A98C;
   --error: #FF6B6B;
   --warning: #FFA94D;
   --success: #51CF66;
@@ -1005,4 +1035,48 @@ html.ph-theme-anim, html.ph-theme-anim * { transition: background-color .3s ease
 .ph-scrolltop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 768px) { .ph-scrolltop { right: 14px; bottom: 14px; width: 42px; height: 42px; } }
 @media (prefers-reduced-motion: reduce) { .ph-scrolltop { transition: opacity .2s; transform: none; } html.ph-theme-anim, html.ph-theme-anim * { transition: none !important; } }
+
+/* ══════════════════════════════════════════════════
+   CAPA SARTORIA — acento vintage italiano (sello de cera + tagline)
+   Se inyecta por ux.js en el <footer> de todas las páginas.
+   ══════════════════════════════════════════════════ */
+.ph-seal {
+  width: 48px; height: 48px; border-radius: 50%; flex: 0 0 auto;
+  background: radial-gradient(circle at 35% 28%, #34477F 0%, var(--indigo, #1B2A5B) 55%, #131E42 100%);
+  box-shadow: inset 0 1px 2px rgba(255,255,255,.28), inset 0 -3px 5px rgba(0,0,0,.4), 0 2px 7px var(--shadow);
+  display: inline-flex; align-items: center; justify-content: center; position: relative;
+}
+.ph-seal::before {
+  content: ""; position: absolute; inset: 5px; border-radius: 50%;
+  border: 1px solid rgba(199,154,62,.55);
+}
+.ph-seal span {
+  font-family: var(--serif); color: var(--gold-bright); font-weight: 600;
+  font-size: 24px; line-height: 1; letter-spacing: normal;
+  text-shadow: 0 1px 1px rgba(0,0,0,.35);
+}
+:root[data-theme="dark"] .ph-seal {
+  background: radial-gradient(circle at 35% 28%, #2A3A6B 0%, #1B2A5B 55%, #0F1838 100%);
+}
+.ph-sartoria {
+  padding: 0 22px 22px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.ph-sartoria-inner {
+  max-width: var(--max-width); margin: 0 auto;
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  text-align: left; flex-wrap: wrap;
+}
+.ph-sartoria .tl {
+  font-family: var(--serif); font-style: italic;
+  font-size: clamp(16px, 2.3vw, 21px); line-height: 1.35;
+  color: var(--text-secondary); letter-spacing: normal; max-width: 620px;
+}
+.ph-sartoria .tl b {
+  font-style: normal; font-weight: 600; color: var(--indigo);
+}
+@media (max-width: 560px) {
+  .ph-sartoria-inner { flex-direction: column; text-align: center; gap: 12px; }
+}
 
