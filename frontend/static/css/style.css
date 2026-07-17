@@ -1006,17 +1006,3 @@ html.ph-theme-anim, html.ph-theme-anim * { transition: background-color .3s ease
 @media (max-width: 768px) { .ph-scrolltop { right: 14px; bottom: 14px; width: 42px; height: 42px; } }
 @media (prefers-reduced-motion: reduce) { .ph-scrolltop { transition: opacity .2s; transform: none; } html.ph-theme-anim, html.ph-theme-anim * { transition: none !important; } }
 
-/* ── Botón flotante de WhatsApp ── */
-.ph-scrolltop { bottom: 84px; }
-@media (max-width: 768px) { .ph-scrolltop { bottom: 76px; } }
-.ph-wa {
-  position: fixed; right: 20px; bottom: 20px; z-index: 96;
-  width: 54px; height: 54px; border-radius: 999px; background: #25D366; color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 22px rgba(0,0,0,0.20); text-decoration: none; transition: transform .2s ease;
-}
-.ph-wa:hover { transform: scale(1.06); text-decoration: none; }
-.ph-wa:focus-visible { outline: 2px solid #14161F; outline-offset: 3px; }
-.ph-wa svg { width: 30px; height: 30px; fill: #fff; }
-@media (max-width: 768px) { .ph-wa { right: 14px; bottom: 14px; width: 50px; height: 50px; } .ph-wa svg { width: 28px; height: 28px; } }
-@media (prefers-reduced-motion: reduce) { .ph-wa { transition: none; } }
