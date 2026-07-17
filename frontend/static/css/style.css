@@ -118,7 +118,7 @@ img { max-width: 100%; height: auto; }
   justify-content: space-between;
 }
 
-.nav-logo img { height: 22px; display: block; }
+.nav-logo img { height: 26px; width: auto; display: block; }
 
 .nav-links {
   display: flex;
@@ -896,3 +896,33 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   .pricing-grid { grid-template-columns: 1fr; }
   .pricing-card { padding: 24px 20px; }
 }
+
+/* ── Prueba social / testimonios reales ── */
+.testi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 18px;
+}
+.testi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 22px 20px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+.testi-stars { color: var(--cta); font-size: 14px; letter-spacing: 2px; }
+.testi blockquote {
+  margin: 0;
+  font-size: 16.5px;
+  line-height: 1.5;
+  color: var(--text);
+  font-weight: 500;
+  quotes: "\201C" "\201D";
+}
+.testi figcaption { display: flex; flex-direction: column; margin-top: auto; }
+.testi-name { font-weight: 700; color: var(--text); }
+.testi-role { font-size: 13px; color: var(--text-tertiary); }
