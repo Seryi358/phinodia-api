@@ -143,6 +143,31 @@ async function handleFileSelect(file, dropzone, preview, urlFieldId) {
   }
 }
 
+// ── Importar imagen desde la URL de un producto ("pega tu link") ──
+async function importImageFromUrl(url, dropzoneId, previewId, urlFieldId) {
+  url = (url || '').trim();
+  if (!/^https?:\/\/.+\..+/i.test(url)) { showToast('Pega un enlace válido (https://...)', 'error'); return; }
+  const dropzone = document.getElementById(dropzoneId);
+  const preview = document.getElementById(previewId);
+  try {
+    if (dropzone) dropzone.style.opacity = '0.6';
+    showToast('Buscando la imagen de tu producto…', 'info');
+    const res = await fetch(`${API}/upload/from-url`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'No pudimos traer la imagen de ese enlace');
+    const urlField = document.getElementById(urlFieldId);
+    if (urlField) urlField.value = data.url;
+    if (preview) { preview.src = data.url; preview.classList.remove('hidden'); }
+    if (dropzone) { dropzone.classList.add('has-file'); dropzone.style.opacity = '1'; }
+    showToast('¡Imagen lista! Ya puedes generar.', 'success');
+  } catch (err) {
+    if (dropzone) dropzone.style.opacity = '1';
+    showToast(err.message, 'error');
+  }
+}
+
 // ── API Calls ──────────────────────────────────
 // Helper: parse JSON body, but never throw if the server returned HTML / empty
 // (5xx behind a CDN, network blip, etc) — the caller deserves a clean message.

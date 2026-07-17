@@ -78,6 +78,16 @@
           <input type="hidden" id="image-image-url" name="image_url">
           <p class="form-hint">JPEG, PNG o WebP. Máximo 10MB.</p>
         </div>
+        <div class="form-group" style="margin-top:-6px">
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">
+              <label for="image-url-input" style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px">…o pega el link de tu producto</label>
+              <input type="url" id="image-url-input" class="form-input" placeholder="https://tu-tienda.com/producto, Instagram, Shopify…">
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="importImageFromUrl(document.getElementById('image-url-input').value,'image-dropzone','image-preview','image-image-url')">Traer imagen</button>
+          </div>
+          <p class="form-hint">La IA trae la foto de tu producto desde el enlace.</p>
+        </div>
 
         <div class="form-group">
           <label for="image-product-name">¿Cómo se llama tu producto?</label>
@@ -161,7 +171,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/api.js?v=1780300000"></script>
+  <script src="/static/js/api.js?v=1780700000"></script>
   <script defer src="/static/js/meta-pixel.js?v=1780300000"></script>
   <script>
     initFileUpload('image-dropzone', 'image-preview', 'image-image-url');
