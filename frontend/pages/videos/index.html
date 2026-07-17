@@ -72,35 +72,35 @@
           <div class="file-upload" id="video-dropzone" aria-labelledby="video-dropzone-label">
             <input type="file" accept="image/jpeg,image/png,image/webp" name="product_image" aria-label="Subir foto del producto">
             <div class="file-upload-icon" style="font-size: 32px; color: var(--border-hover); font-weight: 300;">+</div>
-            <div class="file-upload-text">Arrastra tu imagen aqui o <strong>haz clic para seleccionar</strong></div>
+            <div class="file-upload-text">Arrastra tu imagen aquí o <strong>haz clic para seleccionar</strong></div>
             <img id="video-preview" class="file-preview hidden" alt="Vista previa">
           </div>
           <input type="hidden" id="video-image-url" name="image_url">
-          <p class="form-hint">JPEG, PNG o WebP. Maximo 10MB.</p>
+          <p class="form-hint">JPEG, PNG o WebP. Máximo 10MB.</p>
         </div>
 
         <div class="form-group">
-          <label for="video-product-name">Como se llama tu producto?</label>
+          <label for="video-product-name">¿Cómo se llama tu producto?</label>
           <input type="text" id="video-product-name" name="product_name" class="form-input" placeholder="Ej: Serum Vitamina C GlowSkin" required>
         </div>
 
 
 
         <div class="form-group">
-          <label for="video-description">Que quieres que pase en el video?</label>
+          <label for="video-description">¿Qué quieres que pase en el video?</label>
           <textarea id="video-description" name="description" class="form-textarea" placeholder="Ej: Quiero que salga una chica mostrando como se aplica el serum y recomendandolo a sus amigas. Que hable de como le cambio la piel." required></textarea>
-          <p class="form-hint">Describe la escena, la emocion, y el mensaje principal del video.</p>
+          <p class="form-hint">Describe la escena, la emoción y el mensaje principal del video.</p>
         </div>
 
         <details class="form-group" style="border:1px solid var(--border,#e5e5e5);border-radius:10px;padding:0 14px;margin-bottom:16px">
           <summary style="cursor:pointer;padding:14px 0;font-weight:600;color:var(--text-secondary,#666)">Personalizar (opcional)</summary>
           <div style="padding-bottom:8px">
             <div class="form-group">
-              <label for="video-category">De que es tu producto? Que hace?</label>
+              <label for="video-category">¿De qué es tu producto? ¿Qué hace?</label>
               <input type="text" id="video-category" name="product_category" class="form-input" placeholder="Ej: Serum facial que ilumina la piel y reduce manchas">
             </div>
             <div class="form-group">
-              <label for="video-pain">Que problema resuelve?</label>
+              <label for="video-pain">¿Qué problema resuelve?</label>
               <input type="text" id="video-pain" name="pain_point" class="form-input" placeholder="Ej: Piel opaca, manchas, falta de brillo">
             </div>
             <div class="form-group" style="margin-bottom:4px">
@@ -111,7 +111,7 @@
         </details>
 
         <div class="form-group">
-          <label id="duration-picker-label">Duracion del video</label>
+          <label id="duration-picker-label">Duración del video</label>
           <div class="option-grid" id="duration-picker" role="radiogroup" aria-labelledby="duration-picker-label">
             <button type="button" class="option-btn" data-value="10">10s<br><small>3 créditos</small></button>
             <button type="button" class="option-btn selected" data-value="20">20s<br><small>6 créditos</small></button>
@@ -142,7 +142,7 @@
       <div id="video-result" class="hidden mt-32">
         <div class="status-card">
           <h3 id="video-status-title">Generando tu video...</h3>
-          <p id="video-status-text" style="color: var(--text-secondary); margin: 8px 0 16px;">Esto puede tomar unos minutos. Te enviaremos un correo cuando este listo y podras verlo aqui o en <a href="/mis-generaciones">Mis Generaciones</a>.</p>
+          <p id="video-status-text" style="color: var(--text-secondary); margin: 8px 0 16px;">Esto puede tomar unos minutos. Te enviaremos un correo cuando esté listo y podrás verlo aquí o en <a href="/mis-generaciones">Mis Generaciones</a>.</p>
           <div class="progress-bar"><div class="progress-fill" id="video-progress" style="width: 0%"></div></div>
           <span class="status-badge processing" id="video-status-badge">Procesando</span>
           <div id="video-download" class="hidden mt-24">
