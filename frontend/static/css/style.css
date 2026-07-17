@@ -29,9 +29,13 @@
   --border-hover: #B8AFA1;
   --text: #14161F;
   /* Grises calidos (no los grises frios de Apple). Contraste sobre --bg:
-     #57534E = ~7:1 (AAA), #78716C = ~4.6:1 (AA). */
+     #57534E = ~7:1 (AAA), #6E6862 = ~5.5:1 (y ~4.9:1 sobre --surface,
+     donde #78716C se quedaba en 4.29 — bajo AA). */
   --text-secondary: #57534E;
-  --text-tertiary: #78716C;
+  --text-tertiary: #6E6862;
+  /* Campos/superficies "de papel": blanco en claro, panel hundido en dark.
+     Antes eran background:#fff hardcodeados que quedaban blancos en dark. */
+  --field: #FFFFFF;
   /* Acento = oro antiguo (Sartoria): sustituye el azul tech. AA sobre --bg
      (5.3:1) y con etiqueta blanca encima (5.5:1). */
   --accent: #8A6215;
@@ -377,7 +381,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 .form-input, .form-textarea, .form-select {
   width: 100%;
   padding: 14px 16px;
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -441,7 +445,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   cursor: pointer;
 }
 
-.form-select option { background: #fff; color: var(--text); }
+.form-select option { background: var(--field); color: var(--text); }
 
 .form-hint {
   font-size: 12px;
@@ -465,7 +469,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   transition: all var(--transition);
   position: relative;
   overflow: hidden;
-  background: #fff;
+  background: var(--field);
 }
 
 .file-upload:hover, .file-upload.dragover {
@@ -542,7 +546,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 
 .option-btn {
   padding: 12px 16px;
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
@@ -713,7 +717,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 }
 
 .toast {
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 14px 20px;
@@ -790,7 +794,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 }
 
 .tab:hover { color: var(--text); }
-.tab.active { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.tab.active { background: var(--field); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
 /* ── Section Headers ──────────────────────────── */
 .section-header {
@@ -972,6 +976,7 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
   --text: #F2F0EA;
   --text-secondary: #B6B1A6;
   --text-tertiary: #8B8677;
+  --field: #141A2C;
   /* oro claro en dark (9.4:1 sobre el fondo); la tinta encima pasa a oscura */
   --accent: #D9B65E;
   --accent-hover: #E4C878;
@@ -995,6 +1000,10 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 }
 /* En dark el pill del nav queda oro claro con tinta oscura (var(--accent-ink)) */
 :root[data-theme="dark"] .nav-cta { background: var(--accent) !important; color: var(--accent-ink) !important; }
+/* La tarjeta "Popular" de /precios: su override inline (#ph-app-coral) la deja
+   crema tambien en dark -> textos claros sobre claro. Especificidad (0,4,0)
+   vence al inline (0,2,0) aunque este cargue despues. */
+:root[data-theme="dark"] .pricing-card.popular { background: #241812 !important; border-color: var(--cta) !important; box-shadow: 0 12px 40px rgba(0,0,0,.5) !important; }
 /* Logo (hexágono índigo) -> blanco en dark para que contraste con el nav oscuro */
 :root[data-theme="dark"] .nav-logo img { filter: brightness(0) invert(1); }
 :root[data-theme="dark"] .btn-secondary:hover { background: var(--accent); color: #0F1220; }
