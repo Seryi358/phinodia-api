@@ -1,26 +1,40 @@
 /* ═══════════════════════════════════════════════
    PhinodIA — Design System
-   Apple.com-inspired white minimalist theme
+   "Estructura Apple, corazon latino" — Indigo #1B2A5B + Coral #FF5A2C
+   Paleta de mayor conversion B2B (navy+naranja); rompe con el morado de la categoria.
    ═══════════════════════════════════════════════ */
 
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/static/fonts/manrope-var.woff2') format('woff2');
+}
+
 :root {
-  --bg: #fbfbfd;
-  --surface: #f5f5f7;
-  --surface-hover: #e8e8ed;
-  --border: #d2d2d7;
-  --border-hover: #86868b;
-  --text: #1d1d1f;
-  /* WCAG AA: #86868b on white = 3.48:1 (FAILS for body text). #6e6e73 hits
-     4.6:1. Promote tertiary to secondary; keep #86868b for decorative-only
-     captions where contrast is non-blocking. */
-  --text-secondary: #525257;
-  --text-tertiary: #6e6e73;
-  --accent: #0066cc;
-  --accent-hover: #0055b3;
-  --accent-subtle: rgba(0,102,204,0.06);
-  --error: #de3730;
-  --warning: #bf5600;
-  --success: #248a3d;
+  --bg: #FCFBF9;
+  --surface: #F5F2EC;
+  --surface-hover: #ECE7DD;
+  --border: #E7E2D8;
+  --border-hover: #B8AFA1;
+  --text: #14161F;
+  /* Grises calidos (no los grises frios de Apple). Contraste sobre --bg:
+     #57534E = ~7:1 (AAA), #78716C = ~4.6:1 (AA). */
+  --text-secondary: #57534E;
+  --text-tertiary: #78716C;
+  --accent: #2563EB;
+  --accent-hover: #1D4ED8;
+  --accent-subtle: rgba(37,99,235,0.06);
+  /* CTA primario = coral con etiqueta OSCURA (WCAG 5.8:1; blanco fallaria ~3:1) */
+  --cta: #FF5A2C;
+  --cta-hover: #EA4A1E;
+  --cta-ink: #14161F;
+  --indigo: #1B2A5B;
+  --amber: #F2A516;
+  --error: #B91C1C;
+  --warning: #C2410C;
+  --success: #15803D;
   --radius: 16px;
   --radius-sm: 10px;
   --radius-xs: 6px;
@@ -34,7 +48,7 @@
 html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.47059;
@@ -292,11 +306,12 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 .btn:hover { text-decoration: none; }
 
 .btn-primary {
-  background: var(--text);
-  color: #fff;
+  background: var(--cta);
+  color: var(--cta-ink);
+  font-weight: 600;
 }
 
-.btn-primary:hover { background: #000; color: #fff; }
+.btn-primary:hover { background: var(--cta-hover); color: var(--cta-ink); }
 
 .btn-primary:disabled {
   opacity: 0.42;
