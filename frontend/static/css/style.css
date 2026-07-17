@@ -960,6 +960,8 @@ main { padding-top: calc(var(--nav-height) + 40px); padding-bottom: 80px; }
 }
 /* En dark, el botón azul sólido lleva texto claro legible; usa un azul más profundo */
 :root[data-theme="dark"] .nav-cta { background: #3B62C4 !important; }
+/* Logo (hexágono índigo) -> blanco en dark para que contraste con el nav oscuro */
+:root[data-theme="dark"] .nav-logo img { filter: brightness(0) invert(1); }
 :root[data-theme="dark"] .btn-secondary:hover { background: var(--accent); color: #0F1220; }
 :root[data-theme="dark"] .card-link::after,
 :root[data-theme="dark"] .testi blockquote { color: inherit; }

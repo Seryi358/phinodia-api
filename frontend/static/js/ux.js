@@ -51,8 +51,11 @@
     'Hecho en Colombia': 'Made in Colombia', 'Pagos seguros con Wompi': 'Secure payments with Wompi',
     // Precios
     'Contenido profesional. Precios accesibles.': 'Professional content. Accessible prices.',
+    'Hasta 80% más barato que la producción tradicional. Resultados en minutos, no semanas.': 'Up to 80% cheaper than traditional production. Results in minutes, not weeks.',
     'PRUEBA': 'TRIAL', 'PRO': 'PRO', 'STUDIO': 'STUDIO', 'Popular': 'Popular',
     'créditos': 'credits', 'por crédito': 'per credit',
+    'Pagos procesados de forma segura por Wompi. Aceptamos tarjeta de crédito, PSE, Nequi y Bancolombia.': 'Payments securely processed by Wompi. We accept credit card, PSE, Nequi and Bancolombia.',
+    'Sube la foto de tu producto y obtiene videos UGC con acento colombiano, imágenes profesionales y landing pages de alta conversión.': 'Upload your product photo and get UGC videos with a Colombian accent, professional images and high-converting landing pages.',
     // Footer
     'Privacidad': 'Privacy', 'Términos': 'Terms', 'Habeas Data': 'Habeas Data',
     'Todos los derechos reservados.': 'All rights reserved.'
