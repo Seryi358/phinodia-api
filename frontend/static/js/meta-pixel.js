@@ -59,6 +59,27 @@
 
     fbq('init', pixelId);
     fbq('track', 'PageView');
+
+    // ViewContent automático en las páginas de producto — señal de mitad
+    // de embudo que Advantage+ usa para encontrar compradores. content_ids
+    // coincide con los SKUs que InitiateCheckout/Purchase reportan, así el
+    // algoritmo conecta la cadena ViewContent → IC → Purchase por producto.
+    const VC = {
+      '/videos': { ids: ['credits_6', 'credits_20', 'credits_50'], name: 'Videos UGC' },
+      '/imagenes': { ids: ['credits_6', 'credits_20', 'credits_50'], name: 'Imagenes de producto' },
+      '/landing-pages': { ids: ['credits_6', 'credits_20', 'credits_50'], name: 'Landing pages' },
+      '/precios': { ids: ['credits_6', 'credits_20', 'credits_50'], name: 'Precios' },
+    };
+    const path = window.location.pathname.replace(/\/$/, '') || '/';
+    const vc = VC[path];
+    if (vc) {
+      fbq('track', 'ViewContent', {
+        content_ids: vc.ids,
+        content_type: 'product',
+        content_name: vc.name,
+        currency: 'COP',
+      });
+    }
   }
 
   getPixelId(init);
