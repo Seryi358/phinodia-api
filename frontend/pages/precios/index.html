@@ -42,7 +42,11 @@
        in and the video element is sized to its own aspect-ratio, so there
        are no "black bars" to fill. Just center whatever lives inside. */
     .demo-before,.demo-after{display:flex;align-items:center;justify-content:center}
-    .demo-before img{width:100%;max-width:320px;height:auto;display:block}
+    /* Fondo blanco deliberado: el webp trae el fondo recortado con "mordiscos"
+       dentro del producto blanco; sobre blanco los huecos desaparecen y la
+       tarjeta se ve igual de bien en claro y oscuro (mismo look que el "antes"
+       de phinodia.com). */
+    .demo-before img{width:100%;max-width:320px;height:auto;display:block;background:#fff;border-radius:16px;padding:14px}
     /* Portrait video (9:16) — preserve native ratio; the element itself is
        the only thing that's 9:16, so no wrapper fill/letterboxing is needed. */
     .demo-after video{width:100%;max-width:240px;height:auto;aspect-ratio:9/16;display:block;border-radius:16px;background:transparent}
