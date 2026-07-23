@@ -67,7 +67,6 @@
     const VC = {
       '/videos': { ids: ['credits_6', 'credits_20', 'credits_50'], name: 'Videos UGC' },
       '/imagenes': { ids: ['credits_6', 'credits_20', 'credits_50'], name: 'Imagenes de producto' },
-      '/landing-pages': { ids: ['credits_6', 'credits_20', 'credits_50'], name: 'Landing pages' },
       '/precios': { ids: ['credits_6', 'credits_20', 'credits_50'], name: 'Precios' },
     };
     const path = window.location.pathname.replace(/\/$/, '') || '/';

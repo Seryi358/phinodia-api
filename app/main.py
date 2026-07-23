@@ -464,6 +464,16 @@ async def root_redirect():
     return RedirectResponse("https://phinodia.com/", status_code=301)
 
 
+# El servicio de landing pages se retiró de la oferta. Las URLs viejas
+# (y cualquier enlace/QR ya impreso) redirigen a precios en vez de 404.
+# Registrado ANTES del mount de /pages para tener prioridad.
+@app.api_route("/landing-pages", methods=["GET", "HEAD"])
+@app.api_route("/landing-pages/", methods=["GET", "HEAD"])
+async def landing_pages_retired():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/precios", status_code=301)
+
+
 # Serve favicon.ico at root (browsers request this automatically)
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon():
