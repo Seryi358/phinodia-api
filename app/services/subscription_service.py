@@ -318,12 +318,17 @@ async def create_subscription(
     }
 
 
-async def get_status(subscription_id: str) -> dict:
+async def get_status(subscription_id: str, token: str) -> dict:
     """Estado de la suscripción + del reto 3DS de su fuente (para el polling).
 
     El frontend llama esto cada ~2s tras create() hasta que payment_source_status
     sea AVAILABLE (entonces activa) o DECLINED/ERROR (la tarjeta no autorizó).
+
+    Exige el manage_token entregado por create(): el id solo no basta, porque de
+    lo contrario filtraría plan, marca de tarjeta y fecha de cobro a un tercero.
     """
+    if not _verify_manage_token(subscription_id, token):
+        raise PermissionError("token_invalido")
     sub = await db.select_one("subscriptions", {"id": f"eq.{subscription_id}"})
     if not sub:
         raise LookupError("subscription_not_found")
@@ -345,12 +350,18 @@ async def get_status(subscription_id: str) -> dict:
     }
 
 
-async def activate_subscription(subscription_id: str) -> dict:
+async def activate_subscription(subscription_id: str, token: str) -> dict:
     """Paso 5: con la fuente AVAILABLE, hace el primer cobro y activa el ciclo.
 
     Idempotente: si ya está activa no recobra. El cobro y la acreditación están
     protegidos por subscription_invoices, así que un doble-click no duplica nada.
+
+    Exige el manage_token: este endpoint MUEVE DINERO (dispara el primer cobro a
+    la tarjeta). Sin el token, conocer el id bastaría para forzar el cobro a un
+    tercero, y el id se obtenía listando por email.
     """
+    if not _verify_manage_token(subscription_id, token):
+        raise PermissionError("token_invalido")
     sub = await db.select_one("subscriptions", {"id": f"eq.{subscription_id}"})
     if not sub:
         raise LookupError("subscription_not_found")

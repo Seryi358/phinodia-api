@@ -42,16 +42,29 @@ def test_resolve_property_nested():
 
 
 # Unified credit packs (one wallet). Strict resolution: SKU and amount BOTH match.
-@pytest.mark.parametrize("sku,amount,credits", [
-    ("credits_6", 1690000, 6),
-    ("credits_20", 6990000, 20),
-    ("credits_50", 15990000, 50),
-])
+#
+# Los importes se DERIVAN de PACKAGES_BY_SKU, no se copian. Duplicarlos aquí dejó
+# la suite en rojo desde el cambio de precios del 2026-07-14 (el test seguía
+# esperando $69.900/$159.900 cuando el catálogo ya cobraba $54.900/$119.900), y un
+# test que falla por estar desactualizado deja de avisar de las roturas de verdad.
+def _pack_cases():
+    from app.services.wompi import PACKAGES_BY_SKU
+    return [(sku, p["amount"], p["credits"]) for sku, p in PACKAGES_BY_SKU.items()]
+
+
+@pytest.mark.parametrize("sku,amount,credits", _pack_cases())
 def test_resolve_package_strict_match(sku, amount, credits):
     from app.services.wompi import resolve_package
     pkg = resolve_package(amount, sku=sku)
     assert pkg is not None
     assert pkg["credits"] == credits
+
+
+def test_catalogo_de_paquetes_no_esta_vacio():
+    """Red de seguridad: _pack_cases() derivado no debe degradar a cero casos."""
+    from app.services.wompi import PACKAGES_BY_SKU
+    assert len(PACKAGES_BY_SKU) >= 3
+    assert all(p["amount"] > 0 and p["credits"] > 0 for p in PACKAGES_BY_SKU.values())
 
 
 def test_resolve_package_unknown_sku_rejected():

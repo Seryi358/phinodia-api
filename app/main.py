@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import mimetypes as _mimetypes
@@ -169,6 +170,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Comprimir HTML/CSS/JS. Auditoría 2026-07-28: app.phinodia.com servía TODO en
+# crudo (precios 22 KB, api.js 27 KB, style.css 30 KB) mientras WordPress sí usa
+# brotli. ~95 KB que bajan a ~20 KB. minimum_size evita gastar CPU en respuestas
+# JSON diminutas; los .mp4/.webp/.woff2 ya vienen comprimidos y GZipMiddleware
+# los deja pasar según su Content-Type.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 
 # Spanish-localize FastAPI's 422 validation errors so toast messages don't
 # show "Field required" / "Value error, ..." in English to es-CO users.
@@ -263,6 +271,10 @@ _RATE_LIMITED_PATHS = (
     "/api/v1/referrals/register",
     "/api/v1/upload/image",
     "/api/v1/payments/checkout",
+    # /payments/status hace un refetch a Wompi por cada llamada: sin límite, un
+    # bucle en la página de gracias (o un tercero) nos gastaría la cuota de la
+    # pasarela y añadiría latencia a los pagos reales.
+    "/api/v1/payments/status",
     "/api/v1/contact",
     "/api/v1/preview-emails",
     "/comprar",

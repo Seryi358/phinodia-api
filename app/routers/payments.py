@@ -3,7 +3,8 @@ import hashlib
 import logging
 import time
 import secrets
-from fastapi import APIRouter, HTTPException, Request
+import re
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
 from app.config import get_settings
 from app.database import db
@@ -103,6 +104,67 @@ async def create_checkout(req: CheckoutRequest, request: Request):
         public_key=settings.wompi_public_key,
         event_id=reference,  # Purchase event uses the reference as event_id
     )
+
+
+_TX_ID_RE = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
+
+
+def _cents_to_pesos(raw) -> int | None:
+    """Centavos de Wompi -> pesos, tolerando lo que de verdad manda la pasarela.
+
+    Wompi puede enviar el importe como número o como cadena según el serializador
+    (mismo motivo por el que el webhook lo coacciona con int()). `bool` se excluye
+    explícitamente porque en Python es subclase de int y True daría 0 pesos.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        return int(raw) // 100
+    except (TypeError, ValueError):
+        return None
+
+
+@router.get("/status")
+async def payment_status(id: str = Query(..., min_length=4, max_length=64)):
+    """Estado autoritativo de una transacción, para la página de gracias.
+
+    POR QUÉ EXISTE: el JS de las páginas `gracias-*` disparaba el `Purchase` del
+    píxel de Meta leyendo `value` de la URL, SIN comprobar el estado del pago.
+    Wompi redirige a la URL de retorno en cualquier estado terminal —incluido
+    DECLINED y los PSE PENDING—, así que una tarjeta rechazada registraba una
+    compra igual. El CAPI del servidor sí filtra por APPROVED, así que esos
+    Purchase falsos no tenían gemelo con el que deduplicarse: Meta veía compras
+    inexistentes y optimizaba hacia gente que abandona el pago. Y como el importe
+    venía de la URL, cualquiera podía inyectar una compra abriendo
+    /gracias-video/?value=9999999&ref=x.
+
+    Devuelve el importe QUE DICE WOMPI, nunca el de la URL, para que el píxel no
+    pueda ser alimentado con un valor arbitrario. No expone datos del comprador.
+    """
+    if not _TX_ID_RE.match(id):
+        raise HTTPException(400, "Identificador de transacción inválido")
+
+    tx = await fetch_transaction(id, settings.wompi_base_url, settings.wompi_private_key)
+    if tx is None:
+        # No se pudo confirmar con Wompi (red, 5xx). "pending" y NO "declined":
+        # el frontend reintenta y, sobre todo, no dispara Purchase ni afirma que
+        # el pago falló cuando en realidad no lo sabemos.
+        return {"state": "pending", "approved": False}
+
+    status = (tx.get("status") or "").upper()
+    if status != "APPROVED":
+        return {"state": "declined" if status in ("DECLINED", "VOIDED", "ERROR") else "pending",
+                "approved": False, "wompi_status": status or None}
+
+    return {
+        "state": "approved",
+        "approved": True,
+        "wompi_status": status,
+        "reference": tx.get("reference"),
+        # En pesos, que es la unidad que espera el píxel.
+        "value": _cents_to_pesos(tx.get("amount_in_cents")),
+        "currency": tx.get("currency"),
+    }
 
 
 # Reject webhooks with timestamp drift > REPLAY_WINDOW_SECONDS to mitigate

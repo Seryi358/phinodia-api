@@ -51,7 +51,10 @@ async def test_comprar_redirects_to_wompi_with_valid_integrity():
 async def test_comprar_all_three_packs_map_to_correct_amounts():
     from app.main import comprar_directo
 
-    expected = {"credits_6": "1690000", "credits_20": "6990000", "credits_50": "15990000"}
+    # Derivado del catálogo, no copiado: ver la nota en tests/test_wompi.py.
+    from app.services.wompi import PACKAGES_BY_SKU
+
+    expected = {sku: str(p["amount"]) for sku, p in PACKAGES_BY_SKU.items()}
     for sku, cents in expected.items():
         resp = await comprar_directo(sku, _req())
         q = parse_qs(urlparse(resp.headers["location"]).query)
