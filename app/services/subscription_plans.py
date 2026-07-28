@@ -51,7 +51,7 @@ CREDITS_PER_PIECE = 3
 # Filtra por caja e intención, genera caja antes de producir, y el video que
 # entrega queda como pieza de portafolio del nicho. Se acredita íntegro al
 # primer mes si el cliente contrata un plan.
-DIAGNOSTICO_AMOUNT_IN_CENTS = 19_000_00   # $190.000
+DIAGNOSTICO_AMOUNT_IN_CENTS = 19_000_000   # $190.000
 DIAGNOSTICO_PIECES = 1                     # 1 video terminado + 3 ganchos escritos
 
 PLANS_BY_CODE = {
@@ -61,7 +61,7 @@ PLANS_BY_CODE = {
         "variants_per_video": 0,
         "pieces": 4,
         "credits_per_period": 4 * CREDITS_PER_PIECE,          # 12
-        "amount_in_cents": 59_000_00,                          # $590.000 — 147.500/video
+        "amount_in_cents": 59_000_000,                          # $590.000 — 147.500/video
         "revisions": 1,
         "delivery_days": 7,
         "watermark": False,
@@ -75,7 +75,7 @@ PLANS_BY_CODE = {
         "variants_per_video": 2,
         "pieces": 12,
         "credits_per_period": 12 * CREDITS_PER_PIECE,          # 36
-        "amount_in_cents": 85_000_00,                          # $850.000 — 212.500/video
+        "amount_in_cents": 85_000_000,                          # $850.000 — 212.500/video
         "revisions": 1,
         "delivery_days": 7,
         "watermark": False,
@@ -87,7 +87,7 @@ PLANS_BY_CODE = {
         "variants_per_video": 2,
         "pieces": 24,
         "credits_per_period": 24 * CREDITS_PER_PIECE,          # 72
-        "amount_in_cents": 89_000_00,                          # $890.000 — 111.250/video
+        "amount_in_cents": 89_000_000,                          # $890.000 — 111.250/video
         "revisions": 2,
         "delivery_days": 5,
         "watermark": False,
@@ -99,7 +99,7 @@ PLANS_BY_CODE = {
         "variants_per_video": 3,
         "pieces": 64,
         "credits_per_period": 64 * CREDITS_PER_PIECE,          # 192
-        "amount_in_cents": 169_000_00,                         # $1.690.000 — 105.625/video
+        "amount_in_cents": 169_000_000,                         # $1.690.000 — 105.625/video
         "revisions": 0,                                        # 0 = ilimitadas (ver unlimited_revisions)
         "unlimited_revisions": True,
         "delivery_days": 5,

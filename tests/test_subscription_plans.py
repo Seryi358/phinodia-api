@@ -31,7 +31,7 @@ from app.services.subscription_plans import (
 
 # Piso de mercado verificado (laboratorioweb.com.co, 2026): un creador UGC
 # principiante en Colombia cobra entre 90.000 y 200.000 por video.
-PISO_MERCADO_POR_VIDEO_CENTS = 9_000_00
+PISO_MERCADO_POR_VIDEO_CENTS = 9_000_000   # 90.000 pesos x 100
 
 
 def _unitario(code: str) -> int:
@@ -47,6 +47,41 @@ def _periodo(code: str, interval: str) -> int:
     v = period_amount_in_cents(code, interval)
     assert v is not None, f"period_amount_in_cents({code!r}, {interval!r}) devolvió None"
     return v
+
+
+def test_precios_en_pesos_son_los_acordados():
+    """Fija los precios en PESOS, no en centavos.
+
+    ESTA PRUEBA EXISTE POR UN FALLO REAL: los importes se escribieron como
+    `59_000_00` (5.900.000 centavos = 59.000 pesos) cuando debían ser
+    `59_000_000` (590.000 pesos). Se desplegaron a producción 10 veces más
+    barancos de lo acordado. Ninguna prueba lo detectó porque el piso de mercado
+    estaba escrito con la MISMA escala equivocada, así que validó el error en vez
+    de encontrarlo.
+
+    La lección: cuando un valor tiene unidad, hay que anclarlo a la unidad en la
+    que se habla del negocio (pesos), no a la de almacenamiento (centavos). Un
+    test que comparte la convención del código no comprueba nada.
+    """
+    esperado_pesos = {
+        "semilla": 590_000,
+        "semilla_plus": 850_000,
+        "motor": 890_000,
+        "escala": 1_690_000,
+    }
+    reales = {c: p["amount_in_cents"] // 100 for c, p in PLANS_BY_CODE.items()}
+    assert reales == esperado_pesos
+    assert DIAGNOSTICO_AMOUNT_IN_CENTS // 100 == 190_000
+
+
+def test_motor_encaja_entre_los_anclas_del_mercado():
+    """Comprobación de cordura contra precios externos verificados (2026-07-28):
+    un creador UGC principiante en Colombia cobra desde 90.000 por video y el
+    competidor directo (UGC Colombia) cobra 265.000. 'motor' debe quedar dentro
+    de esa horquilla: por debajo del piso comunica producto malo, por encima del
+    competidor pierde el argumento de precio."""
+    unitario_pesos = _unitario("motor") // 100
+    assert 90_000 < unitario_pesos < 265_000, f"{unitario_pesos} COP/video fuera de rango"
 
 
 def test_resolve_plan_desconocido_no_inventa():
@@ -88,9 +123,12 @@ def test_motor_domina_al_senuelo():
 
     assert motor["videos"] > senuelo["videos"], "el señuelo no está dominado en volumen"
     assert motor["pieces"] > senuelo["pieces"]
-    # La diferencia de precio debe ser marginal frente al salto de valor.
-    delta = motor["amount_in_cents"] - senuelo["amount_in_cents"]
-    assert 0 < delta <= 10_000_00, f"delta de {delta} centavos rompe el señuelo"
+    # La diferencia de precio debe ser marginal frente al salto de valor: el
+    # señuelo funciona porque por ~40.000 pesos más te llevas el doble de videos.
+    # Umbral en PESOS a propósito: expresarlo en centavos fue lo que ocultó el
+    # fallo de escala de los precios (ver test_precios_en_pesos_son_los_acordados).
+    delta_pesos = (motor["amount_in_cents"] - senuelo["amount_in_cents"]) // 100
+    assert 0 < delta_pesos <= 60_000, f"delta de {delta_pesos:,} COP rompe el señuelo"
     # Y 'motor' debe salir más barato por video que el señuelo.
     assert _unitario("motor") < _unitario("semilla_plus")
 
