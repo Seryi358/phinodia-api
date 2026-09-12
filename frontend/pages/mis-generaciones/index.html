@@ -200,10 +200,10 @@
     async function loadGenerations() {
       // Solo se listan las generaciones del usuario de la sesion: antes bastaba
       // con poner el correo de otra persona para ver (y descargar) lo suyo.
-      if (!window.PhAcceso || !window.PhAcceso.estado.autenticado) {
-        if (window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
-        return;
-      }
+      // exigir() ESPERA a que se sepa si hay sesion. Mirar .autenticado
+      // directamente daba false mientras la consulta seguia en vuelo y le
+      // pedia acceso a quien ya lo tenia.
+      if (window.PhAcceso && !(await window.PhAcceso.exigir())) return;
 
       try {
         const jobs = (await apiGet('/jobs/by-email')) || [];

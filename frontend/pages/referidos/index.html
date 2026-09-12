@@ -165,10 +165,7 @@
       // Block re-entry — without this 5 quick clicks fired 5 parallel requests
       // and burned through the 30/min/IP rate limit on /referrals/code.
       if (_btn && _btn.disabled) return;
-      if (!window.PhAcceso || !window.PhAcceso.estado.autenticado) {
-        if (window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
-        return;
-      }
+      if (window.PhAcceso && !(await window.PhAcceso.exigir())) return;
       if (_btn) setLoading('ref-submit', true);
 
       try {

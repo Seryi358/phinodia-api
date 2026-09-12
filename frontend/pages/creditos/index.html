@@ -74,10 +74,7 @@
   <script>
     async function checkCredits() {
       // La identidad sale de la sesion. Si no la hay, se abre la puerta.
-      if (!window.PhAcceso || !window.PhAcceso.estado.autenticado) {
-        if (window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
-        return;
-      }
+      if (window.PhAcceso && !(await window.PhAcceso.exigir())) return;
       // Disable the button while in-flight so impatient users don't race-fire
       // parallel requests and exhaust the 30/min/IP rate limit.
       setLoading('credits-submit', true);

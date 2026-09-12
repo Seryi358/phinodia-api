@@ -17,6 +17,11 @@
   var RUTAS_PROTEGIDAS = ['/videos', '/imagenes', '/creditos', '/mis-generaciones',
                           '/referidos', '/landing-pages'];
   var estado = { autenticado: false, correo: null, listo: false };
+  // Promesa unica de la consulta inicial. Las paginas que cargan datos solas
+  // (mis-generaciones, creditos, referidos) preguntaban por la sesion ANTES de
+  // que la respuesta hubiera llegado, veian autenticado=false y le abrian el
+  // panel de acceso a alguien que ya habia entrado.
+  var consultaInicial = null;
 
   // ── Estilos ──────────────────────────────────────────────────────────────
   function inyectarEstilos() {
@@ -72,12 +77,24 @@
   }
 
   function consultarSesion() {
-    return pedir('/sesion').then(function (r) {
+    if (consultaInicial) return consultaInicial;
+    consultaInicial = pedir('/sesion').then(function (r) {
       estado.autenticado = !!(r.datos && r.datos.autenticado);
       estado.correo = (r.datos && r.datos.correo) || null;
       estado.listo = true;
       return estado;
     }).catch(function () { estado.listo = true; return estado; });
+    return consultaInicial;
+  }
+
+  // Lo que deben usar las paginas: espera a saber, y solo entonces decide.
+  // Devuelve true si hay sesion; si no, abre la puerta y devuelve false.
+  function exigirSesion(opciones) {
+    return consultarSesion().then(function () {
+      if (estado.autenticado) return true;
+      abrirPanel(opciones || { recargar: true });
+      return false;
+    });
   }
 
   // ── Panel ────────────────────────────────────────────────────────────────
@@ -193,6 +210,7 @@
         b.disabled = false; b.textContent = 'Entrar';
         if (!r.ok) { return fallo(r.datos.detail || 'Codigo incorrecto.'); }
         estado.autenticado = true; estado.correo = r.datos.correo || c;
+        consultaInicial = Promise.resolve(estado);
         try { localStorage.setItem('phinodia_email',
               JSON.stringify({ v: estado.correo, e: Date.now() + 7 * 864e5 })); } catch (e) {}
         cerrarPanel();
@@ -271,6 +289,7 @@
   window.PhAcceso = {
     estado: estado,
     consultar: consultarSesion,
+    exigir: exigirSesion,
     abrir: abrirPanel,
     aplicar: aplicarSesion,
     correo: function () { return estado.correo; }
