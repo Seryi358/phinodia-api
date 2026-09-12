@@ -467,13 +467,26 @@ async def public_config():
     }
 
 
-# Root of the webapp redirects to the marketing site so there's only one
-# canonical home page. The webapp's /videos, /imagenes, /precios etc. still
-# serve normally from the pages mount below.
+# La raíz de app.phinodia.com SIRVE la aplicación (el panel con las
+# herramientas), no la web de marketing. Antes devolvía 301 a phinodia.com:
+# una clienta con 114 créditos comprados entraba a app.phinodia.com y el
+# navegador la expulsaba al sitio comercial — no había forma de llegar al
+# generador salvo tecleando /videos de memoria.
+#
+# El 301 anterior queda CACHEADO de forma permanente en los navegadores que ya
+# lo recibieron, así que además exponemos /inicio y /app como alias que ningún
+# navegador ha visto nunca; y esta respuesta va con no-store para que la
+# próxima visita no se quede pegada a nada.
 @app.api_route("/", methods=["GET", "HEAD"])
-async def root_redirect():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse("https://phinodia.com/", status_code=301)
+@app.api_route("/inicio", methods=["GET", "HEAD"])
+@app.api_route("/app", methods=["GET", "HEAD"])
+async def app_home():
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        "frontend/pages/index.html",
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-store, must-revalidate"},
+    )
 
 
 # El servicio de landing pages se retiró de la oferta. Las URLs viejas
