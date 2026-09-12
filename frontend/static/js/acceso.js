@@ -32,6 +32,8 @@
       '.ph-acc-caja h2{margin:0 0 6px;font-size:22px;font-weight:600;line-height:1.25}',
       '.ph-acc-caja p{margin:0 0 20px;font-size:14px;color:var(--text-secondary,#666);line-height:1.5}',
       '.ph-acc-caja .form-input{width:100%;margin-bottom:12px}',
+      '.ph-acc-etiqueta{display:block;text-align:left;font-size:13px;font-weight:500;',
+      '  color:var(--text-secondary,#666);margin:0 0 6px}',
       '.ph-acc-caja .btn{width:100%}',
       '.ph-acc-codigo{text-align:center;letter-spacing:8px;font-size:22px;font-weight:600}',
       '.ph-acc-pie{margin:16px 0 0;font-size:13px}',
@@ -71,17 +73,43 @@
 
   // ── Panel ────────────────────────────────────────────────────────────────
   var panel = null;
+  var focoPrevio = null;
 
   function cerrarPanel() {
     if (panel) { panel.remove(); panel = null; }
     document.documentElement.style.overflow = '';
+    document.removeEventListener('keydown', alPulsarTecla, true);
+    // Devolver el foco a donde estaba: sin esto el lector de pantalla se queda
+    // al principio del documento y el usuario pierde el sitio (WCAG 2.4.3).
+    if (focoPrevio && focoPrevio.focus) { try { focoPrevio.focus(); } catch (e) {} }
+    focoPrevio = null;
+  }
+
+  // Escape cierra y Tab no se escapa del panel. Un dialogo del que no se puede
+  // salir con el teclado es una trampa de teclado (WCAG 2.1.2); si la pagina
+  // necesita sesion, la siguiente accion devolvera 401 y lo reabrira.
+  function alPulsarTecla(e) {
+    if (!panel) return;
+    if (e.key === 'Escape') { e.preventDefault(); cerrarPanel(); return; }
+    if (e.key !== 'Tab') return;
+    var foco = panel.querySelectorAll('input:not([disabled]), button:not([disabled])');
+    var visibles = [];
+    for (var i = 0; i < foco.length; i++) {
+      if (foco[i].offsetParent !== null) visibles.push(foco[i]);
+    }
+    if (!visibles.length) return;
+    var primero = visibles[0], ultimo = visibles[visibles.length - 1];
+    if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
   }
 
   function abrirPanel(opciones) {
     opciones = opciones || {};
     if (panel) return;
     inyectarEstilos();
+    focoPrevio = document.activeElement;
     document.documentElement.style.overflow = 'hidden';
+    document.addEventListener('keydown', alPulsarTecla, true);
 
     panel = document.createElement('div');
     panel.className = 'ph-acc-fondo';
@@ -94,13 +122,17 @@
         '<p>Te enviamos un codigo de 6 digitos. Sin contrasenas.</p>' +
         '<p class="ph-acc-error" role="alert" id="ph-acc-error"></p>' +
         '<div id="ph-acc-paso1">' +
+          '<label class="ph-acc-etiqueta" for="ph-acc-correo">Tu correo electronico</label>' +
           '<input type="email" class="form-input" id="ph-acc-correo" autocomplete="email" ' +
-                'inputmode="email" placeholder="tucorreo@ejemplo.com">' +
+                'inputmode="email" placeholder="tucorreo@ejemplo.com" ' +
+                'aria-label="Tu correo electronico">' +
           '<button class="btn btn-primary" id="ph-acc-enviar">Enviar codigo</button>' +
         '</div>' +
         '<div id="ph-acc-paso2" hidden>' +
+          '<label class="ph-acc-etiqueta" for="ph-acc-codigo">Codigo de 6 digitos</label>' +
           '<input type="text" class="form-input ph-acc-codigo" id="ph-acc-codigo" ' +
-                'inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">' +
+                'inputmode="numeric" autocomplete="one-time-code" maxlength="6" ' +
+                'placeholder="000000" aria-label="Codigo de 6 digitos que te enviamos por correo">' +
           '<button class="btn btn-primary" id="ph-acc-entrar">Entrar</button>' +
           '<p class="ph-acc-pie"><button type="button" id="ph-acc-otro">Usar otro correo</button></p>' +
         '</div>' +
