@@ -44,7 +44,16 @@
       '  color:var(--text-secondary,#666);white-space:nowrap}',
       '.ph-acc-chip button{background:none;border:0;color:var(--accent,#06c);cursor:pointer;',
       '  font:inherit;text-decoration:underline;padding:0}',
-      '@media (max-width:700px){.ph-acc-chip{display:none}}'
+      // En movil la barra se pliega tras el boton de menu: el indicador va
+      // DENTRO de ese menu. Ocultarlo (que es lo que hacia antes) dejaba al
+      // usuario de telefono sin saber con que cuenta estaba ni como salir,
+      // justo en el dispositivo por el que entra casi todo el mundo.
+      '@media (max-width:700px){',
+      '  .ph-acc-chip{display:flex;flex-direction:column;align-items:flex-start;',
+      '    gap:4px;padding-top:10px;margin-top:4px;border-top:1px solid var(--border,#ddd);',
+      '    width:100%;white-space:normal;word-break:break-all;font-size:14px}',
+      '  .ph-acc-chip button{font-size:15px}',
+      '}'
     ].join('');
     document.head.appendChild(s);
   }
