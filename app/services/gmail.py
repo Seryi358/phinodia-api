@@ -326,3 +326,29 @@ def build_winback_email(email: str, credits: int) -> tuple[str, str]:
         note="Conviertes una foto en un anuncio con voz colombiana en minutos.",
         unsub_email=email,
     )
+
+
+def build_acceso_email(codigo: str, enlace: str) -> tuple[str, str]:
+    """Correo de inicio de sesion: codigo de 6 digitos + enlace directo.
+
+    Se mandan las dos vias a proposito. El enlace es un clic, pero algunos
+    clientes de correo lo reescriben o lo abren en un navegador interno donde
+    la cookie no sirve de nada; el codigo siempre funciona escribiendolo en la
+    pestana donde ya esta el usuario.
+    """
+    enlace_seguro = _safe_url(enlace)
+    contenido = f"""
+    <tr><td style="background: #ffffff; border-radius: 18px; padding: 40px 32px; text-align: center;">
+        <h1 style="margin: 0 0 8px; font-size: 24px; font-weight: 600; color: #1d1d1f;">Tu acceso a PhinodIA</h1>
+        <p style="margin: 0 0 28px; font-size: 15px; color: #6e6e73;">Escribe este codigo en la pagina donde lo pediste:</p>
+        <div style="font-size: 38px; font-weight: 700; letter-spacing: 10px; color: #1d1d1f;
+                    background: #f5f5f7; border-radius: 14px; padding: 20px 12px; margin: 0 0 12px;">{html.escape(codigo)}</div>
+        <p style="margin: 0 0 28px; font-size: 13px; color: #86868b;">Caduca en 10 minutos.</p>
+        <a href="{enlace_seguro}" style="display: inline-block; background: #1d1d1f; color: #ffffff;
+           text-decoration: none; padding: 14px 32px; border-radius: 980px; font-size: 15px; font-weight: 500;">
+           O entra directamente</a>
+        <p style="margin: 28px 0 0; font-size: 13px; color: #86868b; line-height: 1.5;">
+           Si no has pedido entrar, ignora este correo: nadie puede acceder a tu cuenta sin este codigo.</p>
+    </td></tr>
+    """
+    return "Tu codigo de acceso a PhinodIA", _apple_email_base(contenido)

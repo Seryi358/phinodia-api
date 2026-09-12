@@ -149,6 +149,7 @@
     </div>
   </footer>
 
+  <script src="/static/js/acceso.js?v=20260912"></script>
   <script src="/static/js/api.js?v=1780700000"></script>
   <script defer src="/static/js/meta-pixel.js?v=1781400000"></script>
   <script>
@@ -164,21 +165,20 @@
       // Block re-entry — without this 5 quick clicks fired 5 parallel requests
       // and burned through the 30/min/IP rate limit on /referrals/code.
       if (_btn && _btn.disabled) return;
-      const email = document.getElementById('ref-email').value.trim();
-      if (!email || !isValidEmail(email)) {
-        showToast('Ingresa un correo valido', 'error');
+      if (!window.PhAcceso || !window.PhAcceso.estado.autenticado) {
+        if (window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
         return;
       }
       if (_btn) setLoading('ref-submit', true);
 
       try {
         // Get referral code
-        const codeData = await apiGet('/referrals/code?email=' + encodeURIComponent(email));
+        const codeData = await apiGet('/referrals/code');
         document.getElementById('ref-link').value = codeData.referral_link;
         document.getElementById('ref-result').classList.remove('hidden');
 
         // Get stats
-        const stats = await apiGet('/referrals/stats?email=' + encodeURIComponent(email));
+        const stats = await apiGet('/referrals/stats');
         document.getElementById('stat-total').textContent = stats.total_referred;
         document.getElementById('stat-completed').textContent = stats.completed;
         document.getElementById('stat-pending').textContent = stats.pending;

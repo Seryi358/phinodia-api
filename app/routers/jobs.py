@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from app.services.sesion import exigir_sesion
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, EmailStr
 from app.config import get_settings
@@ -531,13 +532,16 @@ class JobSummary(BaseModel):
 
 @router.api_route("/by-email", response_model=list[JobSummary], methods=["GET", "HEAD"])
 async def list_jobs_by_email(
-    email: EmailStr = Query(..., description="User email"),
+    correo: str = Depends(exigir_sesion),
     limit: int = Query(100, ge=1, le=200, description="Max jobs returned (1-200)"),
     offset: int = Query(0, ge=0, le=10000, description="Skip first N jobs"),
 ):
-    """List jobs for a user, newest first. Paginated so power users with
-    >100 generations can scroll back through history."""
-    email = email.strip().lower()
+    """Generaciones del usuario de la SESION, de la mas reciente a la mas antigua.
+
+    Antes bastaba con poner ?email= de otra persona para listar y descargar TODO
+    lo que habia generado: sus videos, sus imagenes y sus landings. Fuga de datos
+    personales (Ley 1581) ademas de robo de contenido pagado."""
+    email = correo
     user = await db.select_one("users", {"email": f"eq.{email}"})
     if not user:
         return []

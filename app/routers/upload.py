@@ -10,6 +10,8 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import Depends
+from app.services.sesion import exigir_sesion
 from pydantic import BaseModel
 from PIL import Image, ImageOps
 from app.config import get_settings
@@ -153,7 +155,9 @@ def _process_and_save(content: bytes) -> dict:
 
 
 @router.post("/image")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(file: UploadFile = File(...), correo: str = Depends(exigir_sesion)):
+    """Exige sesion. Sin ella, cualquiera en internet podia escribir 10 MB por
+    peticion en el disco del servidor: el VPS llego al 98% y tumbo la app."""
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(400, "Solo se permiten imagenes JPEG, PNG y WebP")
 
@@ -274,6 +278,9 @@ async def _fetch_image_from_url(url: str) -> bytes:
 
 
 @router.post("/from-url")
-async def upload_from_url(body: UrlIn):
+async def upload_from_url(body: UrlIn, correo: str = Depends(exigir_sesion)):
+    """Exige sesion. Ademas de llenar el disco, este endpoint hace que el
+    servidor pida una URL elegida por quien llama (SSRF): reducir quien puede
+    dispararlo es la mitad de la defensa."""
     content = await _fetch_image_from_url((body.url or "").strip())
     return _process_and_save(content)

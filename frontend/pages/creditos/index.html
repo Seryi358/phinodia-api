@@ -68,20 +68,21 @@
     </div>
   </footer>
 
+  <script src="/static/js/acceso.js?v=20260912"></script>
   <script src="/static/js/api.js?v=1780700000"></script>
   <script defer src="/static/js/meta-pixel.js?v=1781400000"></script>
   <script>
     async function checkCredits() {
-      const email = document.getElementById('credits-email').value.trim();
-      if (!email || !isValidEmail(email)) {
-        showToast('Ingresa un correo valido', 'error');
+      // La identidad sale de la sesion. Si no la hay, se abre la puerta.
+      if (!window.PhAcceso || !window.PhAcceso.estado.autenticado) {
+        if (window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
         return;
       }
       // Disable the button while in-flight so impatient users don't race-fire
       // parallel requests and exhaust the 30/min/IP rate limit.
       setLoading('credits-submit', true);
       try {
-        const balance = await getCredits(email);
+        const balance = await getCredits();
         const credits = (balance && typeof balance.credits === 'number') ? balance.credits : 0;
         const grid = document.getElementById('credits-grid');
         const videos20 = Math.floor(credits / 6);

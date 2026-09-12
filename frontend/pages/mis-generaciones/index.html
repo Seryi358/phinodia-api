@@ -88,6 +88,7 @@
     </div>
   </footer>
 
+  <script src="/static/js/acceso.js?v=20260912"></script>
   <script src="/static/js/api.js?v=1780700000"></script>
   <script defer src="/static/js/meta-pixel.js?v=1781400000"></script>
   <script>
@@ -197,20 +198,15 @@
     }
 
     async function loadGenerations() {
-      const email = document.getElementById('gen-email').value.trim();
-      if (!email || !isValidEmail(email)) {
-        showToast('Ingresa un correo valido', 'error');
+      // Solo se listan las generaciones del usuario de la sesion: antes bastaba
+      // con poner el correo de otra persona para ver (y descargar) lo suyo.
+      if (!window.PhAcceso || !window.PhAcceso.estado.autenticado) {
+        if (window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
         return;
       }
 
       try {
-        const res = await fetch(`${API}/jobs/by-email?email=${encodeURIComponent(email)}`);
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          showToast(data.detail || 'Error al consultar', 'error');
-          return;
-        }
-        const jobs = (await res.json()) || [];
+        const jobs = (await apiGet('/jobs/by-email')) || [];
         const grid = document.getElementById('gen-grid');
         document.getElementById('gen-results').classList.remove('hidden');
 
@@ -223,8 +219,7 @@
           return;
         }
 
-        // Persist email (7-day TTL so shared devices don't leak history)
-        persistEmail(email);
+        // El correo ya lo guarda el modulo de acceso al iniciar sesion.
 
         grid.innerHTML = jobs.map(job => `
           <div class="gen-card">

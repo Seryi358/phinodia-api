@@ -2,7 +2,8 @@ import hashlib
 import hmac
 import logging
 import time
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from app.services.sesion import exigir_sesion
 from pydantic import BaseModel, EmailStr
 from app.config import get_settings
 from app.database import db
@@ -148,7 +149,8 @@ class RegisterReferralRequest(BaseModel):
 
 
 @router.api_route("/code", methods=["GET", "HEAD"], response_model=ReferralCodeResponse)
-async def get_referral_code(email: EmailStr = Query(..., description="User email")):
+async def get_referral_code(email: str = Depends(exigir_sesion)):
+    """Codigo de referido del usuario de la SESION (antes, de cualquiera)."""
     """Get or generate referral code for a user."""
     code = generate_referral_code(email)
     link = f"https://app.phinodia.com/precios/?ref={code}"
@@ -156,7 +158,8 @@ async def get_referral_code(email: EmailStr = Query(..., description="User email
 
 
 @router.api_route("/stats", methods=["GET", "HEAD"], response_model=ReferralStatsResponse)
-async def get_referral_stats(email: EmailStr = Query(..., description="User email")):
+async def get_referral_stats(email: str = Depends(exigir_sesion)):
+    """Estadisticas de referidos del usuario de la SESION."""
     """Get referral stats for a user."""
     code = generate_referral_code(email)
     link = f"https://app.phinodia.com/precios/?ref={code}"

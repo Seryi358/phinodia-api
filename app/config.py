@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     supabase_url: str = "https://bxeiecdxryelwrtcwupe.supabase.co"
     supabase_service_key: str
 
+    # Sesiones. Si se deja vacio, se deriva del secreto de integridad de Wompi
+    # (ver app/services/sesion.py). Ponerlo explicito permite rotar las sesiones
+    # sin tocar la pasarela de pagos, y al reves.
+    session_secret: str = ""
+
     # App
     cors_origins: list[str] = ["https://phinodia.com", "https://www.phinodia.com", "https://app.phinodia.com"]
     api_base_url: str = "https://app.phinodia.com"
@@ -99,6 +104,15 @@ class Settings(BaseSettings):
         # but if set it must look like a real key.
         if v and len(v) < 16:
             raise ValueError("anthropic_api_key must be empty or >= 16 chars")
+        return v
+
+    @field_validator("session_secret")
+    @classmethod
+    def _optional_session_secret(cls, v: str) -> str:
+        # Opcional: vacio = derivado. Pero un secreto corto puesto a mano seria
+        # peor que el derivado, asi que se rechaza en el arranque.
+        if v and len(v) < 32:
+            raise ValueError("session_secret must be empty or >= 32 chars")
         return v
 
     @field_validator("supabase_url", "api_base_url")

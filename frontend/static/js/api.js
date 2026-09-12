@@ -193,6 +193,10 @@ async function apiPost(path, body) {
     res = await fetch(`${API}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // La identidad va en la cookie de sesion, no en el cuerpo. Explicito
+      // aunque same-origin ya sea el valor por defecto: si manana la API se
+      // sirve desde otro host, esto deja de ser un detalle silencioso.
+      credentials: 'same-origin',
       body: JSON.stringify(body),
     });
   } catch (_) {
@@ -200,6 +204,9 @@ async function apiPost(path, body) {
   }
   const data = await _safeJson(res);
   if (!res.ok) {
+    // 401 = no hay sesion (o caduco). Se abre la puerta en vez de dejar al
+    // usuario con un error que no sabe como resolver.
+    if (res.status === 401 && window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
     const err = new Error(_formatDetail(data.detail, res.status));
     err.status = res.status;
     throw err;
@@ -210,12 +217,15 @@ async function apiPost(path, body) {
 async function apiGet(path) {
   let res;
   try {
-    res = await fetch(`${API}${path}`);
+    res = await fetch(`${API}${path}`, { credentials: 'same-origin' });
   } catch (_) {
     throw new Error('Sin conexion. Verifica tu red e intenta de nuevo.');
   }
   const data = await _safeJson(res);
   if (!res.ok) {
+    // 401 = no hay sesion (o caduco). Se abre la puerta en vez de dejar al
+    // usuario con un error que no sabe como resolver.
+    if (res.status === 401 && window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
     const err = new Error(_formatDetail(data.detail, res.status));
     err.status = res.status;
     throw err;
@@ -245,6 +255,11 @@ function persistEmail(email) {
 function getPersistedEmail() {
   return lsGet('phinodia_email');
 }
+
+// ── Generacion ────────────────────────────────
+// Nota: el `email` que va en estos cuerpos ya NO decide a quien se le cobra.
+// El servidor usa el correo de la cookie de sesion; el campo se conserva solo
+// porque el modelo de Pydantic lo exige y para no romper clientes viejos.
 
 // ── Generate Video ─────────────────────────────
 async function generateVideo(formData) {
@@ -443,8 +458,10 @@ function lsGet(key) {
 }
 
 // ── Credits Balance ────────────────────────────
-async function getCredits(email) {
-  return apiGet(`/credits/check?email=${encodeURIComponent(email)}`);
+async function getCredits() {
+  // Sin parametro: el saldo es el del usuario de la sesion. Mandar un correo
+  // aqui no serviria de nada — el servidor lo ignora a proposito.
+  return apiGet('/credits/check');
 }
 
 // ── Wompi Checkout ─────────────────────────────

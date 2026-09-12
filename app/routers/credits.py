@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Query
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from app.services.credits import CreditService
+from app.services.sesion import exigir_sesion
 
 router = APIRouter()
 
@@ -11,7 +12,11 @@ class BalanceResponse(BaseModel):
 
 
 @router.api_route("/check", methods=["GET", "HEAD"], response_model=BalanceResponse)
-async def check_credits(email: EmailStr = Query(...)):
+async def check_credits(correo: str = Depends(exigir_sesion)):
+    """Saldo del usuario de la SESION.
+
+    Antes aceptaba ?email= y devolvia el saldo de cualquiera: con una lista de
+    correos se podia averiguar quien es cliente y cuanto ha comprado."""
     svc = CreditService()
-    credits = await svc.get_balance(email)
+    credits = await svc.get_balance(correo)
     return BalanceResponse(credits=credits)

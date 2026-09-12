@@ -433,8 +433,9 @@ async def add_cache_and_security_headers(request: Request, call_next):
 
     return response
 
-from app.routers import generate, jobs, credits, payments, upload, referrals, contact, admin, subscriptions  # noqa: E402
+from app.routers import generate, jobs, credits, payments, upload, referrals, contact, admin, subscriptions, acceso  # noqa: E402
 
+app.include_router(acceso.router, prefix="/api/v1/acceso", tags=["acceso"])
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(credits.router, prefix="/api/v1/credits", tags=["credits"])

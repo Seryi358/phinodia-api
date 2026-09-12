@@ -3,7 +3,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Literal
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.config import get_settings
 from app.database import db
@@ -11,6 +11,7 @@ from app.services.kie_ai import KieAIClient
 from app.services.script_generator import ScriptGenerator
 from app.services.credits import CreditService
 from app.services.gmail import GmailSender, build_delivery_email
+from app.services.sesion import exigir_sesion
 from app.services.media_probe import is_multi_step_video_service, is_video_duration_sufficient
 from app.services.result_storage import persist_external_url
 from app.services import video_stitch
@@ -244,7 +245,10 @@ def _validate_image_url(v: str) -> str:
 
 
 class VideoRequest(BaseModel):
-    email: EmailStr
+    # Vestigial: el servidor lo sobreescribe con el correo de la SESION.
+    # Se deja opcional para que un cliente sin sesion reciba 401 ("inicia
+    # sesion") y no un 422 sobre un campo que ya no decide nada.
+    email: EmailStr | None = None
     image_url: str = Field(..., max_length=2000)
     description: str = Field(..., min_length=1, max_length=2000)
     # Locked to UI choices — prevents tier-hopping (charging 8s credits while
@@ -262,7 +266,10 @@ class VideoRequest(BaseModel):
 
 
 class ImageRequest(BaseModel):
-    email: EmailStr
+    # Vestigial: el servidor lo sobreescribe con el correo de la SESION.
+    # Se deja opcional para que un cliente sin sesion reciba 401 ("inicia
+    # sesion") y no un 422 sobre un campo que ya no decide nada.
+    email: EmailStr | None = None
     image_url: str = Field(..., max_length=2000)
     description: str = Field(..., min_length=1, max_length=2000)
     aspect_ratio: Literal["1:1", "9:16", "16:9", "4:5"] = "1:1"
@@ -277,7 +284,10 @@ class ImageRequest(BaseModel):
 
 
 class LandingRequest(BaseModel):
-    email: EmailStr
+    # Vestigial: el servidor lo sobreescribe con el correo de la SESION.
+    # Se deja opcional para que un cliente sin sesion reciba 401 ("inicia
+    # sesion") y no un 422 sobre un campo que ya no decide nada.
+    email: EmailStr | None = None
     image_url: str = Field(..., max_length=2000)
     description: str = Field(..., min_length=1, max_length=2000)
     product_name: str = Field(..., min_length=1, max_length=200)
@@ -871,7 +881,12 @@ async def _process_landing(job_id: str, req: LandingRequest):
 
 
 @router.post("/video", response_model=GenerateResponse, status_code=202)
-async def generate_video(req: VideoRequest):
+async def generate_video(req: VideoRequest, correo: str = Depends(exigir_sesion)):
+    """La identidad SALE DE LA SESION, no del cuerpo.
+
+    Antes se cobraba al correo que viniera en el JSON: cualquiera podia gastar
+    los creditos comprados por otro cliente con un solo curl."""
+    req.email = correo
     if not req.data_consent:
         raise HTTPException(400, "Data processing consent is required")
     service_type = _video_service(req.duration)  # video_10s | video_20s | video_30s
@@ -898,7 +913,12 @@ async def generate_video(req: VideoRequest):
 
 
 @router.post("/image", response_model=GenerateResponse, status_code=202)
-async def generate_image(req: ImageRequest):
+async def generate_image(req: ImageRequest, correo: str = Depends(exigir_sesion)):
+    """La identidad SALE DE LA SESION, no del cuerpo.
+
+    Antes se cobraba al correo que viniera en el JSON: cualquiera podia gastar
+    los creditos comprados por otro cliente con un solo curl."""
+    req.email = correo
     if not req.data_consent:
         raise HTTPException(400, "Data processing consent is required")
     credit_svc = CreditService()
@@ -922,7 +942,12 @@ async def generate_image(req: ImageRequest):
 
 
 @router.post("/landing", response_model=GenerateResponse, status_code=202)
-async def generate_landing(req: LandingRequest):
+async def generate_landing(req: LandingRequest, correo: str = Depends(exigir_sesion)):
+    """La identidad SALE DE LA SESION, no del cuerpo.
+
+    Antes se cobraba al correo que viniera en el JSON: cualquiera podia gastar
+    los creditos comprados por otro cliente con un solo curl."""
+    req.email = correo
     if not req.data_consent:
         raise HTTPException(400, "Data processing consent is required")
     credit_svc = CreditService()
