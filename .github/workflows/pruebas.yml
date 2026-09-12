@@ -41,6 +41,20 @@ jobs:
         # deje de exigir sesion en los endpoints que gastan creditos o exponen
         # las generaciones de un cliente. Si alguien quita el Depends, esto
         # falla aunque el resto de la suite siga verde.
+        env:
+          # Los mismos valores de mentira que fija tests/conftest.py. Al importar
+          # app.routers fuera de pytest, config.py valida los secretos en el
+          # momento del import y sin esto el paso muere antes de comprobar nada.
+          KIE_API_KEY: test-kie-key-1234567890
+          OPENAI_API_KEY: test-openai-key-1234567890
+          WOMPI_PRIVATE_KEY: prv_test_abc_1234567890
+          WOMPI_PUBLIC_KEY: pub_test_abc_1234567890
+          WOMPI_EVENTS_SECRET: test_events_secret_1234567890
+          WOMPI_INTEGRITY_SECRET: test_integrity_secret_1234567890
+          GMAIL_CLIENT_ID: test-client-id
+          GMAIL_CLIENT_SECRET: test-client-secret-1234567890
+          GMAIL_REFRESH_TOKEN: test-refresh-token-1234567890
+          SUPABASE_SERVICE_KEY: test-service-key-1234567890
         run: |
           python - <<'PY'
           import sys, inspect
