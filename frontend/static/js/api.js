@@ -206,7 +206,11 @@ async function apiPost(path, body) {
   if (!res.ok) {
     // 401 = no hay sesion (o caduco). Se abre la puerta en vez de dejar al
     // usuario con un error que no sabe como resolver.
-    if (res.status === 401 && window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
+    // recargar:false a proposito. Si la sesion caduca a mitad de un formulario
+    // (descripcion del producto, imagen ya subida), recargar la pagina le borra
+    // al usuario todo lo que habia escrito. Se abre la puerta, entra, y sigue
+    // desde donde estaba: solo tiene que volver a pulsar el boton.
+    if (res.status === 401 && window.PhAcceso) window.PhAcceso.abrir({ recargar: false });
     const err = new Error(_formatDetail(data.detail, res.status));
     err.status = res.status;
     throw err;
@@ -225,7 +229,11 @@ async function apiGet(path) {
   if (!res.ok) {
     // 401 = no hay sesion (o caduco). Se abre la puerta en vez de dejar al
     // usuario con un error que no sabe como resolver.
-    if (res.status === 401 && window.PhAcceso) window.PhAcceso.abrir({ recargar: true });
+    // recargar:false a proposito. Si la sesion caduca a mitad de un formulario
+    // (descripcion del producto, imagen ya subida), recargar la pagina le borra
+    // al usuario todo lo que habia escrito. Se abre la puerta, entra, y sigue
+    // desde donde estaba: solo tiene que volver a pulsar el boton.
+    if (res.status === 401 && window.PhAcceso) window.PhAcceso.abrir({ recargar: false });
     const err = new Error(_formatDetail(data.detail, res.status));
     err.status = res.status;
     throw err;

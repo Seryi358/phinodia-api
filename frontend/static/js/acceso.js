@@ -156,8 +156,12 @@
               JSON.stringify({ v: estado.correo, e: Date.now() + 7 * 864e5 })); } catch (e) {}
         cerrarPanel();
         aplicarSesion();
-        if (typeof opciones.alEntrar === 'function') opciones.alEntrar(estado.correo);
-        else if (opciones.recargar !== false) window.location.reload();
+        if (typeof opciones.alEntrar === 'function') { opciones.alEntrar(estado.correo); }
+        else if (opciones.recargar !== false) { window.location.reload(); }
+        else if (window.showToast) {
+          // Sin recarga: el usuario conserva lo que estuviera escribiendo.
+          window.showToast('Sesion iniciada. Vuelve a pulsar el boton.', 'success');
+        }
       });
     }
 
