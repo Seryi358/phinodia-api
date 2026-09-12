@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
 from app.config import get_settings
-from app.database import db
+from app.database import db, id_idempotente
 from app.services.credits import CreditService, CreditContention
 from app.services.wompi import verify_webhook_signature, resolve_package, PACKAGES_BY_SKU, fetch_transaction
 from app.services.gmail import GmailSender, build_purchase_email
@@ -357,6 +357,10 @@ async def wompi_webhook(event: dict):
     if not existing:
         try:
             await db.insert("transactions", {
+                # Id derivado del id de transaccion de Wompi: la clave primaria
+                # hace de UNIQUE (que no existe en la tabla) y rechaza la
+                # segunda entrega simultanea del mismo webhook.
+                "id": id_idempotente(f"wompi:{wompi_tx_id}"),
                 "user_id": user["id"],
                 "plan_name": plan_name_with_ab,
                 "credits_added": package["credits"],

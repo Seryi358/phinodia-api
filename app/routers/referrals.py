@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.services.sesion import exigir_sesion
 from pydantic import BaseModel, EmailStr
 from app.config import get_settings
-from app.database import db
+from app.database import db, id_idempotente
 from app.services.credits import CreditService
 
 router = APIRouter()
@@ -304,6 +304,7 @@ async def register_referral(req: RegisterReferralRequest, request: Request):
     # email (RFC 5322 forbids it in the addr-spec without quoting), so parsing
     # back the (code, email) pair is unambiguous.
     await db.insert("transactions", {
+        "id": id_idempotente(f"ref|{code}|{referred}"),
         "user_id": user["id"],
         "plan_name": "referral_registration",
         "credits_added": 0,
@@ -388,6 +389,9 @@ async def process_referral_bonus(customer_email: str):
     bonus_tx_id = f"refbonus|{referrer_code}|{email}"
     try:
         await db.insert("transactions", {
+            # Sin esto el "unico candado" contra el bono doble no existia: la
+            # tabla no tiene UNIQUE y los dos inserts entraban.
+            "id": id_idempotente(bonus_tx_id),
             "user_id": referrer_user["id"],
             "plan_name": "referral_bonus",
             "credits_added": 1,

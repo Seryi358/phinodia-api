@@ -1,0 +1,83 @@
+name: pruebas
+
+# Se ejecuta en cada empujon a main y en cada pull request. El despliegue a
+# produccion sigue siendo manual (scripts/desplegar.sh en el VPS): con un solo
+# servidor y sin entorno de staging, desplegar solo porque la suite este verde
+# seria confiar demasiado en la suite.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Suite de pruebas
+        run: pytest tests/ -q
+        # Las variables las fija tests/conftest.py con valores de mentira:
+        # la CI no necesita (ni debe tener) ninguna credencial real.
+
+      - name: Comprobar sintaxis del JavaScript del frontend
+        run: |
+          for f in frontend/static/js/*.js; do
+            node --check "$f" || exit 1
+          done
+
+      - name: La puerta sigue cerrada
+        # Guardia explicita contra la regresion mas cara posible: que un cambio
+        # deje de exigir sesion en los endpoints que gastan creditos o exponen
+        # las generaciones de un cliente. Si alguien quita el Depends, esto
+        # falla aunque el resto de la suite siga verde.
+        run: |
+          python - <<'PY'
+          import sys, inspect
+          from app.routers import credits, jobs, generate, upload, referrals
+          from app.services.sesion import exigir_sesion
+
+          objetivo = [
+              (credits.check_credits, "GET /credits/check"),
+              (jobs.list_jobs_by_email, "GET /jobs/by-email"),
+              (generate.generate_video, "POST /generate/video"),
+              (generate.generate_image, "POST /generate/image"),
+              (generate.generate_landing, "POST /generate/landing"),
+              (upload.upload_image, "POST /upload/image"),
+              (upload.upload_from_url, "POST /upload/from-url"),
+              (referrals.get_referral_code, "GET /referrals/code"),
+              (referrals.get_referral_stats, "GET /referrals/stats"),
+          ]
+          abiertas = []
+          for fn, nombre in objetivo:
+              deps = [p.default.dependency for p in inspect.signature(fn).parameters.values()
+                      if hasattr(p.default, "dependency")]
+              if exigir_sesion not in deps:
+                  abiertas.append(nombre)
+          if abiertas:
+              print("ENDPOINTS SIN SESION:", ", ".join(abiertas)); sys.exit(1)
+          print(f"{len(objetivo)} endpoints siguen exigiendo sesion")
+          PY
+
+  dependencias:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Vulnerabilidades conocidas en las dependencias
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
